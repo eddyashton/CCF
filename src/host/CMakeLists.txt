@@ -7,7 +7,8 @@ target_sources(cchost PUBLIC
 )
 
 target_include_directories(cchost PUBLIC
-  ${CMAKE_BINARY_DIR}
+  "${CMAKE_BINARY_DIR}"
+  "${MBEDTLS_INCLUDE_DIRS}"
 )
 
 target_link_libraries(cchost PUBLIC
@@ -16,6 +17,8 @@ target_link_libraries(cchost PUBLIC
   ccf::hostcrypto
   CLI11::CLI11
   openenclave::oehost
+  "${MBEDTLS_LIBRARIES}"
+  uv
 )
 
 #use_client_mbedtls(cchost)

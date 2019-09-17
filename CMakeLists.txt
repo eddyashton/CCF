@@ -9,7 +9,10 @@ include(${CCF_DIR}/cmake/preproject.cmake)
 
 project(ccf C CXX)
 
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
+
 find_package(openenclave 0.6 REQUIRED CONFIG)
+find_package(MbedTLS REQUIRED)
 
 set(SERVICE_IDENTITY_CURVE_CHOICE "secp384r1" CACHE STRING "One of secp384r1, curve25519, secp256k1_mbedtls, secp256k1_bitcoin")
 if (${SERVICE_IDENTITY_CURVE_CHOICE} STREQUAL "secp384r1")
@@ -35,7 +38,7 @@ add_custom_command(
 
 add_subdirectory(3rdparty/CLI11)
 add_subdirectory(3rdparty/doctest)
-add_subdirectory(3rdparty/evercrypt-msr)
+add_subdirectory(3rdparty/evercrypt)
 add_subdirectory(3rdparty/fmt)
 add_subdirectory(3rdparty/msgpack-c)
 add_subdirectory(3rdparty/nlohmann)
