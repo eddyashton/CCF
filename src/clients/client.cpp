@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include "../ds/cli_helper.h"
-#include "../ds/files.h"
-#include "../node/rpc/jsonrpc.h"
-#include "../tls/ca.h"
-#include "../tls/cert.h"
-#include "../tls/keypair.h"
+#include "ds/cli_helper.h"
+#include "ds/files.h"
+#include "node/rpc/jsonrpc.h"
+#include "tls/ca.h"
+#include "tls/cert.h"
+#include "tls/keypair.h"
 #include "rpc_tls_client.h"
 
 #include <CLI11/CLI11.hpp>

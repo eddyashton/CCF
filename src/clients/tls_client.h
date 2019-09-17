@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "../ds/buffer.h"
-#include "../tls/ca.h"
-#include "../tls/cert.h"
-#include "../tls/error_string.h"
+#include "ds/buffer.h"
+#include "tls/ca.h"
+#include "tls/cert.h"
+#include "tls/error_string.h"
 
 #include <cstdint>
 #include <cstring>

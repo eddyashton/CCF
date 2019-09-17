@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include "../luakv.h"
+#include "luakv.h"
 
-#include "../luainterp.h"
+#include "luainterp.h"
 
 #include <doctest/doctest.h>
 #include <ds/hash.h>

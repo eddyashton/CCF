@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include "../messaging.h"
+#include "messaging.h"
 
-#include "../ringbuffer.h"
-#include "../serialized.h"
+#include "ringbuffer.h"
+#include "serialized.h"
 
 #include <array>
 #include <doctest/doctest.h>

@@ -8,8 +8,8 @@
 #include <vector>
 extern "C"
 {
-#include "../../3rdparty/lua/lauxlib.h"
-#include "../../3rdparty/lua/lua.h"
+#include "../3rdparty/lua/lauxlib.h"
+#include "../3rdparty/lua/lua.h"
 }
 
 namespace ccf

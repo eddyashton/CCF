@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include "../hash.h"
+#include "hash.h"
 
-#include "../siphash.h"
+#include "siphash.h"
 #include "siphash_knownhashes.h"
 
 #include <doctest/doctest.h>

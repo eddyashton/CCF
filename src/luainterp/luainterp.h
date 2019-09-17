@@ -10,7 +10,7 @@
 #include <vector>
 extern "C"
 {
-#include "../../3rdparty/lua/lualib.h"
+#include "../3rdparty/lua/lualib.h"
 }
 #include "luajson.h"
 

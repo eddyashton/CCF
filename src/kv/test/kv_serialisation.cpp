@@ -8,7 +8,7 @@
 #include "stub_consensus.h"
 
 #include <doctest/doctest.h>
-#include <msgpack-c/msgpack.hpp>
+#include <msgpack.hpp>
 #include <string>
 #include <vector>
 

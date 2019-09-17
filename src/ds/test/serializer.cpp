@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include "../serializer.h"
+#include "serializer.h"
 
-#include "../ringbuffer.h"
+#include "ringbuffer.h"
 
 #include <doctest/doctest.h>
 
