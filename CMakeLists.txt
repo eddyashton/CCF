@@ -13,22 +13,12 @@ add_subdirectory(3rdparty/doctest)
 add_subdirectory(3rdparty/fmt)
 add_subdirectory(3rdparty/nlohmann)
 
-# TODO: These should be target-specific, and reach all necessary targets transitively
-# They are defined globally as a temporary measure
+# Would prefer to use target_link_libraries, but these are essentially global
+# dependencies. If we build a core library that other systems properly link
+# against, this can be removed
 link_libraries(
   fmt::fmt_header_only
   nlohmann_json::nlohmann_json
-)
-
-include_directories(
-  ${CCF_DIR}/src
-)
-
-include_directories(
-  SYSTEM
-  ${CCF_DIR}/3rdparty
-  ${CCF_DIR}/3rdparty/evercrypt-msr
-  ${MSGPACK_INCLUDE_DIR}
 )
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/common.cmake)
@@ -57,9 +47,6 @@ target_link_libraries(logging_client PRIVATE
 
 # SNIPPET: Logging application
 add_enclave_lib(loggingenc ${CMAKE_CURRENT_SOURCE_DIR}/src/apps/logging/oe_sign.conf ${CMAKE_CURRENT_SOURCE_DIR}/src/apps/sample_key.pem SRCS src/apps/logging/logging.cpp src/apps/logging/stub_for_code_signing.cpp)
-
-# Lua generic app
-add_enclave_lib(luagenericenc ${CCF_DIR}/src/apps/luageneric/oe_sign.conf ${CCF_DIR}/src/apps/sample_key.pem SRCS ${CCF_DIR}/src/apps/luageneric/luageneric.cpp)
 
 if(BUILD_TESTS)
   # Tests

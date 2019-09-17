@@ -94,6 +94,17 @@ endif()
 
 enable_language(ASM)
 
+include_directories(
+  ${CCF_DIR}/src
+)
+
+include_directories(
+  SYSTEM
+  ${CCF_DIR}/3rdparty
+  ${CCF_DIR}/3rdparty/evercrypt-msr
+  ${MSGPACK_INCLUDE_DIR}
+)
+
 set(TARGET "all" CACHE STRING "One of sgx, virtual, all")
 
 set(OE_PREFIX "/opt/openenclave" CACHE PATH "Path to Open Enclave install")
@@ -567,6 +578,9 @@ set(CCF_NETWORK_TEST_ARGS
   -l ${TEST_HOST_LOGGING_LEVEL}
   -g ${CCF_DIR}/src/runtime_config/gov.lua
 )
+
+# Lua generic app
+add_enclave_lib(luagenericenc ${CCF_DIR}/src/apps/luageneric/oe_sign.conf ${CCF_DIR}/src/apps/sample_key.pem SRCS ${CCF_DIR}/src/apps/luageneric/luageneric.cpp)
 
 # Samples
 
