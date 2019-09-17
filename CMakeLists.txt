@@ -27,13 +27,24 @@ else ()
   message(FATAL_ERROR "Unsupported curve choice ${SERVICE_IDENTITY_CURVE_CHOICE}")
 endif ()
 
+set(OE_PREFIX "/opt/openenclave" CACHE PATH "Path to Open Enclave install")
+set(OE_BIN_DIR "${OE_PREFIX}/bin")
+set(OEGEN "${OE_BIN_DIR}/oeedger8r")
+
 add_custom_command(
-    COMMAND ${OEGEN} ${CCF_DIR}/src/edl/ccf.edl --trusted --trusted-dir ${CMAKE_BINARY_DIR} --untrusted --untrusted-dir ${CMAKE_BINARY_DIR}
-    COMMAND mv ${CMAKE_BINARY_DIR}/ccf_t.c ${CMAKE_BINARY_DIR}/ccf_t.cpp
-    COMMAND mv ${CMAKE_BINARY_DIR}/ccf_u.c ${CMAKE_BINARY_DIR}/ccf_u.cpp
-    DEPENDS ${CCF_DIR}/src/edl/ccf.edl
-    OUTPUT ${CMAKE_BINARY_DIR}/ccf_t.cpp ${CMAKE_BINARY_DIR}/ccf_u.cpp
-    COMMENT "Generating code from EDL, and renaming to .cpp"
+  COMMAND ${OEGEN} ${CCF_DIR}/src/edl/ccf.edl --trusted --trusted-dir ${CMAKE_BINARY_DIR} --untrusted --untrusted-dir ${CMAKE_BINARY_DIR}
+  COMMAND mv ${CMAKE_BINARY_DIR}/ccf_t.c ${CMAKE_BINARY_DIR}/ccf_t.cpp
+  COMMAND mv ${CMAKE_BINARY_DIR}/ccf_u.c ${CMAKE_BINARY_DIR}/ccf_u.cpp
+  DEPENDS ${CCF_DIR}/src/edl/ccf.edl
+  OUTPUT "${CMAKE_BINARY_DIR}/ccf_t.cpp" "${CMAKE_BINARY_DIR}/ccf_u.cpp"
+  COMMENT "Generating code from EDL, and renaming to .cpp"
+)
+
+add_custom_target(
+  ccf_generated
+  DEPENDS
+    "${CMAKE_BINARY_DIR}/ccf_t.cpp"
+    "${CMAKE_BINARY_DIR}/ccf_u.cpp"
 )
 
 add_subdirectory(3rdparty/CLI11)

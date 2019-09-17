@@ -6,6 +6,11 @@ target_sources(cchost PUBLIC
   ${CMAKE_BINARY_DIR}/ccf_u.cpp
 )
 
+set_source_files_properties(
+  ${CMAKE_BINARY_DIR}/ccf_u.cpp
+  PROPERTIES GENERATED TRUE
+)
+
 target_include_directories(cchost PUBLIC
   "${CMAKE_BINARY_DIR}"
   "${MBEDTLS_INCLUDE_DIRS}"
@@ -20,11 +25,3 @@ target_link_libraries(cchost PUBLIC
   "${MBEDTLS_LIBRARIES}"
   uv
 )
-
-#use_client_mbedtls(cchost)
-#target_include_directories(cchost PRIVATE
-#  ${OE_INCLUDE_DIR}
-#  ${CMAKE_CURRENT_BINARY_DIR}
-#)
-#add_san(cchost)
-
