@@ -9,7 +9,11 @@ include(${CCF_DIR}/cmake/preproject.cmake)
 
 project(ccf C CXX)
 
+# Use Find* modules defined in CCF/cmake
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
+
+# Use Find* modules defined in CCF/cmake
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 find_package(openenclave 0.6 REQUIRED CONFIG)
 find_package(MbedTLS REQUIRED)
