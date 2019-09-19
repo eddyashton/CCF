@@ -61,6 +61,10 @@ namespace ccfapp
 
     static constexpr auto LOG_RECORD_PUBLIC = "LOG_record_pub";
     static constexpr auto LOG_GET_PUBLIC = "LOG_get_pub";
+
+    static constexpr auto LOG_ADD_COMMIT_RECEIVER = "LOG_add_commit_receiver";
+    static constexpr auto LOG_REMOVE_COMMIT_RECEIVER =
+      "LOG_remove_commit_receiver";
   };
 
   // SNIPPET_START: errors
@@ -99,14 +103,21 @@ namespace ccfapp
   // SNIPPET_END: errors
 
   // SNIPPET: table_definition
-  using Table = Store::Map<size_t, string>;
+  using MessageTable = Store::Map<size_t, string>;
+
+  // This is essentially used as a set - we only care about the keys, so the
+  // value is given a simple type and ignored
+  using NotificationDestinations = Store::Map<std::string, bool>;
 
   // SNIPPET: inherit_frontend
   class Logger : public ccf::UserRpcFrontend
   {
   private:
-    Table& records;
-    Table& public_records;
+    MessageTable& records;
+    MessageTable& public_records;
+
+    NotificationDestinations& commit_receivers;
+    NotificationDestinations& message_receivers;
 
     const nlohmann::json record_public_params_schema;
     const nlohmann::json record_public_result_schema;
@@ -138,9 +149,14 @@ namespace ccfapp
     // SNIPPET_START: constructor
     Logger(NetworkTables& nwt, AbstractNotifier& notifier) :
       UserRpcFrontend(*nwt.tables),
-      records(tables.create<Table>("records", kv::SecurityDomain::PRIVATE)),
-      public_records(
-        tables.create<Table>("public_records", kv::SecurityDomain::PUBLIC)),
+      records(
+        tables.create<MessageTable>("records", kv::SecurityDomain::PRIVATE)),
+      public_records(tables.create<MessageTable>(
+        "public_records", kv::SecurityDomain::PUBLIC)),
+      commit_receivers(tables.create<NotificationDestinations>(
+        "commit_receivers", kv::SecurityDomain::PUBLIC)),
+      message_receivers(tables.create<NotificationDestinations>(
+        "message_receivers", kv::SecurityDomain::PUBLIC)),
       // SNIPPET_END: constructor
       record_public_params_schema(nlohmann::json::parse(j_record_public_in)),
       record_public_result_schema(nlohmann::json::parse(j_record_public_out)),
@@ -178,6 +194,11 @@ namespace ccfapp
           LoggerErrors::UNKNOWN_ID, fmt::format("No such record: {}", in.id));
       };
       // SNIPPET_END: get
+
+      install_with_auto_schema<LoggingRecord::In, bool>(
+        Procs::LOG_RECORD, record, Write);
+      // SNIPPET: install_get
+      install_with_auto_schema<LoggingGet>(Procs::LOG_GET, get, Read);
 
       // SNIPPET_START: record_public
       // SNIPPET_START: valijson_record_public
@@ -233,11 +254,6 @@ namespace ccfapp
       };
       // SNIPPET_END: get_public
 
-      install_with_auto_schema<LoggingRecord::In, bool>(
-        Procs::LOG_RECORD, record, Write);
-      // SNIPPET: install_get
-      install_with_auto_schema<LoggingGet>(Procs::LOG_GET, get, Read);
-
       install(
         Procs::LOG_RECORD_PUBLIC,
         record_public,
@@ -251,6 +267,45 @@ namespace ccfapp
         get_public_params_schema,
         get_public_result_schema);
 
+      auto add_commit_receiver =
+        [this](Store::Tx& tx, const nlohmann::json& params) {
+          const auto in = params.get<LoggingNotificationReceiver>();
+
+          if (in.address.empty())
+          {
+            return jsonrpc::error(
+              jsonrpc::StandardErrorCodes::INVALID_PARAMS,
+              "Cannot send notifications to empty address");
+          }
+
+          auto view = tx.get_view(commit_receivers);
+          if (view->get(in.address).has_value())
+          {
+            return jsonrpc::error(
+              jsonrpc::StandardErrorCodes::INVALID_PARAMS,
+              fmt::format(
+                "Already sending commit notifications to '{}'", in.address));
+          }
+
+          view->put(in.address, true);
+          return jsonrpc::success(true);
+        };
+
+      auto remove_commit_receiver =
+        [this](Store::Tx& tx, const nlohmann::json& params) {
+          const auto in = params.get<LoggingNotificationReceiver>();
+
+          auto view = tx.get_view(commit_receivers);
+
+          auto removed = view->remove(in.address);
+          return jsonrpc::success(removed);
+        };
+
+      install_with_auto_schema<LoggingNotificationReceiver, bool>(
+        Procs::LOG_ADD_COMMIT_RECEIVER, add_commit_receiver, Write);
+      install_with_auto_schema<LoggingNotificationReceiver, bool>(
+        Procs::LOG_REMOVE_COMMIT_RECEIVER, remove_commit_receiver, Write);
+
       nwt.signatures.set_global_hook([this, &notifier](
                                        kv::Version version,
                                        const Signatures::State& s,
@@ -259,7 +314,15 @@ namespace ccfapp
         {
           nlohmann::json notify_j;
           notify_j["commit"] = version;
-          notifier.notify(jsonrpc::pack(notify_j, jsonrpc::Pack::Text));
+          const auto payload = jsonrpc::pack(notify_j, jsonrpc::Pack::Text);
+
+          Store::Tx tx;
+          auto view = tx.get_view(commit_receivers);
+          view->foreach(
+            [&payload, &notifier](const std::string& receiver, const auto&) {
+              notifier.notify(receiver, payload);
+              return true;
+            });
         }
       });
     }
