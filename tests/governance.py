@@ -64,11 +64,4 @@ if __name__ == "__main__":
         LOG.error("This test can only run in real enclaves, skipping")
         sys.exit(0)
 
-    args.package = "libloggingenc"
-    notify_server_host = "localhost"
-    args.notify_server = (
-        notify_server_host
-        + ":"
-        + str(infra.net.probably_free_local_port(notify_server_host))
-    )
     run(args)

@@ -470,7 +470,6 @@ class CCFRemote(object):
         sig_max_ms=1000,
         election_timeout=1000,
         memory_reserve_startup=0,
-        notify_server=None,
         gov_script=None,
         app_script=None,
         ledger_file=None,
@@ -530,21 +529,6 @@ class CCFRemote(object):
 
         if memory_reserve_startup:
             cmd += [f"--memory-reserve-startup={memory_reserve_startup}"]
-
-        if notify_server:
-            notify_server_host, *notify_server_port = notify_server.split(":")
-
-            if not notify_server_host or not (
-                notify_server_port and notify_server_port[0]
-            ):
-                raise ValueError(
-                    "Notification server host:port configuration is invalid"
-                )
-
-            # TODO: Set this in app
-            cmd += [
-                f"--notify-server-address={notify_server_host}:{notify_server_port[0]}"
-            ]
 
         if self.quote:
             cmd += [f"--quote-file={self.quote}"]

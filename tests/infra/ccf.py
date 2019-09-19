@@ -109,7 +109,6 @@ class Network:
         "sig_max_ms",
         "election_timeout",
         "memory_reserve_startup",
-        "notify_server",
         "json_log_path",
         "gov_script",
         "app_script",

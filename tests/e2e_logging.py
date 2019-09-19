@@ -20,7 +20,10 @@ from loguru import logger as LOG
 def run(args):
     hosts = ["localhost", "localhost"]
 
-    with infra.notification.notification_server(args.notify_server) as notifications:
+    notify_server_host = "localhost"
+    notify_port = infra.net.probably_free_local_port(notify_server_host)
+    notify_server = f"{notify_server_host}:{notify_port}"
+    with infra.notification.notification_server(notify_server) as notifications:
 
         with infra.ccf.network(
             hosts, args.build_dir, args.debug_nodes, args.perf_nodes, pdb=args.pdb
@@ -31,6 +34,13 @@ def run(args):
                 check_commit = infra.ccf.Checker(mc)
                 check = infra.ccf.Checker()
                 check_notification = infra.ccf.Checker(None, notifications.get_queue())
+
+                LOG.debug("Register for commit notifications")
+                with primary.user_client(format="json") as c:
+                    check_commit(
+                        c.rpc("LOG_add_commit_receiver", {"address": notify_server}),
+                        result=True,
+                    )
 
                 msg = "Hello world"
                 msg2 = "Hello there"
@@ -78,10 +88,4 @@ if __name__ == "__main__":
 
     args = e2e_args.cli_args()
     args.package = "libloggingenc"
-    notify_server_host = "localhost"
-    args.notify_server = (
-        notify_server_host
-        + ":"
-        + str(infra.net.probably_free_local_port(notify_server_host))
-    )
     run(args)
