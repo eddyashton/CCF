@@ -39,6 +39,8 @@ namespace ccf
 
   class StubNotifier : public ccf::AbstractNotifier
   {
-    void notify(const std::vector<uint8_t>& data) override {}
+    void notify(
+      const std::string& address, const std::vector<uint8_t>& data) override
+    {}
   };
 }

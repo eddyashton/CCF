@@ -541,6 +541,7 @@ class CCFRemote(object):
                     "Notification server host:port configuration is invalid"
                 )
 
+            # TODO: Set this in app
             cmd += [
                 f"--notify-server-address={notify_server_host}:{notify_server_port[0]}"
             ]

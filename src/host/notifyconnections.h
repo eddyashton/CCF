@@ -16,19 +16,18 @@ namespace asynchost
     CURLM* multi_handle = nullptr;
     curl_slist* headers = nullptr;
 
-    std::string notify_destination = {};
-
     // To ensure we cleanup all open handles, keep track of them locally
     std::set<CURL*> easy_handles;
 
-    void send_notification(const std::vector<uint8_t>& body)
+    void send_notification(
+      const std::string& address, const std::vector<uint8_t>& body)
     {
       if (multi_handle)
       {
         CURL* curl = curl_easy_init();
         easy_handles.insert(curl);
 
-        curl_easy_setopt(curl, CURLOPT_URL, notify_destination.c_str());
+        curl_easy_setopt(curl, CURLOPT_URL, address.c_str());
         curl_easy_setopt(curl, CURLOPT_POST, 1L);
         curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, body.size());
         curl_easy_setopt(curl, CURLOPT_COPYPOSTFIELDS, body.data());
@@ -37,13 +36,16 @@ namespace asynchost
 
         curl_multi_add_handle(multi_handle, curl);
       }
+      else
+      {
+        LOG_FAIL_FMT(
+          "Unable to send notification to {} - curl handle not initialised",
+          address);
+      }
     };
 
   public:
-    NotifyConnectionsImpl(
-      messaging::Dispatcher<ringbuffer::Message>& disp,
-      const std::string& host,
-      const std::string& service)
+    NotifyConnectionsImpl(messaging::Dispatcher<ringbuffer::Message>& disp)
     {
       auto init_res = curl_global_init(CURL_GLOBAL_ALL);
       if (init_res != 0)
@@ -53,18 +55,13 @@ namespace asynchost
           curl_easy_strerror(init_res));
       }
 
-      if (!host.empty())
+      multi_handle = curl_multi_init();
+      if (multi_handle == nullptr)
       {
-        notify_destination = fmt::format("{}:{}", host, service);
-
-        multi_handle = curl_multi_init();
-        if (multi_handle == nullptr)
-        {
-          LOG_FAIL_FMT("Failed to initialised curl multi handle");
-        }
-
-        headers = curl_slist_append(headers, "Content-Type: application/json");
+        LOG_FAIL_FMT("Failed to initialised curl multi handle");
       }
+
+      headers = curl_slist_append(headers, "Content-Type: application/json");
 
       register_message_handlers(disp);
     }
@@ -142,10 +139,10 @@ namespace asynchost
         disp,
         AdminMessage::notification,
         [this](const uint8_t* data, size_t size) {
-          auto [msg] =
+          auto [address, payload] =
             ringbuffer::read_message<AdminMessage::notification>(data, size);
 
-          send_notification(msg);
+          send_notification(address, payload);
         });
     }
   };

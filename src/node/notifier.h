@@ -18,9 +18,11 @@ namespace ccf
       to_host(writer_factory_.create_writer_to_outside())
     {}
 
-    void notify(const std::vector<uint8_t>& data) override
+    void notify(
+      const std::string& address, const std::vector<uint8_t>& data) override
     {
-      RINGBUFFER_WRITE_MESSAGE(AdminMessage::notification, to_host, data);
+      RINGBUFFER_WRITE_MESSAGE(
+        AdminMessage::notification, to_host, address, data);
     }
   };
 }

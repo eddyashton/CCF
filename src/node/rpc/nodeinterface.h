@@ -22,6 +22,8 @@ namespace ccf
   {
   public:
     virtual ~AbstractNotifier() {}
-    virtual void notify(const std::vector<uint8_t>& data) = 0;
+    virtual void notify(
+      const std::string& address,
+      const std::vector<uint8_t>& data) = 0;
   };
 }

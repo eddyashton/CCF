@@ -115,13 +115,6 @@ int main(int argc, char** argv)
     "Size of the internal ringbuffers, as a power of 2",
     true);
 
-  cli::ParsedAddress notifications_address;
-  cli::add_address_option(
-    app,
-    notifications_address,
-    "--notify-server-address",
-    "Server address to notify progress to");
-
   size_t raft_timeout = 100;
   app.add_option(
     "--raft-timeout-ms", raft_timeout, "Raft timeout in milliseconds", true);
@@ -351,10 +344,7 @@ int main(int argc, char** argv)
     ledger, writer_factory, node_address.hostname, node_address.port);
   node.register_message_handlers(bp.get_dispatcher());
 
-  asynchost::NotifyConnections report(
-    bp.get_dispatcher(),
-    notifications_address.hostname,
-    notifications_address.port);
+  asynchost::NotifyConnections report(bp.get_dispatcher());
 
   asynchost::RPCConnections rpc(writer_factory);
   rpc.register_message_handlers(bp.get_dispatcher());

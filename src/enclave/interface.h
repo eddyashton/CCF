@@ -98,5 +98,5 @@ DECLARE_RINGBUFFER_MESSAGE_PAYLOAD(
   AdminMessage::sealed_secrets, kv::Version, std::vector<uint8_t>);
 DECLARE_RINGBUFFER_MESSAGE_PAYLOAD(AdminMessage::stop);
 DECLARE_RINGBUFFER_MESSAGE_PAYLOAD(
-  AdminMessage::notification, std::vector<uint8_t>);
+  AdminMessage::notification, std::string, std::vector<uint8_t>);
 DECLARE_RINGBUFFER_MESSAGE_PAYLOAD(AdminMessage::tick, size_t);
