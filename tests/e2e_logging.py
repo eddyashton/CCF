@@ -20,68 +20,55 @@ from loguru import logger as LOG
 def run(args):
     hosts = ["localhost", "localhost"]
 
-    notify_server_host = "localhost"
-    notify_port = infra.net.probably_free_local_port(notify_server_host)
-    notify_server = f"{notify_server_host}:{notify_port}"
-    with infra.notification.notification_server(notify_server) as notifications:
+    with infra.ccf.network(
+        hosts, args.build_dir, args.debug_nodes, args.perf_nodes, pdb=args.pdb
+    ) as network:
+        primary, (backup,) = network.start_and_join(args)
 
-        with infra.ccf.network(
-            hosts, args.build_dir, args.debug_nodes, args.perf_nodes, pdb=args.pdb
-        ) as network:
-            primary, (backup,) = network.start_and_join(args)
+        with primary.management_client() as mc:
+            check_commit = infra.ccf.Checker(mc)
+            check = infra.ccf.Checker()
 
-            with primary.management_client() as mc:
-                check_commit = infra.ccf.Checker(mc)
-                check = infra.ccf.Checker()
-                check_notification = infra.ccf.Checker(None, notifications.get_queue())
+            msg = "Hello world"
+            msg2 = "Hello there"
+            backup_msg = "Msg sent to a backup"
 
-                LOG.debug("Register for commit notifications")
-                with primary.user_client(format="json") as c:
+            LOG.debug("Write/Read on primary")
+            with primary.user_client(format="json") as c:
+                check_commit(
+                    c.rpc("LOG_record", {"id": 42, "msg": msg}), result=True
+                )
+                check_notification(
+                    c.rpc("LOG_record", {"id": 43, "msg": msg2}), result=True
+                )
+                check(c.rpc("LOG_get", {"id": 42}), result={"msg": msg})
+                check(c.rpc("LOG_get", {"id": 43}), result={"msg": msg2})
+
+            LOG.debug("Write on all backup frontends")
+            with backup.management_client(format="json") as c:
+                check_commit(c.do("mkSign", params={}), result=True)
+            with backup.member_client(format="json") as c:
+                check_commit(c.do("mkSign", params={}), result=True)
+
+            LOG.debug("Write/Read on backup")
+            with backup.user_client(format="json") as c:
+                check_commit(
+                    c.rpc("LOG_record", {"id": 100, "msg": backup_msg}), result=True
+                )
+                check(c.rpc("LOG_get", {"id": 100}), result={"msg": backup_msg})
+                check(c.rpc("LOG_get", {"id": 42}), result={"msg": msg})
+
+            LOG.debug("Write/Read large messages on primary")
+            with primary.user_client(format="json") as c:
+                id = 44
+                for p in range(14, 20):
+                    long_msg = "X" * (2 ** p)
                     check_commit(
-                        c.rpc("LOG_add_commit_receiver", {"address": notify_server}),
+                        c.rpc("LOG_record", {"id": id, "msg": long_msg}),
                         result=True,
                     )
-
-                msg = "Hello world"
-                msg2 = "Hello there"
-                backup_msg = "Msg sent to a backup"
-
-                LOG.debug("Write/Read on primary")
-                with primary.user_client(format="json") as c:
-                    check_commit(
-                        c.rpc("LOG_record", {"id": 42, "msg": msg}), result=True
-                    )
-                    check_notification(
-                        c.rpc("LOG_record", {"id": 43, "msg": msg2}), result=True
-                    )
-                    check(c.rpc("LOG_get", {"id": 42}), result={"msg": msg})
-                    check(c.rpc("LOG_get", {"id": 43}), result={"msg": msg2})
-
-                LOG.debug("Write on all backup frontends")
-                with backup.management_client(format="json") as c:
-                    check_commit(c.do("mkSign", params={}), result=True)
-                with backup.member_client(format="json") as c:
-                    check_commit(c.do("mkSign", params={}), result=True)
-
-                LOG.debug("Write/Read on backup")
-                with backup.user_client(format="json") as c:
-                    check_commit(
-                        c.rpc("LOG_record", {"id": 100, "msg": backup_msg}), result=True
-                    )
-                    check(c.rpc("LOG_get", {"id": 100}), result={"msg": backup_msg})
-                    check(c.rpc("LOG_get", {"id": 42}), result={"msg": msg})
-
-                LOG.debug("Write/Read large messages on primary")
-                with primary.user_client(format="json") as c:
-                    id = 44
-                    for p in range(14, 20):
-                        long_msg = "X" * (2 ** p)
-                        check_commit(
-                            c.rpc("LOG_record", {"id": id, "msg": long_msg}),
-                            result=True,
-                        )
-                        check(c.rpc("LOG_get", {"id": id}), result={"msg": long_msg})
-                    id += 1
+                    check(c.rpc("LOG_get", {"id": id}), result={"msg": long_msg})
+                id += 1
 
 
 if __name__ == "__main__":

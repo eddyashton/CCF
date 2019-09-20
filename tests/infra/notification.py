@@ -27,6 +27,7 @@ class PostQueueRequestHandler(http.server.BaseHTTPRequestHandler):
             LOG.error(f"Notification is not in expected format: {body}")
             self.error_queue.put(body)
         else:
+            print(f"Adding notification: {body}")
             self.queue.put(body)
 
     def log_message(self, format, *args):

@@ -71,11 +71,17 @@ def probably_free_remote_port(host):
     raise RuntimeError("Couldn't get a free port after {} tries!".format(tries))
 
 
-def two_different(finder, *args, **kwargs):
-    one, two = finder(*args, **kwargs), finder(*args, **kwargs)
-    while two == one:
-        two = finder(*args, **kwargs)
-    return (one, two)
+def n_different(n, finder, *args, **kwargs):
+    found = {finder(*args, **kwargs) for i in range(n)}
+    attempts = 0
+    while len(found) < n:
+        found.add(finder(*args, **kwargs))
+        attempts += 1
+        if attempts > n:
+            raise RuntimeError(
+                f"Couldn't find {n} different values after {attempts} attempts"
+            )
+    return found
 
 
 def expand_localhost():

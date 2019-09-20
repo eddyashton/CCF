@@ -611,8 +611,8 @@ class Node:
 
     def _set_ports(self, probably_free_function):
         if self.rpc_port is None:
-            self.node_port, self.rpc_port = infra.net.two_different(
-                probably_free_function, self.host
+            self.node_port, self.rpc_port = infra.net.n_different(
+                2, probably_free_function, self.host
             )
         else:
             self.node_port = probably_free_function(self.host)

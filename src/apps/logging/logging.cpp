@@ -318,11 +318,13 @@ namespace ccfapp
 
           Store::Tx tx;
           auto view = tx.get_view(commit_receivers);
-          view->foreach(
-            [&payload, &notifier](const std::string& receiver, const auto&) {
-              notifier.notify(receiver, payload);
-              return true;
-            });
+          view->foreach([&payload, &notifier, &version](
+                          const std::string& receiver, const auto&) {
+            LOG_INFO_FMT(
+              "Notifying {} of signature at version {}", receiver, version);
+            notifier.notify(receiver, payload);
+            return true;
+          });
         }
       });
     }
