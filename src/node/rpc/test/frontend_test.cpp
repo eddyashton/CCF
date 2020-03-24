@@ -11,7 +11,7 @@
 #include "node/genesisgen.h"
 #include "node/history.h"
 #include "node/networkstate.h"
-#include "node/rpc/jsonhandler.h"
+#include "node/rpc/json_handler.h"
 #include "node/rpc/jsonrpc.h"
 #include "node/rpc/memberfrontend.h"
 #include "node/rpc/nodefrontend.h"

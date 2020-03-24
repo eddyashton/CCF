@@ -3,7 +3,7 @@
 #pragma once
 
 #include "enclave/rpccontext.h"
-#include "handlerregistry.h"
+#include "handler_registry.h"
 #include "http/http_consts.h"
 #include "node/rpc/jsonrpc.h"
 

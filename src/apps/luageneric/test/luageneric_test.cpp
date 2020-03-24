@@ -8,7 +8,7 @@
 #include "luainterp/luainterp.h"
 #include "node/encryptor.h"
 #include "node/genesisgen.h"
-#include "node/rpc/jsonhandler.h"
+#include "node/rpc/json_handler.h"
 #include "node/rpc/jsonrpc.h"
 #include "node/rpc/test/node_stub.h"
 #include "runtime_config/default_whitelists.h"

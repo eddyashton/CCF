@@ -5,7 +5,7 @@
 #include "luajson.h"
 #include "luautil.h"
 #include "node/rpc/frontend.h"
-#include "node/rpc/jsonhandler.h"
+#include "node/rpc/json_handler.h"
 
 /**
  * @file luarpcargs.h
