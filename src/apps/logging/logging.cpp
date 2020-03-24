@@ -3,7 +3,6 @@
 #include "enclave/appinterface.h"
 #include "formatters.h"
 #include "logging_schema.h"
-#include "node/quote.h"
 #include "node/rpc/userfrontend.h"
 
 #include <fmt/format_header_only.h>
