@@ -297,7 +297,16 @@ namespace ccf
 
         if (is_primary)
         {
-          record_client_signature(tx, caller_id, signed_request.value());
+          pre_exec =
+            [=, prev_fn = std::move(pre_exec)](
+              Store::Tx& tx, enclave::RpcContext& ctx, RpcFrontend& frontend) {
+              if (prev_fn)
+              {
+                prev_fn(tx, ctx, frontend);
+              }
+
+              record_client_signature(tx, caller_id, signed_request.value());
+            };
         }
       }
 
