@@ -461,9 +461,6 @@ namespace raft
 
     Term get_term_internal(Index idx)
     {
-      if (idx > last_idx)
-        return 0;
-
       return term_history.term_at(idx);
     }
 

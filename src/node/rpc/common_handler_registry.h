@@ -66,13 +66,21 @@ namespace ccf
 
         if (consensus != nullptr)
         {
-          const auto tx_view = consensus->get_view(in.seqno);
-          const auto committed_seqno = consensus->get_commit_seqno();
-          const auto committed_view = consensus->get_view(committed_seqno);
-
           GetTxStatus::Out out;
-          out.status = ccf::get_tx_status(
-            in.view, in.seqno, tx_view, committed_view, committed_seqno);
+          if (in.seqno > tables->current_version())
+          {
+            // If this node has never seen this seqno, the tx is unknown
+            out.status = TxStatus::Unknown;
+          }
+          else
+          {
+            const auto tx_view = consensus->get_view(in.seqno);
+            const auto committed_seqno = consensus->get_commit_seqno();
+            const auto committed_view = consensus->get_view(committed_seqno);
+            out.status = ccf::get_tx_status(
+              in.view, in.seqno, tx_view, committed_view, committed_seqno);
+          }
+
           return make_success(out);
         }
 
