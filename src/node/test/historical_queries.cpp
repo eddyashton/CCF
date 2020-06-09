@@ -86,6 +86,9 @@ TEST_CASE("StateCache")
 
   using NumToString = kv::Map<size_t, std::string>;
 
+  constexpr size_t low_signature_transaction = 3;
+  constexpr size_t high_signature_transaction = 21;
+
   {
     INFO("Build some interesting state in the store");
 
@@ -106,12 +109,16 @@ TEST_CASE("StateCache")
       store.create<NumToString>("private", kv::SecurityDomain::PRIVATE);
 
     {
-      for (size_t i = 1; i <= 20; ++i)
+      for (size_t i = 1; i < high_signature_transaction; ++i)
       {
-        if (i == 7 || i == 20)
+        if (
+          i == low_signature_transaction - 1 ||
+          i == high_signature_transaction - 1)
         {
           history->emit_signature();
           store.compact(store.current_version());
+          std::cout << "Emitted signature at " << store.current_version()
+                    << std::endl;
         }
         else
         {
@@ -126,6 +133,8 @@ TEST_CASE("StateCache")
         }
       }
     }
+
+    REQUIRE(store.current_version() == high_signature_transaction);
   }
 
   std::map<consensus::Index, std::vector<uint8_t>> ledger;
@@ -141,7 +150,7 @@ TEST_CASE("StateCache")
       next_ledger_entry = consensus->pop_oldest_entry();
     }
 
-    REQUIRE(ledger.size() == 21);
+    REQUIRE(ledger.size() == high_signature_transaction);
   }
 
   // Now we actually get to the historical queries
@@ -193,17 +202,31 @@ TEST_CASE("StateCache")
 
   {
     INFO(
-      "Cache accepts requested entries, and then subsequent entries to a "
-      "signature");
-    REQUIRE(cache.handle_ledger_entry(5, ledger[5]));
-    for (size_t i = 10; i <= 20; ++i)
+      "Cache accepts requested entries, and then range of supporting entries");
+    REQUIRE(cache.handle_ledger_entry(10, ledger[10]));
+
+    // Count down to previous signature
+    for (size_t i = 9; i >= low_signature_transaction; --i)
     {
+      std::cout << "Counting down: " << i << std::endl;
       REQUIRE(cache.handle_ledger_entry(i, ledger[i]));
       auto store_at_10 = cache.get_store_at(10);
       REQUIRE(store_at_10 == nullptr);
     }
 
-    REQUIRE(cache.handle_ledger_entry(21, ledger[21]));
+    // Count up to next signature
+    for (size_t i = low_signature_transaction + 1;
+         i < high_signature_transaction;
+         ++i)
+    {
+      std::cout << "Counting up: " << i << std::endl;
+      REQUIRE(cache.handle_ledger_entry(i, ledger[i]));
+      auto store_at_10 = cache.get_store_at(10);
+      REQUIRE(store_at_10 == nullptr);
+    }
+
+    REQUIRE(cache.handle_ledger_entry(
+      high_signature_transaction, ledger[high_signature_transaction]));
   }
 
   {

@@ -33,7 +33,13 @@ namespace ccf::historical
     struct Request
     {
       RequestStage current_stage = RequestStage::Fetching;
-      crypto::Sha256Hash entry_hash = {};
+
+      // After fetching, we count down through previous transactions until we
+      // reach a signature. With this we start a history from it, and then we
+      // count forward to the next signature, building the history as we go
+      std::shared_ptr<ccf::MerkleTreeHistory> history = nullptr;
+      consensus::Index next_history_entry = 0;
+
       StorePtr store = nullptr;
     };
 
@@ -126,6 +132,7 @@ namespace ccf::historical
     void handle_signature_transaction(
       consensus::Index sig_idx, const StorePtr& sig_store)
     {
+      LOG_INFO_FMT("Considering signature at {}", sig_idx);
       const auto sig = get_signature(sig_store);
       if (!sig.has_value())
       {
@@ -134,8 +141,8 @@ namespace ccf::historical
       }
 
       // Build tree from signature
-      ccf::MerkleTreeHistory tree(sig->tree);
-      const auto real_root = tree.get_root();
+      auto sig_tree = std::make_shared<ccf::MerkleTreeHistory>(sig->tree);
+      const auto real_root = sig_tree->get_root();
       if (real_root != sig->root)
       {
         throw std::logic_error("Invalid signature: invalid root");
@@ -167,52 +174,90 @@ namespace ccf::historical
       while (it != requests.end())
       {
         auto& request = it->second;
+        const auto& untrusted_idx = it->first;
 
-        if (request.current_stage == RequestStage::Untrusted)
+        LOG_INFO_FMT(
+          "Considering request {} ({})", untrusted_idx, request.current_stage);
+
+        if (request.current_stage != RequestStage::Untrusted)
         {
-          const auto& untrusted_idx = it->first;
-          const auto& untrusted_hash = request.entry_hash;
+          // Already trusted or still fetching, skip it
+          ++it;
+          continue;
+        }
+
+        if (sig_idx <= untrusted_idx)
+        {
+          LOG_INFO_FMT("Maybe start of history?");
+
+          // This signature can be used as the starting point to build a history
+          // for this Untrusted entry
+          if (request.history == nullptr)
+          {
+            LOG_INFO_FMT("Yes!");
+            request.history = sig_tree;
+            request.next_history_entry = sig_idx + 1;
+            fetch_entry_at(request.next_history_entry);
+          }
+          // TODO: How do we decide if _this_ tree is preferable? We could keep
+          // the later tree, but it's not obvious how we determine that...
+        }
+
+        if (untrusted_idx <= sig_idx)
+        {
+          LOG_INFO_FMT("Maybe proof?");
+          // This signature may allow us to trust this Untrusted entry
           const auto& untrusted_store = request.store;
 
-          // Use try-catch to find whether this signature covers the target
-          // transaction ID
+          if (request.history == nullptr)
+          {
+            LOG_INFO_FMT("No history");
+            // We haven't started building a history yet
+            ++it;
+            continue;
+          }
+
+          // Use try-catch to get a receipt from the history we have built
           ccf::Receipt receipt;
           try
           {
-            receipt = tree.get_receipt(untrusted_idx);
-            LOG_DEBUG_FMT(
-              "From signature at {}, constructed a receipt for {}",
+            receipt = request.history->get_receipt(untrusted_idx);
+            LOG_INFO_FMT(
+              "From history, constructed a receipt for {} (considering "
+              "signature at {})",
               sig_idx,
               untrusted_idx);
           }
           catch (const std::exception& e)
           {
-            // This signature doesn't cover this untrusted idx, try the next
+            LOG_INFO_FMT("No receipt");
+            // We're not able to build a valid receipt yet
             ++it;
             continue;
           }
 
-          // TODO: Check that the receipt matches our untrusted entry
-          // const auto& entry_hash_in_receipt = receipt.leaf;
-          // if (untrusted_hash != entry_hash_in_receipt)
-          // {
-          //   // TODO: We should discard the untrusted store now
-          //   throw std::logic_error(
-          //     fmt::format("Hash mismatch for {}", untrusted_idx));
-          // }
-
-          // Move stores from untrusted to trusted
-          // TODO: Temp solution, blindly trust everything for now
-          LOG_DEBUG_FMT(
-            "Now trusting {} due to signature at {}", untrusted_idx, sig_idx);
-          request.current_stage = RequestStage::Trusted;
-          ++it;
+          const auto verified = sig_tree->verify(receipt);
+          if (verified)
+          {
+            // Move store from untrusted to trusted
+            LOG_DEBUG_FMT(
+              "Now trusting {} due to signature at {}", untrusted_idx, sig_idx);
+            request.current_stage = RequestStage::Trusted;
+            ++it;
+            continue;
+          }
+          else
+          {
+            // TODO: Does this mean we have a junk entry? Its possible that the
+            // signature is just too new, and can't prove anything about such an
+            // old entry...
+            LOG_DEBUG_FMT(
+              "Signature at {} did not prove {}", sig_idx, untrusted_idx);
+            ++it;
+            continue;
+          }
         }
-        else
-        {
-          // Already trusted or still fetching, skip it
-          ++it;
-        }
+        ++it;
       }
     }
 
@@ -220,14 +265,10 @@ namespace ccf::historical
       consensus::Index idx, const LedgerEntry& entry)
     {
       StorePtr store = std::make_shared<kv::Store>(false);
-
       store->set_encryptor(source_store.get_encryptor());
-
-      // TODO: Add a lazy clone option?
       store->clone_schema(source_store);
 
       const auto deserialise_result = store->deserialise_views(entry);
-
       switch (deserialise_result)
       {
         case kv::DeserialiseSuccess::FAILED:
@@ -238,7 +279,8 @@ namespace ccf::historical
         case kv::DeserialiseSuccess::PASS:
         case kv::DeserialiseSuccess::PASS_SIGNATURE:
         {
-          LOG_DEBUG_FMT("Processed transaction at {}", idx);
+          LOG_DEBUG_FMT(
+            "Processed transaction at {} ({})", idx, deserialise_result);
 
           auto request_it = requests.find(idx);
           if (request_it != requests.end())
@@ -248,7 +290,7 @@ namespace ccf::historical
             {
               // We were looking for this entry. Store the produced store
               request.current_stage = RequestStage::Untrusted;
-              request.entry_hash = crypto::Sha256Hash(entry);
+              // request.entry_hash = crypto::Sha256Hash(entry);
               request.store = store;
             }
             else
@@ -260,16 +302,40 @@ namespace ccf::historical
             }
           }
 
+          // Add hash of this entry to any Untrusted entries which are looking
+          // for it
+          crypto::Sha256Hash entry_hash(entry);
+          for (auto it = requests.begin(); it != requests.end(); ++it)
+          {
+            auto& request = it->second;
+            if (request.history != nullptr && request.next_history_entry == idx)
+            {
+              LOG_INFO_FMT(
+                "Appending hash of {} to history for {}", idx, it->first);
+              request.history->append(entry_hash);
+              request.next_history_entry += 1;
+              fetch_entry_at(request.next_history_entry);
+            }
+          }
+
           if (deserialise_result == kv::DeserialiseSuccess::PASS_SIGNATURE)
           {
             // This looks like a valid signature - try to use this signature to
             // move some stores from untrusted to trusted
             handle_signature_transaction(idx, store);
           }
+
+          // TODO: Actually check these things
+          if (idx > 0)
+          {
+            // There is an Untrusted store at a higher idx still looking for a
+            // base signature - keep looking backwards
+            LOG_INFO_FMT("Fetching previous idx: {}", idx - 1);
+            fetch_entry_at(idx - 1);
+          }
           else
           {
-            // This is not a signature - try the next transaction
-            fetch_entry_at(idx + 1);
+            LOG_FAIL_FMT("Uh oh, hit 0");
           }
           break;
         }
