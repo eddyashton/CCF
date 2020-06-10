@@ -69,9 +69,66 @@ static int append_flush_and_retract()
   return get_maxrss() < max_expected_rss ? 0 : 1;
 }
 
+static void rebuilding_from_serialised()
+{
+  std::random_device r;
+
+  std::vector<uint8_t> serialised_before;
+  std::vector<uint8_t> serialised_final;
+  std::vector<crypto::Sha256Hash> hashes;
+
+  constexpr size_t flush_index = 5;
+  constexpr size_t end_index = 100;
+
+  {
+    ccf::MerkleTreeHistory t1;
+    for (size_t i = 0; i <= flush_index; ++i)
+    {
+      hashes.push_back(random_hash(r));
+      auto h = hashes.back();
+      t1.append(h);
+    }
+
+    serialised_before = t1.serialise();
+    t1.flush(flush_index);
+
+    for (size_t i = flush_index + 1; i <= end_index; ++i)
+    {
+      hashes.push_back(random_hash(r));
+      auto h = hashes.back();
+      t1.append(h);
+    }
+
+    serialised_final = t1.serialise();
+  }
+
+  std::vector<std::shared_ptr<ccf::MerkleTreeHistory>> trees;
+
+  ccf::MerkleTreeHistory final_tree(serialised_final);
+  constexpr auto sign_index = end_index - 5;
+  auto receipt = final_tree.get_receipt(sign_index);
+
+  for (size_t i = 0; i < 10; ++i)
+  {
+    trees.emplace_back(
+      std::make_shared<ccf::MerkleTreeHistory>(serialised_before));
+    auto& tree = trees.back();
+
+    for (size_t e = flush_index + 1; e < hashes.size(); ++e)
+    {
+      auto h = hashes[e];
+      tree->append(h);
+    }
+
+    auto b = tree->verify(receipt);
+    assert(b);
+  }
+}
+
 // We need an explicit main to initialize kremlib and EverCrypt
 int main(int argc, char* argv[])
 {
   ::EverCrypt_AutoConfig2_init();
+  rebuilding_from_serialised();
   return append_flush_and_retract();
 }
