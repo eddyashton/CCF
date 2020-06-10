@@ -77,8 +77,8 @@ static void rebuilding_from_serialised()
   std::vector<uint8_t> serialised_final;
   std::vector<crypto::Sha256Hash> hashes;
 
-  constexpr size_t flush_index = 5;
-  constexpr size_t end_index = 100;
+  constexpr size_t flush_index = 4;
+  constexpr size_t end_index = 30;
 
   {
     ccf::MerkleTreeHistory t1;
@@ -108,7 +108,7 @@ static void rebuilding_from_serialised()
   constexpr auto sign_index = end_index - 5;
   auto receipt = final_tree.get_receipt(sign_index);
 
-  for (size_t i = 0; i < 10; ++i)
+  for (size_t i = 0; i < 1; ++i)
   {
     trees.emplace_back(
       std::make_shared<ccf::MerkleTreeHistory>(serialised_before));
