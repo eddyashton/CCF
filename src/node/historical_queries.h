@@ -226,8 +226,8 @@ namespace ccf::historical
             LOG_INFO_FMT(
               "From history, constructed a receipt for {} (considering "
               "signature at {})",
-              sig_idx,
-              untrusted_idx);
+              untrusted_idx,
+              sig_idx);
           }
           catch (const std::exception& e)
           {
