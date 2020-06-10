@@ -77,22 +77,13 @@ static void rebuilding_from_serialised()
   std::vector<uint8_t> serialised_final;
   std::vector<crypto::Sha256Hash> hashes;
 
-  constexpr size_t flush_index = 4;
-  constexpr size_t end_index = 30;
+  constexpr size_t end_index = 24;
 
   {
     ccf::MerkleTreeHistory t1;
-    for (size_t i = 0; i <= flush_index; ++i)
-    {
-      hashes.push_back(random_hash(r));
-      auto h = hashes.back();
-      t1.append(h);
-    }
-
     serialised_before = t1.serialise();
-    t1.flush(flush_index);
 
-    for (size_t i = flush_index + 1; i <= end_index; ++i)
+    for (size_t i = 0; i <= end_index; ++i)
     {
       hashes.push_back(random_hash(r));
       auto h = hashes.back();
@@ -102,26 +93,13 @@ static void rebuilding_from_serialised()
     serialised_final = t1.serialise();
   }
 
-  std::vector<std::shared_ptr<ccf::MerkleTreeHistory>> trees;
-
   ccf::MerkleTreeHistory final_tree(serialised_final);
-  constexpr auto sign_index = end_index - 5;
-  auto receipt = final_tree.get_receipt(sign_index);
 
-  for (size_t i = 0; i < 1; ++i)
+  ccf::MerkleTreeHistory reconstruction(serialised_before);
+  for (size_t i = 0; i < hashes.size(); ++i)
   {
-    trees.emplace_back(
-      std::make_shared<ccf::MerkleTreeHistory>(serialised_before));
-    auto& tree = trees.back();
-
-    for (size_t e = flush_index + 1; e < hashes.size(); ++e)
-    {
-      auto h = hashes[e];
-      tree->append(h);
-    }
-
-    auto b = tree->verify(receipt);
-    assert(b);
+    auto h = hashes[i];
+    reconstruction.append(h);
   }
 }
 
