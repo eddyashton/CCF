@@ -312,16 +312,7 @@ namespace ccf::historical
               LOG_INFO_FMT(
                 "Appending hash of {} to history for {}", idx, it->first);
               crypto::Sha256Hash entry_hash(entry);
-              uint8_t* data = entry_hash.h.data();
-              constexpr auto size = crypto::Sha256Hash::SIZE * 2;
-              using T = std::vector<uint8_t>;
-              T before(data, data + size);
-              LOG_INFO_FMT(
-                "Before calling append: {:02x}", fmt::join(before, " "));
               request.history->append(entry_hash);
-              T after(data, data + size);
-              LOG_INFO_FMT(
-                "After calling append: {:02x}", fmt::join(after, " "));
               request.next_history_entry += 1;
               fetch_entry_at(request.next_history_entry);
             }

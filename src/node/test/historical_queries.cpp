@@ -87,7 +87,11 @@ TEST_CASE("StateCache")
   using NumToString = kv::Map<size_t, std::string>;
 
   constexpr size_t low_signature_transaction = 3;
-  constexpr size_t high_signature_transaction = 21;
+  constexpr size_t high_signature_transaction = 20;
+
+  constexpr size_t low_index = low_signature_transaction + 2;
+  constexpr size_t high_index = high_signature_transaction - 3;
+  constexpr size_t unsigned_index = high_signature_transaction + 5;
 
   {
     INFO("Build some interesting state in the store");
@@ -176,13 +180,13 @@ TEST_CASE("StateCache")
     INFO(
       "Initially, no stores are available, even if they're requested multiple "
       "times");
-    REQUIRE(cache.get_store_at(5) == nullptr);
-    REQUIRE(cache.get_store_at(5) == nullptr);
-    REQUIRE(cache.get_store_at(10) == nullptr);
-    REQUIRE(cache.get_store_at(5) == nullptr);
-    REQUIRE(cache.get_store_at(25) == nullptr);
-    REQUIRE(cache.get_store_at(10) == nullptr);
-    REQUIRE(cache.get_store_at(5) == nullptr);
+    REQUIRE(cache.get_store_at(low_index) == nullptr);
+    REQUIRE(cache.get_store_at(low_index) == nullptr);
+    REQUIRE(cache.get_store_at(high_index) == nullptr);
+    REQUIRE(cache.get_store_at(low_index) == nullptr);
+    REQUIRE(cache.get_store_at(unsigned_index) == nullptr);
+    REQUIRE(cache.get_store_at(high_index) == nullptr);
+    REQUIRE(cache.get_store_at(low_index) == nullptr);
   }
 
   {
@@ -191,27 +195,29 @@ TEST_CASE("StateCache")
     REQUIRE(read == 3);
     REQUIRE(requested_ledger_entries.size() == 3);
     REQUIRE(
-      requested_ledger_entries == std::vector<consensus::Index>{5, 10, 25});
+      requested_ledger_entries ==
+      std::vector<consensus::Index>{low_index, high_index, unsigned_index});
   }
 
   {
     INFO("Cache doesn't accept arbitrary entries");
-    REQUIRE(!cache.handle_ledger_entry(9, ledger[9]));
-    REQUIRE(!cache.handle_ledger_entry(11, ledger[11]));
+    REQUIRE(
+      !cache.handle_ledger_entry(high_index - 1, ledger.at(high_index - 1)));
+    REQUIRE(
+      !cache.handle_ledger_entry(high_index + 1, ledger.at(high_index + 1)));
   }
 
   {
     INFO(
       "Cache accepts requested entries, and then range of supporting entries");
-    REQUIRE(cache.handle_ledger_entry(10, ledger[10]));
+    REQUIRE(cache.handle_ledger_entry(high_index, ledger.at(high_index)));
 
     // Count down to previous signature
-    for (size_t i = 9; i >= low_signature_transaction; --i)
+    for (size_t i = high_index - 1; i >= low_signature_transaction; --i)
     {
       std::cout << "Counting down: " << i << std::endl;
-      REQUIRE(cache.handle_ledger_entry(i, ledger[i]));
-      auto store_at_10 = cache.get_store_at(10);
-      REQUIRE(store_at_10 == nullptr);
+      REQUIRE(cache.handle_ledger_entry(i, ledger.at(i)));
+      REQUIRE(cache.get_store_at(high_index) == nullptr);
     }
 
     // Count up to next signature
@@ -220,29 +226,29 @@ TEST_CASE("StateCache")
          ++i)
     {
       std::cout << "Counting up: " << i << std::endl;
-      REQUIRE(cache.handle_ledger_entry(i, ledger[i]));
-      auto store_at_10 = cache.get_store_at(10);
-      REQUIRE(store_at_10 == nullptr);
+      REQUIRE(cache.handle_ledger_entry(i, ledger.at(i)));
+      REQUIRE(cache.get_store_at(high_index) == nullptr);
     }
 
     REQUIRE(cache.handle_ledger_entry(
-      high_signature_transaction, ledger[high_signature_transaction]));
+      high_signature_transaction, ledger.at(high_signature_transaction)));
+    REQUIRE(cache.get_store_at(high_index) != nullptr);
   }
 
   {
     INFO("Historical state can be retrieved from provided entries");
-    auto store_at_10 = cache.get_store_at(10);
-    REQUIRE(store_at_10 != nullptr);
+    auto store_at_index = cache.get_store_at(high_index);
+    REQUIRE(store_at_index != nullptr);
 
     {
-      auto& public_table = *store_at_10->get<NumToString>("public");
-      auto& private_table = *store_at_10->get<NumToString>("private");
+      auto& public_table = *store_at_index->get<NumToString>("public");
+      auto& private_table = *store_at_index->get<NumToString>("private");
 
       kv::Tx tx;
       auto [public_view, private_view] =
         tx.get_view(public_table, private_table);
 
-      const auto k = 9;
+      const auto k = high_index - 1;
       const auto v = std::to_string(k);
 
       auto public_v = public_view->get(k);
@@ -269,15 +275,19 @@ TEST_CASE("StateCache")
 
   {
     INFO("Cache doesn't throw when given junk");
-    REQUIRE(cache.get_store_at(40) == nullptr);
+    REQUIRE(cache.get_store_at(unsigned_index) == nullptr);
     bool result;
-    REQUIRE_NOTHROW(result = cache.handle_ledger_entry(40, {}));
+    REQUIRE_NOTHROW(result = cache.handle_ledger_entry(unsigned_index, {}));
     REQUIRE(!result);
-    REQUIRE_NOTHROW(result = cache.handle_ledger_entry(40, {0x1, 0x2, 0x3}));
+    REQUIRE_NOTHROW(
+      result = cache.handle_ledger_entry(unsigned_index, {0x1, 0x2, 0x3}));
     REQUIRE(!result);
-    REQUIRE_NOTHROW(result = cache.handle_ledger_entry(40, ledger[0]));
+    REQUIRE_NOTHROW(
+      result = cache.handle_ledger_entry(unsigned_index, ledger[low_index]));
     REQUIRE(!result);
-    REQUIRE_NOTHROW(result = cache.handle_ledger_entry(40, ledger[21]));
+    REQUIRE_NOTHROW(
+      result = cache.handle_ledger_entry(
+        unsigned_index, ledger[high_signature_transaction]));
     REQUIRE(!result);
   }
 }
