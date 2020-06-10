@@ -87,7 +87,7 @@ TEST_CASE("StateCache")
   using NumToString = kv::Map<size_t, std::string>;
 
   constexpr size_t low_signature_transaction = 3;
-  constexpr size_t high_signature_transaction = 20;
+  constexpr size_t high_signature_transaction = 100;
 
   constexpr size_t low_index = low_signature_transaction + 2;
   constexpr size_t high_index = high_signature_transaction - 3;
@@ -199,24 +199,29 @@ TEST_CASE("StateCache")
       std::vector<consensus::Index>{low_index, high_index, unsigned_index});
   }
 
+  auto provide_ledger_entry = [&](size_t i) {
+    bool accepted = cache.handle_ledger_entry(i, ledger.at(i));
+    // Pump outbound ringbuffer to clear messages
+    bp.read_n(100, rr);
+    return accepted;
+  };
+
   {
     INFO("Cache doesn't accept arbitrary entries");
-    REQUIRE(
-      !cache.handle_ledger_entry(high_index - 1, ledger.at(high_index - 1)));
-    REQUIRE(
-      !cache.handle_ledger_entry(high_index + 1, ledger.at(high_index + 1)));
+    REQUIRE(!provide_ledger_entry(high_index - 1));
+    REQUIRE(!provide_ledger_entry(high_index + 1));
   }
 
   {
     INFO(
       "Cache accepts requested entries, and then range of supporting entries");
-    REQUIRE(cache.handle_ledger_entry(high_index, ledger.at(high_index)));
+    REQUIRE(provide_ledger_entry(high_index));
 
     // Count down to previous signature
     for (size_t i = high_index - 1; i >= low_signature_transaction; --i)
     {
       std::cout << "Counting down: " << i << std::endl;
-      REQUIRE(cache.handle_ledger_entry(i, ledger.at(i)));
+      REQUIRE(provide_ledger_entry(i));
       REQUIRE(cache.get_store_at(high_index) == nullptr);
     }
 
@@ -226,12 +231,11 @@ TEST_CASE("StateCache")
          ++i)
     {
       std::cout << "Counting up: " << i << std::endl;
-      REQUIRE(cache.handle_ledger_entry(i, ledger.at(i)));
+      REQUIRE(provide_ledger_entry(i));
       REQUIRE(cache.get_store_at(high_index) == nullptr);
     }
 
-    REQUIRE(cache.handle_ledger_entry(
-      high_signature_transaction, ledger.at(high_signature_transaction)));
+    REQUIRE(provide_ledger_entry(high_signature_transaction));
     REQUIRE(cache.get_store_at(high_index) != nullptr);
   }
 
