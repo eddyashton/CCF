@@ -45,21 +45,25 @@ public:
     auto empty_function = [this](RequestArgs& args) {
       args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
-    install("empty_function", empty_function, HandlerRegistry::Read);
+    make_handler("empty_function", HTTP_POST, empty_function)
+      .set_read_write(HandlerRegistry::Read)
+      .install();
 
     auto empty_function_signed = [this](RequestArgs& args) {
       args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
-    install(
-      "empty_function_signed", empty_function_signed, HandlerRegistry::Read)
-      .set_require_client_signature(true);
+    make_handler("empty_function_signed", HTTP_POST, empty_function_signed)
+      .set_read_write(HandlerRegistry::Read)
+      .set_require_client_signature(true)
+      .install();
 
     auto empty_function_no_auth = [this](RequestArgs& args) {
       args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
-    install(
-      "empty_function_no_auth", empty_function_no_auth, HandlerRegistry::Read)
-      .set_require_client_identity(false);
+    make_handler("empty_function_no_auth", HTTP_POST, empty_function_no_auth)
+      .set_read_write(HandlerRegistry::Read)
+      .set_require_client_identity(false)
+      .install();
   }
 };
 
@@ -73,7 +77,7 @@ public:
     auto empty_function = [this](RequestArgs& args) {
       args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
-    install("empty_function", empty_function, HandlerRegistry::Read);
+    make_handler("empty_function", HTTP_POST, empty_function).install();
     disable_request_storing();
   }
 };
@@ -88,14 +92,14 @@ public:
     auto echo_function = [this](kv::Tx& tx, nlohmann::json&& params) {
       return make_success(std::move(params));
     };
-    install("echo", json_adapter(echo_function), HandlerRegistry::Read);
+    make_handler("echo", HTTP_POST, json_adapter(echo_function)).install();
 
     auto get_caller_function =
       [this](kv::Tx& tx, CallerId caller_id, nlohmann::json&& params) {
         return make_success(caller_id);
       };
-    install(
-      "get_caller", json_adapter(get_caller_function), HandlerRegistry::Read);
+    make_handler("get_caller", HTTP_POST, json_adapter(get_caller_function))
+      .install();
 
     auto failable_function =
       [this](kv::Tx& tx, CallerId caller_id, nlohmann::json&& params) {
@@ -110,7 +114,8 @@ public:
 
         return make_success(true);
       };
-    install("failable", json_adapter(failable_function), HandlerRegistry::Read);
+    make_handler("failable", HTTP_POST, json_adapter(failable_function))
+      .install();
   }
 };
 
@@ -124,18 +129,18 @@ public:
     auto get_only = [this](RequestArgs& args) {
       args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
-    install("get_only", get_only, HandlerRegistry::Read).set_http_get_only();
+    make_handler("get_only", HTTP_GET, get_only).install();
 
     auto post_only = [this](RequestArgs& args) {
       args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
-    install("post_only", post_only, HandlerRegistry::Read).set_http_post_only();
+    make_handler("post_only", HTTP_POST, post_only).install();
 
     auto put_or_delete = [this](RequestArgs& args) {
       args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
-    install("put_or_delete", put_or_delete, HandlerRegistry::Read)
-      .set_allowed_verbs({HTTP_PUT, HTTP_DELETE});
+    make_handler("put_or_delete", HTTP_PUT, put_or_delete).install();
+    make_handler("put_or_delete", HTTP_DELETE, put_or_delete).install();
   }
 };
 
@@ -168,7 +173,7 @@ public:
       const auto status = parsed["status"].get<http_status>();
       args.rpc_ctx->set_response_status(status);
     };
-    install("maybe_commit", maybe_commit, HandlerRegistry::Write);
+    make_handler("maybe_commit", HTTP_POST, maybe_commit).install();
   }
 };
 
@@ -186,8 +191,9 @@ public:
     auto empty_function = [this](RequestArgs& args) {
       args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
-    member_handlers.install(
-      "empty_function", empty_function, HandlerRegistry::Read);
+    member_handlers.make_handler("empty_function", HTTP_POST, empty_function)
+      .set_read_write(HandlerRegistry::Read)
+      .install();
   }
 };
 
@@ -205,7 +211,9 @@ public:
     auto empty_function = [this](RequestArgs& args) {
       args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
-    handlers.install("empty_function", empty_function, HandlerRegistry::Read);
+    handlers.make_handler("empty_function", HTTP_POST, empty_function)
+      .set_read_write(HandlerRegistry::Read)
+      .install();
   }
 };
 
@@ -240,15 +248,15 @@ public:
     };
     // Note that this a Write function so that a backup executing this command
     // will forward it to the primary
-    install("empty_function", empty_function, HandlerRegistry::Write);
+    make_handler("empty_function", HTTP_POST, empty_function).install();
 
     auto empty_function_no_auth = [this](RequestArgs& args) {
       record_ctx(args);
       args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
-    install(
-      "empty_function_no_auth", empty_function_no_auth, HandlerRegistry::Write)
-      .set_require_client_identity(false);
+    make_handler("empty_function_no_auth", HTTP_POST, empty_function_no_auth)
+      .set_require_client_identity(false)
+      .install();
   }
 };
 
@@ -268,7 +276,8 @@ public:
     };
     // Note that this a Write function so that a backup executing this command
     // will forward it to the primary
-    handlers.install("empty_function", empty_function, HandlerRegistry::Write);
+    handlers.make_handler("empty_function", HTTP_POST, empty_function)
+      .install();
   }
 };
 
@@ -291,7 +300,8 @@ public:
     };
     // Note that this a Write function so that a backup executing this command
     // will forward it to the primary
-    handlers.install("empty_function", empty_function, HandlerRegistry::Write);
+    handlers.make_handler("empty_function", HTTP_POST, empty_function)
+      .install();
   }
 };
 
@@ -1053,6 +1063,14 @@ TEST_CASE("Signed read requests can be executed on backup")
   auto rpc_ctx =
     enclave::make_rpc_context(user_session, serialized_signed_call);
   auto response = parse_response(frontend.process(rpc_ctx).value());
+  if (response.status != HTTP_STATUS_OK)
+  {
+    std::cout << std::string(
+                   serialized_signed_call.begin(), serialized_signed_call.end())
+              << std::endl;
+    std::cout << std::string(response.body.begin(), response.body.end())
+              << std::endl;
+  }
   CHECK(response.status == HTTP_STATUS_OK);
 }
 
@@ -1392,6 +1410,8 @@ TEST_CASE("Memberfrontend forwarding" * doctest::test_suite("forwarding"))
   CHECK(member_frontend_primary.last_caller_cert == member_caller_der);
   CHECK(member_frontend_primary.last_caller_id == 0);
 }
+
+TEST_CASE("Deprecated API" * doctest::test_suite("deprecated")) {}
 
 // We need an explicit main to initialize kremlib and EverCrypt
 int main(int argc, char** argv)

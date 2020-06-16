@@ -2,6 +2,7 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "ds/ccf_deprecated.h"
 #include "ds/json_schema.h"
 #include "enclave/rpc_context.h"
 #include "http/http_consts.h"
@@ -24,11 +25,6 @@ namespace ccf
     CallerId caller_id;
   };
 
-  static uint64_t verb_to_mask(size_t verb)
-  {
-    return 1ul << verb;
-  }
-
   using HandleFunction = std::function<void(RequestArgs& args)>;
 
   /** The HandlerRegistry records the user-defined Handlers for a given
@@ -45,21 +41,20 @@ namespace ccf
     };
 
     /** A Handler represents a user-defined endpoint that can be invoked by
-    * authorised users via HTTP requests, over TLS. A Handler is accessible at a
-    * specific verb and URI, e.g. POST /app/accounts or GET /app/records.
-    *
-    * Handlers can read from and mutate the state of the replicated key-value
-    store.
-    *
-    * A CCF application is a collection of Handlers recorded in the
-    application's HandlerRegistry.
-    */
+     * authorised users via HTTP requests, over TLS. A Handler is accessible at
+     * a specific verb and URI, e.g. POST /app/accounts or GET /app/records.
+     *
+     * Handlers can read from and mutate the state of the replicated key-value
+     * store.
+     *
+     * A CCF application is a collection of Handlers recorded in the
+     * application's HandlerRegistry.
+     */
     struct Handler
     {
       std::string method;
       HandleFunction func;
-      ReadWrite read_write = Write;
-      HandlerRegistry* registry;
+      HandlerRegistry* registry = nullptr;
 
       nlohmann::json params_schema = nullptr;
 
@@ -143,6 +138,16 @@ namespace ccf
         return set_auto_schema<typename T::In, typename T::Out>();
       }
 
+      ReadWrite read_write = ReadWrite::Write;
+
+      /** Override whether a handler is read-only or makes writes
+       */
+      Handler& set_read_write(ReadWrite rw)
+      {
+        read_write = rw;
+        return *this;
+      }
+
       bool require_client_signature = false;
 
       /** Requires that the HTTP request is cryptographically signed by
@@ -213,52 +218,73 @@ namespace ccf
         return *this;
       }
 
-      // Bit mask. Bit i is 1 iff the http_method with value i is allowed.
-      // Default is that all verbs are allowed
-      uint64_t allowed_verbs_mask = ~0;
+      http_method verb = HTTP_POST;
 
-      // https://github.com/microsoft/CCF/issues/1102
-      Handler& set_allowed_verbs(std::set<http_method>&& allowed_verbs)
+      /** Indicates which HTTP verb the handler should respond to.
+       *
+       * @return The installed Handler for further modification
+       */
+      CCF_DEPRECATED(
+        "HTTP Verb should not be changed after installation: pass verb to "
+        "install()")
+      Handler& set_allowed_verb(http_method v)
       {
-        // Reset mask to disallow everything
-        allowed_verbs_mask = 0;
-
-        // Set bit for each allowed verb
-        for (const auto& verb : allowed_verbs)
-        {
-          allowed_verbs_mask |= verb_to_mask(verb);
-        }
-
-        return *this;
+        const auto previous_verb = verb;
+        return registry->reinstall(*this, method, previous_verb);
       }
 
       /** Indicates that the handler is only accessible via the GET HTTP verb.
        *
        * @return The installed Handler for further modification
        */
+      CCF_DEPRECATED(
+        "HTTP Verb should not be changed after installation: use "
+        "install(...HTTP_GET...)")
       Handler& set_http_get_only()
       {
-        return set_allowed_verbs({HTTP_GET});
+        return set_allowed_verb(HTTP_GET);
       }
 
       /** Indicates that the handler is only accessible via the POST HTTP verb.
        *
        * @return The installed Handler for further modification
        */
+      CCF_DEPRECATED(
+        "HTTP Verb should not be changed after installation: use "
+        "install(...HTTP_POST...)")
       Handler& set_http_post_only()
       {
-        return set_allowed_verbs({HTTP_POST});
+        return set_allowed_verb(HTTP_POST);
+      }
+
+      /** Finalise and install this handler
+       */
+      void install()
+      {
+        registry->install(*this);
       }
     };
 
   protected:
     std::optional<Handler> default_handler;
-    std::unordered_map<std::string, Handler> handlers;
+    std::map<std::string, std::map<http_method, Handler>> installed_handlers;
 
     kv::Consensus* consensus = nullptr;
     kv::TxHistory* history = nullptr;
 
     Certs* certs = nullptr;
+
+    ReadWrite read_write_from_verb(http_method verb)
+    {
+      if (verb == HTTP_GET)
+      {
+        return ReadWrite::Read;
+      }
+      else
+      {
+        return ReadWrite::Write;
+      }
+    }
 
   public:
     HandlerRegistry(kv::Store& tables, const std::string& certs_table_name = "")
@@ -271,25 +297,59 @@ namespace ccf
 
     virtual ~HandlerRegistry() {}
 
-    /** Install HandleFunction for method name
+    /** Create a new handler.
      *
-     * If an implementation is already installed for that method, it will be
-     * replaced.
+     * Set additional properties then call Handler::install() to install it
      *
-     * @param method Method name
-     * @param f Method implementation
-     * @param read_write Flag if method will Read, Write, MayWrite
-     * @return The installed Handler for further modification
+     * @param method The URI at which this handler will be installed
+     * @param verb The HTTP verb which this handler will respond to
+     * @param f Functor which will be invoked for requests to VERB /method
+     * @return The new Handler for further modification
      */
-    Handler& install(
-      const std::string& method, HandleFunction f, ReadWrite read_write)
+    Handler make_handler(
+      const std::string& method, http_method verb, const HandleFunction& f)
     {
-      auto& handler = handlers[method];
+      Handler handler;
       handler.method = method;
+      handler.verb = verb;
       handler.func = f;
-      handler.read_write = read_write;
+      handler.read_write = read_write_from_verb(verb);
       handler.registry = this;
       return handler;
+    }
+
+    /** Install the given handler, using its method and verb
+     *
+     * If an implementation is already installed for this method and verb, it
+     * will be replaced.
+     * @param handler Handler object describing the new endpoint to install
+     */
+    void install(const Handler& handler)
+    {
+      installed_handlers[handler.method][handler.verb] = handler;
+    }
+
+    CCF_DEPRECATED(
+      "HTTP verb should be specified explicitly. "
+      "Use make_handler(METHOD, VERB, FN).set_read_write().install()")
+    Handler& install(
+      const std::string& method, const HandleFunction& f, ReadWrite read_write)
+    {
+      constexpr auto default_verb = HTTP_POST;
+      make_handler(method, default_verb, f).set_read_write(read_write).install();
+      return installed_handlers[method][default_verb];
+    }
+
+    // Only needed to support deprecated functions
+    Handler& reinstall(
+      const Handler& h, const std::string& prev_method, http_method prev_verb)
+    {
+      const auto handlers_it = installed_handlers.find(prev_method);
+      if (handlers_it != installed_handlers.end())
+      {
+        handlers_it->second.erase(prev_verb);
+      }
+      return installed_handlers[h.method][h.verb] = h;
     }
 
     /** Set a default HandleFunction
@@ -298,12 +358,11 @@ namespace ccf
      * was found.
      *
      * @param f Method implementation
-     * @param read_write Flag if method will Read, Write, MayWrite
      * @return The installed Handler for further modification
      */
-    Handler& set_default(HandleFunction f, ReadWrite read_write)
+    Handler& set_default(HandleFunction f)
     {
-      default_handler = {"", f, read_write, this};
+      default_handler = {"", f, this};
       return default_handler.value();
     }
 
@@ -315,27 +374,49 @@ namespace ccf
      */
     virtual void list_methods(kv::Tx& tx, ListMethods::Out& out)
     {
-      for (const auto& handler : handlers)
+      for (const auto& [method, verb_handlers] : installed_handlers)
       {
-        out.methods.push_back(handler.first);
+        out.methods.push_back(method);
       }
     }
 
     virtual void init_handlers(kv::Store& tables) {}
 
-    virtual Handler* find_handler(const std::string& method)
+    virtual Handler* find_handler(const std::string& method, http_method verb)
     {
-      auto search = handlers.find(method);
-      if (search != handlers.end())
+      auto search = installed_handlers.find(method);
+      if (search != installed_handlers.end())
       {
-        return &search->second;
+        auto& verb_handlers = search->second;
+        auto search2 = verb_handlers.find(verb);
+        if (search2 != verb_handlers.end())
+        {
+          return &search2->second;
+        }
       }
-      else if (default_handler)
+
+      if (default_handler)
       {
         return &default_handler.value();
       }
 
       return nullptr;
+    }
+
+    virtual std::vector<http_method> get_allowed_verbs(
+      const std::string& method)
+    {
+      std::vector<http_method> verbs;
+      auto search = installed_handlers.find(method);
+      if (search != installed_handlers.end())
+      {
+        for (auto& [verb, handler] : search->second)
+        {
+          verbs.push_back(verb);
+        }
+      }
+
+      return verbs;
     }
 
     virtual void tick(
