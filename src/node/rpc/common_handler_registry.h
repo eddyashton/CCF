@@ -45,6 +45,10 @@ namespace ccf
           HTTP_STATUS_INTERNAL_SERVER_ERROR,
           "Failed to get commit info from Consensus");
       };
+      make_handler("commit", HTTP_GET, json_adapter(get_commit))
+        .set_execute_locally(true)
+        .set_auto_schema<void, GetCommit::Out>()
+        .install();
 
       auto get_tx_status = [this](kv::Tx& tx, nlohmann::json&& params) {
         const auto in = params.get<GetTxStatus::In>();
@@ -64,11 +68,18 @@ namespace ccf
         return make_error(
           HTTP_STATUS_INTERNAL_SERVER_ERROR, "Consensus is not yet configured");
       };
+      make_handler("tx", HTTP_GET, json_adapter(get_tx_status))
+        .set_auto_schema<GetTxStatus>()
+        .install();
 
       auto get_metrics = [this](kv::Tx& tx, nlohmann::json&& params) {
         auto result = metrics.get_metrics();
         return make_success(result);
       };
+      make_handler("metrics", HTTP_GET, json_adapter(get_metrics))
+        .set_auto_schema<void, GetMetrics::Out>()
+        .set_execute_locally(true)
+        .install();
 
       auto make_signature = [this](kv::Tx& tx, nlohmann::json&& params) {
         if (consensus != nullptr)
@@ -91,6 +102,9 @@ namespace ccf
         return make_error(
           HTTP_STATUS_INTERNAL_SERVER_ERROR, "Failed to trigger signature");
       };
+      make_handler("mkSign", HTTP_POST, json_adapter(make_signature))
+        .set_auto_schema<void, bool>()
+        .install();
 
       if (certs != nullptr)
       {
@@ -148,6 +162,9 @@ namespace ccf
         return make_error(
           HTTP_STATUS_INTERNAL_SERVER_ERROR, "Primary unknown.");
       };
+      make_handler("primary_info", HTTP_GET, json_adapter(get_primary_info))
+        .set_auto_schema<void, GetPrimaryInfo::Out>()
+        .install();
 
       auto get_network_info = [this](kv::Tx& tx, nlohmann::json&& params) {
         GetNetworkInfo::Out out;
@@ -167,6 +184,9 @@ namespace ccf
 
         return make_success(out);
       };
+      make_handler("network_info", HTTP_GET, json_adapter(get_network_info))
+        .set_auto_schema<void, GetNetworkInfo::Out>()
+        .install();
 
       auto list_methods_fn = [this](kv::Tx& tx, nlohmann::json&& params) {
         ListMethods::Out out;
@@ -177,6 +197,9 @@ namespace ccf
 
         return make_success(out);
       };
+      make_handler("api", HTTP_GET, json_adapter(list_methods_fn))
+        .set_auto_schema<void, ListMethods::Out>()
+        .install();
 
       auto get_schema = [this](RequestArgs& args, nlohmann::json&& params) {
         const auto in = params.get<GetSchema::In>();
@@ -205,6 +228,9 @@ namespace ccf
 
         return make_success(j);
       };
+      make_handler("api/schema", HTTP_GET, json_adapter(get_schema))
+        .set_auto_schema<GetSchema>()
+        .install();
 
       auto get_receipt = [this](kv::Tx& tx, nlohmann::json&& params) {
         const auto in = params.get<GetReceipt::In>();
@@ -232,6 +258,9 @@ namespace ccf
         return make_error(
           HTTP_STATUS_INTERNAL_SERVER_ERROR, "Unable to produce receipt");
       };
+      make_handler("receipt", HTTP_GET, json_adapter(get_receipt))
+        .set_auto_schema<GetReceipt>()
+        .install();
 
       auto verify_receipt = [this](kv::Tx& tx, nlohmann::json&& params) {
         const auto in = params.get<VerifyReceipt::In>();
@@ -256,36 +285,6 @@ namespace ccf
         return make_error(
           HTTP_STATUS_INTERNAL_SERVER_ERROR, "Unable to verify receipt");
       };
-
-      make_handler("commit", HTTP_GET, json_adapter(get_commit))
-        .set_execute_locally(true)
-        .set_auto_schema<void, GetCommit::Out>()
-        .install();
-      make_handler("tx", HTTP_GET, json_adapter(get_tx_status))
-        .set_auto_schema<GetTxStatus>()
-        .install();
-      make_handler("metrics", HTTP_GET, json_adapter(get_metrics))
-        .set_auto_schema<void, GetMetrics::Out>()
-        .set_execute_locally(true)
-        .install();
-      make_handler("mkSign", HTTP_POST, json_adapter(make_signature))
-        .set_auto_schema<void, bool>()
-        .install();
-      make_handler("primary_info", HTTP_GET, json_adapter(get_primary_info))
-        .set_auto_schema<void, GetPrimaryInfo::Out>()
-        .install();
-      make_handler("network_info", HTTP_GET, json_adapter(get_network_info))
-        .set_auto_schema<void, GetNetworkInfo::Out>()
-        .install();
-      make_handler("api", HTTP_GET, json_adapter(list_methods_fn))
-        .set_auto_schema<void, ListMethods::Out>()
-        .install();
-      make_handler("api/schema", HTTP_GET, json_adapter(get_schema))
-        .set_auto_schema<GetSchema>()
-        .install();
-      make_handler("receipt", HTTP_GET, json_adapter(get_receipt))
-        .set_auto_schema<GetReceipt>()
-        .install();
       make_handler("receipt/verify", HTTP_POST, json_adapter(verify_receipt))
         .set_read_write(ReadWrite::Read)
         .set_auto_schema<VerifyReceipt>()

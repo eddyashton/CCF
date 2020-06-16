@@ -252,6 +252,7 @@ namespace ccf
           return add_node(args.tx, caller_pem_raw, in, NodeStatus::PENDING);
         }
       };
+      make_handler("join", HTTP_POST, json_adapter(accept)).install();
 
       auto get_signed_index = [this](kv::Tx& tx) {
         GetSignedIndex::Out result;
@@ -286,6 +287,9 @@ namespace ccf
 
         return make_success(result);
       };
+      make_handler("signed_index", HTTP_GET, json_adapter(get_signed_index))
+        .set_auto_schema<GetSignedIndex>()
+        .install();
 
       auto get_quote = [this](kv::Tx& tx) {
         GetQuotes::Out result;
@@ -295,6 +299,9 @@ namespace ccf
 
         return make_success(result);
       };
+      make_handler("quote", HTTP_GET, json_adapter(get_quote))
+        .set_auto_schema<GetQuotes>()
+        .install();
 
       auto get_quotes = [this](kv::Tx& tx) {
         GetQuotes::Out result;
@@ -302,14 +309,6 @@ namespace ccf
 
         return make_success(result);
       };
-
-      make_handler("join", HTTP_POST, json_adapter(accept)).install();
-      make_handler("signed_index", HTTP_GET, json_adapter(get_signed_index))
-        .set_auto_schema<GetSignedIndex>()
-        .install();
-      make_handler("quote", HTTP_GET, json_adapter(get_quote))
-        .set_auto_schema<GetQuotes>()
-        .install();
       make_handler("quotes", HTTP_GET, json_adapter(get_quotes))
         .set_auto_schema<GetQuotes>()
         .install();
