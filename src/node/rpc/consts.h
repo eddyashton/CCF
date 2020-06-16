@@ -4,22 +4,6 @@
 
 namespace ccf
 {
-  struct GeneralProcs
-  {
-    static constexpr auto MK_SIGN = "mkSign";
-
-    static constexpr auto API_GET_SCHEMA = "api/schema";
-    static constexpr auto API_LIST_METHODS = "api";
-    static constexpr auto GET_COMMIT = "commit";
-    static constexpr auto GET_METRICS = "metrics";
-    static constexpr auto GET_NETWORK_INFO = "network_info";
-    static constexpr auto GET_PRIMARY_INFO = "primary_info";
-    static constexpr auto GET_RECEIPT = "receipt";
-    static constexpr auto GET_TX_STATUS = "tx";
-    static constexpr auto VERIFY_RECEIPT = "receipt/verify";
-    static constexpr auto WHO = "who";
-  };
-
   struct MemberProcs
   {
     static constexpr auto CREATE = "create";
