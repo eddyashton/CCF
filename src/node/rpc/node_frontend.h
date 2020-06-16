@@ -303,15 +303,14 @@ namespace ccf
         return make_success(result);
       };
 
-      make_handler(NodeProcs::JOIN, HTTP_POST, json_adapter(accept)).install();
-      make_handler(
-        NodeProcs::GET_SIGNED_INDEX, HTTP_GET, json_adapter(get_signed_index))
+      make_handler("join", HTTP_POST, json_adapter(accept)).install();
+      make_handler("signed_index", HTTP_GET, json_adapter(get_signed_index))
         .set_auto_schema<GetSignedIndex>()
         .install();
-      make_handler(NodeProcs::GET_NODE_QUOTE, HTTP_GET, json_adapter(get_quote))
+      make_handler("quote", HTTP_GET, json_adapter(get_quote))
         .set_auto_schema<GetQuotes>()
         .install();
-      make_handler(NodeProcs::GET_QUOTES, HTTP_GET, json_adapter(get_quotes))
+      make_handler("quotes", HTTP_GET, json_adapter(get_quotes))
         .set_auto_schema<GetQuotes>()
         .install();
     }

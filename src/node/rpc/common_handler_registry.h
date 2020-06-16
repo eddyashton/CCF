@@ -2,7 +2,6 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "consts.h"
 #include "handler_registry.h"
 #include "json_handler.h"
 #include "metrics.h"
@@ -95,35 +94,35 @@ namespace ccf
 
       if (certs != nullptr)
       {
-      auto who =
-        [this](kv::Tx& tx, CallerId caller_id, nlohmann::json&& params) {
-          if (certs == nullptr)
-          {
-            return make_error(
-              HTTP_STATUS_INTERNAL_SERVER_ERROR,
-                "This frontend does not support 'who'");
-          }
-
-          if (!params.is_null())
-          {
-            const WhoIs::In in = params;
-            auto certs_view = tx.get_view(*certs);
-            auto caller_id_opt = certs_view->get(in.cert);
-
-            if (!caller_id_opt.has_value())
+        auto who =
+          [this](kv::Tx& tx, CallerId caller_id, nlohmann::json&& params) {
+            if (certs == nullptr)
             {
               return make_error(
-                HTTP_STATUS_BAD_REQUEST, "Certificate not recognised");
+                HTTP_STATUS_INTERNAL_SERVER_ERROR,
+                "This frontend does not support 'who'");
             }
 
-            caller_id = caller_id_opt.value();
-          }
+            if (!params.is_null())
+            {
+              const WhoIs::In in = params;
+              auto certs_view = tx.get_view(*certs);
+              auto caller_id_opt = certs_view->get(in.cert);
 
-          return make_success(WhoAmI::Out{caller_id});
-        };
-      make_handler("who", HTTP_GET, json_adapter(who))
-        .set_auto_schema<WhoIs::In, WhoAmI::Out>()
-        .install();
+              if (!caller_id_opt.has_value())
+              {
+                return make_error(
+                  HTTP_STATUS_BAD_REQUEST, "Certificate not recognised");
+              }
+
+              caller_id = caller_id_opt.value();
+            }
+
+            return make_success(WhoAmI::Out{caller_id});
+          };
+        make_handler("who", HTTP_GET, json_adapter(who))
+          .set_auto_schema<WhoIs::In, WhoAmI::Out>()
+          .install();
       }
 
       auto get_primary_info = [this](kv::Tx& tx, nlohmann::json&& params) {
@@ -262,45 +261,32 @@ namespace ccf
         .set_execute_locally(true)
         .set_auto_schema<void, GetCommit::Out>()
         .install();
-      make_handler(
-        "tx", HTTP_GET, json_adapter(get_tx_status))
+      make_handler("tx", HTTP_GET, json_adapter(get_tx_status))
         .set_auto_schema<GetTxStatus>()
         .install();
-      make_handler(
-        "metrics", HTTP_GET, json_adapter(get_metrics))
+      make_handler("metrics", HTTP_GET, json_adapter(get_metrics))
         .set_auto_schema<void, GetMetrics::Out>()
         .set_execute_locally(true)
         .install();
-      make_handler(
-        "mkSign", HTTP_POST, json_adapter(make_signature))
+      make_handler("mkSign", HTTP_POST, json_adapter(make_signature))
         .set_auto_schema<void, bool>()
         .install();
-      make_handler(
-        "primary_info",
-        HTTP_GET,
-        json_adapter(get_primary_info))
+      make_handler("primary_info", HTTP_GET, json_adapter(get_primary_info))
         .set_auto_schema<void, GetPrimaryInfo::Out>()
         .install();
-      make_handler(
-        "network_info",
-        HTTP_GET,
-        json_adapter(get_network_info))
+      make_handler("network_info", HTTP_GET, json_adapter(get_network_info))
         .set_auto_schema<void, GetNetworkInfo::Out>()
         .install();
-      make_handler(
-        "api", HTTP_GET, json_adapter(list_methods_fn))
+      make_handler("api", HTTP_GET, json_adapter(list_methods_fn))
         .set_auto_schema<void, ListMethods::Out>()
         .install();
-      make_handler(
-        "api/schema", HTTP_GET, json_adapter(get_schema))
+      make_handler("api/schema", HTTP_GET, json_adapter(get_schema))
         .set_auto_schema<GetSchema>()
         .install();
-      make_handler(
-        "receipt", HTTP_GET, json_adapter(get_receipt))
+      make_handler("receipt", HTTP_GET, json_adapter(get_receipt))
         .set_auto_schema<GetReceipt>()
         .install();
-      make_handler(
-        "receipt/verify", HTTP_POST, json_adapter(verify_receipt))
+      make_handler("receipt/verify", HTTP_POST, json_adapter(verify_receipt))
         .set_read_write(ReadWrite::Read)
         .set_auto_schema<VerifyReceipt>()
         .install();
