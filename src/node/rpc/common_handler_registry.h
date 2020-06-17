@@ -50,7 +50,7 @@ namespace ccf
         .set_auto_schema<void, GetCommit::Out>()
         .install();
 
-      auto get_tx_status = [this](kv::Tx& tx, nlohmann::json&& params) {
+      auto get_tx_status = [this](CommandRequestArgs& args, nlohmann::json&& params) {
         const auto in = params.get<GetTxStatus::In>();
 
         if (consensus != nullptr)
@@ -68,20 +68,20 @@ namespace ccf
         return make_error(
           HTTP_STATUS_INTERNAL_SERVER_ERROR, "Consensus is not yet configured");
       };
-      make_handler("tx", HTTP_GET, json_adapter(get_tx_status))
+      make_command_handler("tx", HTTP_GET, json_adapter(get_tx_status))
         .set_auto_schema<GetTxStatus>()
         .install();
 
-      auto get_metrics = [this](kv::Tx& tx, nlohmann::json&& params) {
+      auto get_metrics = [this](CommandRequestArgs& args, nlohmann::json&& params) {
         auto result = metrics.get_metrics();
         return make_success(result);
       };
-      make_handler("metrics", HTTP_GET, json_adapter(get_metrics))
+      make_command_handler("metrics", HTTP_GET, json_adapter(get_metrics))
         .set_auto_schema<void, GetMetrics::Out>()
         .set_execute_locally(true)
         .install();
 
-      auto make_signature = [this](kv::Tx& tx, nlohmann::json&& params) {
+      auto make_signature = [this](CommandRequestArgs& args, nlohmann::json&& params) {
         if (consensus != nullptr)
         {
           if (consensus->type() == ConsensusType::RAFT)
@@ -102,7 +102,7 @@ namespace ccf
         return make_error(
           HTTP_STATUS_INTERNAL_SERVER_ERROR, "Failed to trigger signature");
       };
-      make_handler("mkSign", HTTP_POST, json_adapter(make_signature))
+      make_command_handler("mkSign", HTTP_POST, json_adapter(make_signature))
         .set_auto_schema<void, bool>()
         .install();
 
@@ -201,7 +201,7 @@ namespace ccf
         .set_auto_schema<void, ListMethods::Out>()
         .install();
 
-      auto get_schema = [this](RequestArgs& args, nlohmann::json&& params) {
+      auto get_schema = [this](CommandRequestArgs& args, nlohmann::json&& params) {
         const auto in = params.get<GetSchema::In>();
 
         const auto it = installed_handlers.find(in.method);
@@ -228,11 +228,11 @@ namespace ccf
 
         return make_success(j);
       };
-      make_handler("api/schema", HTTP_GET, json_adapter(get_schema))
+      make_command_handler("api/schema", HTTP_GET, json_adapter(get_schema))
         .set_auto_schema<GetSchema>()
         .install();
 
-      auto get_receipt = [this](kv::Tx& tx, nlohmann::json&& params) {
+      auto get_receipt = [this](CommandRequestArgs& args, nlohmann::json&& params) {
         const auto in = params.get<GetReceipt::In>();
 
         if (history != nullptr)
@@ -258,11 +258,11 @@ namespace ccf
         return make_error(
           HTTP_STATUS_INTERNAL_SERVER_ERROR, "Unable to produce receipt");
       };
-      make_handler("receipt", HTTP_GET, json_adapter(get_receipt))
+      make_command_handler("receipt", HTTP_GET, json_adapter(get_receipt))
         .set_auto_schema<GetReceipt>()
         .install();
 
-      auto verify_receipt = [this](kv::Tx& tx, nlohmann::json&& params) {
+      auto verify_receipt = [this](CommandRequestArgs& args, nlohmann::json&& params) {
         const auto in = params.get<VerifyReceipt::In>();
 
         if (history != nullptr)
@@ -285,7 +285,7 @@ namespace ccf
         return make_error(
           HTTP_STATUS_INTERNAL_SERVER_ERROR, "Unable to verify receipt");
       };
-      make_handler("receipt/verify", HTTP_POST, json_adapter(verify_receipt))
+      make_command_handler("receipt/verify", HTTP_POST, json_adapter(verify_receipt))
         .set_read_write(ReadWrite::Read)
         .set_auto_schema<VerifyReceipt>()
         .install();
