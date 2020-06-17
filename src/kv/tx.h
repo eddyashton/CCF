@@ -9,7 +9,8 @@
 
 namespace kv
 {
-  class Tx : public ViewContainer
+  template <template <typename M> typename GetView>
+  class GenericTx : public AbstractViewContainer
   {
   private:
     OrderedViews view_list;
@@ -22,9 +23,9 @@ namespace kv
     kv::TxHistory::RequestID req_id;
 
     template <class M>
-    std::tuple<typename M::TxView*> get_tuple(M& m)
+    std::tuple<GetView<M>*> get_tuple(M& m)
     {
-      using MapView = typename M::TxView;
+      using MapView = GetView<M>;
 
       // If the M is present, its AbstractTxView should be an M::TxView. This
       // invariant could be broken by set_view_list, which will produce an error
@@ -73,8 +74,7 @@ namespace kv
     }
 
     template <class M, class... Ms>
-    std::tuple<typename M::TxView*, typename Ms::TxView*...> get_tuple(
-      M& m, Ms&... ms)
+    std::tuple<GetView<M>*, GetView<Ms>*...> get_tuple(M& m, Ms&... ms)
     {
       return std::tuple_cat(get_tuple(m), get_tuple(ms...));
     }
@@ -90,9 +90,9 @@ namespace kv
     }
 
   public:
-    Tx() : view_list() {}
+    GenericTx() : view_list() {}
 
-    Tx(const Tx& that) = delete;
+    GenericTx(const GenericTx& that) = delete;
 
     void set_view_list(OrderedViews& view_list_, Term term_) override
     {
@@ -133,7 +133,7 @@ namespace kv
      * @param m Map
      */
     template <class M>
-    typename M::TxView* get_view(M& m)
+    GetView<M>* get_view(M& m)
     {
       return std::get<0>(get_tuple(m));
     }
@@ -144,8 +144,7 @@ namespace kv
      * @param ms Map
      */
     template <class M, class... Ms>
-    std::tuple<typename M::TxView*, typename Ms::TxView*...> get_view(
-      M& m, Ms&... ms)
+    std::tuple<GetView<M>*, GetView<Ms>*...> get_view(M& m, Ms&... ms)
     {
       return std::tuple_cat(get_tuple(m), get_tuple(ms...));
     }
@@ -307,7 +306,7 @@ namespace kv
     }
 
     // Used by frontend for reserved transactions
-    Tx(Version reserved) :
+    GenericTx(Version reserved) :
       view_list(),
       committed(false),
       success(false),
@@ -334,5 +333,30 @@ namespace kv
 
       return {CommitSuccess::OK, {0, 0, 0}, std::move(serialise())};
     }
+  };
+
+  namespace details
+  {
+    template <typename M>
+    using GetReadOnlyView = typename M::ReadOnlyTxView;
+
+    template <typename M>
+    using GetWriteableView = typename M::TxView;
+  };
+
+  class ReadOnlyTx : public GenericTx<details::GetReadOnlyView>
+  {
+    using Base = GenericTx<details::GetReadOnlyView>;
+
+  public:
+    using Base::Base;
+  };
+
+  class Tx : public GenericTx<details::GetWriteableView>
+  {
+    using Base = GenericTx<details::GetWriteableView>;
+
+  public:
+    using Base::Base;
   };
 }

@@ -355,8 +355,9 @@ TEST_CASE("Read-only tx")
     const auto invalid_v = view->get(invalid_key);
     REQUIRE(!invalid_v.has_value());
 
-    // Should be a compile error!
-    view->put(k, v1);
+    // The following won't compile:
+    // view->put(k, v1);
+    // view->remove(k);
   }
 }
 
