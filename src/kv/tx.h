@@ -338,20 +338,14 @@ namespace kv
   namespace details
   {
     template <typename M>
-    using GetReadOnlyView = typename M::ReadOnlyTxView;
+    using GetWriteableView = typename M::TxView;
 
     template <typename M>
-    using GetWriteableView = typename M::TxView;
+    using GetReadOnlyView = typename M::ReadOnlyTxView;
   };
 
-  class ReadOnlyTx : public GenericTx<details::GetReadOnlyView>
-  {
-    using Base = GenericTx<details::GetReadOnlyView>;
-
-  public:
-    using Base::Base;
-  };
-
+  // The most common type of Tx creates TxViews which can be used for reads and
+  // writes
   class Tx : public GenericTx<details::GetWriteableView>
   {
     using Base = GenericTx<details::GetWriteableView>;
@@ -359,4 +353,57 @@ namespace kv
   public:
     using Base::Base;
   };
+
+  // If we know at construction that a Tx will only read, we can create an
+  // TrueReadOnlyTx. It creates and stores ReadOnlyTxViews, which have no
+  // write functions
+  class TrueReadOnlyTx : public GenericTx<details::GetReadOnlyView>
+  {
+    using Base = GenericTx<details::GetReadOnlyView>;
+
+  public:
+    using Base::Base;
+  };
+
+  // If we have a maybe-writing Tx that we want to present as ReadOnly, use
+  // WrapperReadOnlyTx. It wraps an underlying Tx, and casts the views it
+  // returns. This can only be used for get_view - every other operation should
+  // be done on the wrapped Tx
+  class WrapperReadOnlyTx
+  {
+  protected:
+    Tx& tx;
+
+    template <typename M>
+    using GetView = details::GetReadOnlyView<M>;
+
+    template <class M>
+    std::tuple<GetView<M>*> get_ro_tuple(M& m)
+    {
+      return tx.get_view(m);
+    }
+
+    template <class M, class... Ms>
+    std::tuple<GetView<M>*, GetView<Ms>*...> get_ro_tuple(M& m, Ms&... ms)
+    {
+      return std::tuple_cat(get_ro_tuple(m), get_ro_tuple(ms...));
+    }
+
+  public:
+    WrapperReadOnlyTx(Tx& tx_) : tx(tx_) {}
+
+    template <class M>
+    GetView<M>* get_view(M& m)
+    {
+      return std::get<0>(get_ro_tuple(m));
+    }
+
+    template <class M, class... Ms>
+    std::tuple<GetView<M>*, GetView<Ms>*...> get_view(M& m, Ms&... ms)
+    {
+      return std::tuple_cat(get_ro_tuple(m), get_ro_tuple(ms...));
+    }
+  };
+
+  using ReadOnlyTx = WrapperReadOnlyTx;
 }
