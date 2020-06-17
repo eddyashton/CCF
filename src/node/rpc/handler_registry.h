@@ -26,7 +26,16 @@ namespace ccf
   };
   using HandleFunction = std::function<void(HandlerArgs& args)>;
 
-  // Commands are endpoints which do not interact with the kv.
+  // Read-only handlers can only get values from the kv, they cannot write
+  struct ReadOnlyHandlerArgs
+  {
+    std::shared_ptr<enclave::RpcContext> rpc_ctx;
+    kv::ReadOnlyTx& tx;
+    CallerId caller_id;
+  };
+  using ReadOnlyHandleFunction = std::function<void(ReadOnlyHandlerArgs& args)>;
+
+  // Commands are endpoints which do not interact with the kv, even to read
   struct CommandHandlerArgs
   {
     std::shared_ptr<enclave::RpcContext> rpc_ctx;
@@ -305,8 +314,8 @@ namespace ccf
 
     /** Create a new handler.
      *
-     * Set additional properties, and finally call Handler::install() to install
-     * it
+     * Caller should set any additional properties on the returned Handler
+     * object, and finally call Handler::install() to install it.
      *
      * @param method The URI at which this handler will be installed
      * @param verb The HTTP verb which this handler will respond to
@@ -325,6 +334,20 @@ namespace ccf
       return handler;
     }
 
+    /** Create a read-only handler.
+     */
+    Handler make_read_only_handler(
+      const std::string& method,
+      http_method verb,
+      const ReadOnlyHandleFunction& f)
+    {
+      return make_handler(method, verb, [f](HandlerArgs& args) {
+        kv::ReadOnlyTx ro_tx(args.tx);
+        ReadOnlyHandlerArgs ro_args{args.rpc_ctx, ro_tx, args.caller_id};
+        f(ro_args);
+      });
+    }
+
     /** Create a new command handler.
      *
      * Commands are endpoints which do not read or write from the KV. See
@@ -335,11 +358,10 @@ namespace ccf
       http_method verb,
       const CommandHandleFunction& f)
     {
-      auto wrapped_fn = [f](HandlerArgs& args) {
-        CommandHandlerArgs cra{args.rpc_ctx, args.caller_id};
-        f(cra);
-      };
-      return make_handler(method, verb, wrapped_fn);
+      return make_handler(method, verb, [f](HandlerArgs& args) {
+        CommandHandlerArgs command_args{args.rpc_ctx, args.caller_id};
+        f(command_args);
+      });
     }
 
     /** Install the given handler, using its method and verb
