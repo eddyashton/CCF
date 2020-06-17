@@ -24,8 +24,15 @@ namespace ccf
     kv::Tx& tx;
     CallerId caller_id;
   };
-
   using HandleFunction = std::function<void(RequestArgs& args)>;
+
+  // Commands are endpoints which do not interact with the kv.
+  struct CommandRequestArgs
+  {
+    std::shared_ptr<enclave::RpcContext> rpc_ctx;
+    CallerId caller_id;
+  };
+  using CommandHandleFunction = std::function<void(CommandRequestArgs& args)>;
 
   /** The HandlerRegistry records the user-defined Handlers for a given
    * CCF application.
@@ -315,6 +322,18 @@ namespace ccf
       handler.read_write = read_write_from_verb(verb);
       handler.registry = this;
       return handler;
+    }
+
+    Handler make_command_handler(
+      const std::string& method, http_method verb, const CommandHandleFunction& f
+    )
+    {
+      auto wrapped_fn = [f](RequestArgs& args)
+      {
+        CommandRequestArgs cra{args.rpc_ctx, args.caller_id};
+        f(cra);
+      };
+      return make_handler(method, verb, wrapped_fn);
     }
 
     /** Install the given handler, using its method and verb

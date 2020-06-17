@@ -34,7 +34,7 @@ namespace ccf
     {
       HandlerRegistry::init_handlers(t);
 
-      auto get_commit = [this](kv::Tx& tx, nlohmann::json&& params) {
+      auto get_commit = [this](CommandRequestArgs& args, nlohmann::json&& params) {
         if (consensus != nullptr)
         {
           auto [view, seqno] = consensus->get_committed_txid();
@@ -45,7 +45,7 @@ namespace ccf
           HTTP_STATUS_INTERNAL_SERVER_ERROR,
           "Failed to get commit info from Consensus");
       };
-      make_handler("commit", HTTP_GET, json_adapter(get_commit))
+      make_command_handler("commit", HTTP_GET, json_adapter(get_commit))
         .set_execute_locally(true)
         .set_auto_schema<void, GetCommit::Out>()
         .install();
