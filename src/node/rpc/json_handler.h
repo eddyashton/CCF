@@ -303,11 +303,11 @@ namespace ccf
     };
   }
 
-  using CommandHandlerWithJson =
-    std::function<jsonhandler::JsonAdapterResponse(
-      CommandHandlerArgs& args, nlohmann::json&& params)>;
+  using CommandHandlerWithJson = std::function<jsonhandler::JsonAdapterResponse(
+    CommandHandlerArgs& args, nlohmann::json&& params)>;
 
-  static CommandHandleFunction json_command_adapter(const CommandHandlerWithJson& f)
+  static CommandHandleFunction json_command_adapter(
+    const CommandHandlerWithJson& f)
   {
     return [f](CommandHandlerArgs& args) {
       auto [packing, params] = jsonhandler::get_json_params(args.rpc_ctx);

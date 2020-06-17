@@ -305,7 +305,8 @@ namespace ccf
 
     /** Create a new handler.
      *
-     * Set additional properties, and finally call Handler::install() to install it
+     * Set additional properties, and finally call Handler::install() to install
+     * it
      *
      * @param method The URI at which this handler will be installed
      * @param verb The HTTP verb which this handler will respond to
@@ -325,15 +326,16 @@ namespace ccf
     }
 
     /** Create a new command handler.
-     * 
-     * Commands are endpoints which do not read or write from the KV. See make_handler().
+     *
+     * Commands are endpoints which do not read or write from the KV. See
+     * make_handler().
      */
     Handler make_command_handler(
-      const std::string& method, http_method verb, const CommandHandleFunction& f
-    )
+      const std::string& method,
+      http_method verb,
+      const CommandHandleFunction& f)
     {
-      auto wrapped_fn = [f](HandlerArgs& args)
-      {
+      auto wrapped_fn = [f](HandlerArgs& args) {
         CommandHandlerArgs cra{args.rpc_ctx, args.caller_id};
         f(cra);
       };

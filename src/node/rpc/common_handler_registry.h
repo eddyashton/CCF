@@ -76,7 +76,8 @@ namespace ccf
         auto result = metrics.get_metrics();
         return make_success(result);
       };
-      make_command_handler("metrics", HTTP_GET, json_command_adapter(get_metrics))
+      make_command_handler(
+        "metrics", HTTP_GET, json_command_adapter(get_metrics))
         .set_auto_schema<void, GetMetrics::Out>()
         .set_execute_locally(true)
         .install();
@@ -102,7 +103,8 @@ namespace ccf
         return make_error(
           HTTP_STATUS_INTERNAL_SERVER_ERROR, "Failed to trigger signature");
       };
-      make_command_handler("mkSign", HTTP_POST, json_command_adapter(make_signature))
+      make_command_handler(
+        "mkSign", HTTP_POST, json_command_adapter(make_signature))
         .set_auto_schema<void, bool>()
         .install();
 
@@ -228,7 +230,8 @@ namespace ccf
 
         return make_success(j);
       };
-      make_command_handler("api/schema", HTTP_GET, json_command_adapter(get_schema))
+      make_command_handler(
+        "api/schema", HTTP_GET, json_command_adapter(get_schema))
         .set_auto_schema<GetSchema>()
         .install();
 
@@ -258,7 +261,8 @@ namespace ccf
         return make_error(
           HTTP_STATUS_INTERNAL_SERVER_ERROR, "Unable to produce receipt");
       };
-      make_command_handler("receipt", HTTP_GET, json_command_adapter(get_receipt))
+      make_command_handler(
+        "receipt", HTTP_GET, json_command_adapter(get_receipt))
         .set_auto_schema<GetReceipt>()
         .install();
 
@@ -285,7 +289,8 @@ namespace ccf
         return make_error(
           HTTP_STATUS_INTERNAL_SERVER_ERROR, "Unable to verify receipt");
       };
-      make_command_handler("receipt/verify", HTTP_POST, json_command_adapter(verify_receipt))
+      make_command_handler(
+        "receipt/verify", HTTP_POST, json_command_adapter(verify_receipt))
         .set_read_write(ReadWrite::Read)
         .set_auto_schema<VerifyReceipt>()
         .install();
