@@ -289,18 +289,6 @@ namespace ccf
 
     Certs* certs = nullptr;
 
-    ReadWrite read_write_from_verb(http_method verb)
-    {
-      if (verb == HTTP_GET)
-      {
-        return ReadWrite::Read;
-      }
-      else
-      {
-        return ReadWrite::Write;
-      }
-    }
-
   public:
     HandlerRegistry(kv::Store& tables, const std::string& certs_table_name = "")
     {
@@ -329,7 +317,7 @@ namespace ccf
       handler.method = method;
       handler.verb = verb;
       handler.func = f;
-      handler.read_write = read_write_from_verb(verb);
+      handler.read_write = ReadWrite::Write;
       handler.registry = this;
       return handler;
     }
@@ -341,11 +329,16 @@ namespace ccf
       http_method verb,
       const ReadOnlyHandleFunction& f)
     {
-      return make_handler(method, verb, [f](HandlerArgs& args) {
-        kv::ReadOnlyTx ro_tx(args.tx);
-        ReadOnlyHandlerArgs ro_args{args.rpc_ctx, ro_tx, args.caller_id};
-        f(ro_args);
-      });
+      return make_handler(
+               method,
+               verb,
+               [f](HandlerArgs& args) {
+                 kv::ReadOnlyTx ro_tx(args.tx);
+                 ReadOnlyHandlerArgs ro_args{
+                   args.rpc_ctx, ro_tx, args.caller_id};
+                 f(ro_args);
+               })
+        .set_read_write(ReadWrite::Read);
     }
 
     /** Create a new command handler.
@@ -358,10 +351,14 @@ namespace ccf
       http_method verb,
       const CommandHandleFunction& f)
     {
-      return make_handler(method, verb, [f](HandlerArgs& args) {
-        CommandHandlerArgs command_args{args.rpc_ctx, args.caller_id};
-        f(command_args);
-      });
+      return make_handler(
+               method,
+               verb,
+               [f](HandlerArgs& args) {
+                 CommandHandlerArgs command_args{args.rpc_ctx, args.caller_id};
+                 f(command_args);
+               })
+        .set_read_write(ReadWrite::Read);
     }
 
     /** Install the given handler, using its method and verb
@@ -376,8 +373,10 @@ namespace ccf
     }
 
     CCF_DEPRECATED(
-      "HTTP verb should be specified explicitly. "
-      "Use make_handler(METHOD, VERB, FN).set_read_write().install()")
+      "HTTP verb should be specified explicitly. Use: "
+      "make_handler(METHOD, VERB, FN)"
+      "  .set_read_write() // Only if required"
+      "  .install()")
     Handler& install(
       const std::string& method, const HandleFunction& f, ReadWrite read_write)
     {

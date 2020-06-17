@@ -294,7 +294,6 @@ namespace ccf
       };
       make_command_handler(
         "receipt/verify", HTTP_POST, json_command_adapter(verify_receipt))
-        .set_read_write(ReadWrite::Read)
         .set_auto_schema<VerifyReceipt>()
         .install();
     }
