@@ -1088,7 +1088,8 @@ TEST_CASE("Alternative handlers")
     http::Request read_only("read_only", verb);
     const auto serialized_read_only = read_only.build_request();
 
-    auto rpc_ctx = enclave::make_rpc_context(user_session, serialized_read_only);
+    auto rpc_ctx =
+      enclave::make_rpc_context(user_session, serialized_read_only);
     auto response = parse_response(frontend.process(rpc_ctx).value());
     CHECK(response.status == HTTP_STATUS_OK);
   }
