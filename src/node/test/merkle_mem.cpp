@@ -89,13 +89,17 @@ static void rebuilding_from_serialised()
 
   {
     ccf::MerkleTreeHistory t1;
+    t1.print();
+    t1.get_root();
     serialised_before = t1.serialise();
 
     for (size_t i = 0; i <= end_index; ++i)
     {
       hashes.push_back(random_hash(r));
       auto h = hashes.back();
+      LOG_INFO_FMT("Append original {}", i);
       t1.append(h);
+      t1.print();
     }
 
     serialised_final = t1.serialise();
@@ -104,10 +108,13 @@ static void rebuilding_from_serialised()
   ccf::MerkleTreeHistory final_tree(serialised_final);
 
   ccf::MerkleTreeHistory reconstruction(serialised_before);
+  reconstruction.print();
   for (size_t i = 0; i < hashes.size(); ++i)
   {
     auto h = hashes[i];
     reconstruction.append(h);
+    LOG_INFO_FMT("Append reconstruction {}", i);
+    reconstruction.print();
   }
 }
 

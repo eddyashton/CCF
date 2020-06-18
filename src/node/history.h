@@ -427,6 +427,25 @@ namespace ccf
       std::memcpy(leaf.h.data(), leaf_data, leaf.h.size());
       return leaf;
     }
+
+    void print()
+    {
+      LOG_INFO_FMT("offset: {}, i: {}, j: {}", tree->offset, tree->i, tree->j);
+      LOG_INFO_FMT("levels ({} / {}):", tree->hs.sz, tree->hs.cap);
+      for (size_t i = 0; i < tree->hs.sz; ++i)
+      {
+        const auto level = tree->hs.vs[i];
+        if (level.sz > 0)
+        {
+          LOG_INFO_FMT("  level {} ({} / {}):", i, level.sz, level.cap);
+          for (size_t j = 0; j < level.sz; ++j)
+          {
+            const auto hash = level.vs[j];
+            LOG_INFO_FMT("    {}: {:02x}", j, fmt::join(hash, hash + 4, " "));
+          }
+        }
+      }
+    }
   };
 
   template <class T>
