@@ -2,6 +2,7 @@
 // Licensed under the Apache 2.0 License.
 #include "../../ds/logger.h"
 #include "../history.h"
+#include "ds/stacktrace_utils.h"
 
 #include <algorithm>
 #include <random>
@@ -76,9 +77,45 @@ static int append_flush_and_retract()
   return get_maxrss() < max_expected_rss ? 0 : 1;
 }
 
+static void rebuilding_from_serialised()
+{
+  std::random_device r;
+
+  std::vector<uint8_t> serialised_before;
+  std::vector<uint8_t> serialised_final;
+  std::vector<crypto::Sha256Hash> hashes;
+
+  constexpr size_t end_index = 24;
+
+  {
+    ccf::MerkleTreeHistory t1;
+    serialised_before = t1.serialise();
+
+    for (size_t i = 0; i <= end_index; ++i)
+    {
+      hashes.push_back(random_hash(r));
+      auto h = hashes.back();
+      t1.append(h);
+    }
+
+    serialised_final = t1.serialise();
+  }
+
+  ccf::MerkleTreeHistory final_tree(serialised_final);
+
+  ccf::MerkleTreeHistory reconstruction(serialised_before);
+  for (size_t i = 0; i < hashes.size(); ++i)
+  {
+    auto h = hashes[i];
+    reconstruction.append(h);
+  }
+}
+
 // We need an explicit main to initialize kremlib and EverCrypt
 int main(int argc, char* argv[])
 {
   ::EverCrypt_AutoConfig2_init();
+  stacktrace::init_sig_handlers();
+  rebuilding_from_serialised();
   return append_flush_and_retract();
 }
