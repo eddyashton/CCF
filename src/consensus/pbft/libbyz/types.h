@@ -68,7 +68,7 @@ struct ByzInfo;
 namespace enclave
 {
   class RpcContext;
-  class RpcHandler;
+  class AbstractFrontend;
 };
 
 namespace pbft
@@ -77,7 +77,7 @@ namespace pbft
   {
     virtual ~RequestCtx() = default;
     virtual std::shared_ptr<enclave::RpcContext> get_rpc_context() = 0;
-    virtual std::shared_ptr<enclave::RpcHandler> get_rpc_handler() = 0;
+    virtual std::shared_ptr<enclave::AbstractFrontend> get_rpc_handler() = 0;
     virtual bool get_does_exec_gov_req() = 0;
   };
 };

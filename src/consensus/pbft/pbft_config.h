@@ -3,7 +3,7 @@
 #pragma once
 #include "consensus/pbft/libbyz/libbyz.h"
 #include "ds/ccf_assert.h"
-#include "enclave/rpc_handler.h"
+#include "enclave/abstract_frontend.h"
 #include "enclave/rpc_map.h"
 #include "pbft_deps.h"
 
@@ -12,14 +12,14 @@ namespace pbft
   struct RequestCtxImpl : public RequestCtx
   {
     std::shared_ptr<enclave::RpcContext> ctx;
-    std::shared_ptr<enclave::RpcHandler> frontend;
+    std::shared_ptr<enclave::AbstractFrontend> frontend;
     bool does_exec_gov_req;
 
     std::shared_ptr<enclave::RpcContext> get_rpc_context() override
     {
       return ctx;
     }
-    std::shared_ptr<enclave::RpcHandler> get_rpc_handler() override
+    std::shared_ptr<enclave::AbstractFrontend> get_rpc_handler() override
     {
       return frontend;
     }
@@ -100,7 +100,7 @@ namespace pbft
       std::unique_ptr<ExecCommandMsg> msg;
       ByzInfo& info;
       kv::Version version;
-      std::shared_ptr<enclave::RpcHandler> frontend;
+      std::shared_ptr<enclave::AbstractFrontend> frontend;
       PbftConfigCcf* self;
       bool is_first_request;
       bool did_exec_gov_req;
@@ -111,7 +111,8 @@ namespace pbft
     {
       ExecutionCtx& execution_ctx = c->data;
       ByzInfo& info = execution_ctx.info;
-      std::shared_ptr<enclave::RpcHandler> frontend = execution_ctx.frontend;
+      std::shared_ptr<enclave::AbstractFrontend> frontend =
+        execution_ctx.frontend;
 
       ExecCommandMsg& exec_msg = *execution_ctx.msg.get();
 
@@ -217,7 +218,7 @@ namespace pbft
 
       execution_ctx.frontend = r_ctx->get_rpc_handler();
 
-      enclave::RpcHandler::ProcessPbftResp rep;
+      enclave::AbstractFrontend::ProcessPbftResp rep;
       if (tx != nullptr)
       {
         rep = execution_ctx.frontend->process_pbft(

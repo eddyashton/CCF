@@ -4,7 +4,7 @@
 
 #include "channels.h"
 #include "ds/serialized.h"
-#include "enclave/rpc_handler.h"
+#include "enclave/abstract_frontend.h"
 #include "nodetypes.h"
 
 #include <algorithm>

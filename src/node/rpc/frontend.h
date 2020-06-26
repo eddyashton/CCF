@@ -6,7 +6,7 @@
 #include "consensus/pbft/pbft_tables.h"
 #include "ds/buffer.h"
 #include "ds/spin_lock.h"
-#include "enclave/rpc_handler.h"
+#include "enclave/abstract_frontend.h"
 #include "forwarder.h"
 #include "node/client_signatures.h"
 #include "node/nodes.h"
@@ -21,7 +21,7 @@
 
 namespace ccf
 {
-  class RpcFrontend : public enclave::RpcHandler, public ForwardedRpcHandler
+  class RpcFrontend : public enclave::AbstractFrontend, public ForwardedFrontend
   {
   protected:
     kv::Store& tables;

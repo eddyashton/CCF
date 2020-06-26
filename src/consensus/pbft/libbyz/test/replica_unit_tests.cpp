@@ -81,7 +81,7 @@ public:
     {
       return nullptr;
     }
-    std::shared_ptr<enclave::RpcHandler> get_rpc_handler() override
+    std::shared_ptr<enclave::AbstractFrontend> get_rpc_handler() override
     {
       return nullptr;
     }

@@ -2,15 +2,15 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "abstract_frontend.h"
 #include "node/entities.h"
-#include "rpc_handler.h"
 
 namespace enclave
 {
   class RPCMap
   {
   private:
-    std::unordered_map<ccf::ActorsType, std::shared_ptr<RpcHandler>> map;
+    std::unordered_map<ccf::ActorsType, std::shared_ptr<AbstractFrontend>> map;
     std::map<std::string, ccf::ActorsType> actors_map;
     std::map<ccf::ActorsType, std::string> preferred_names;
 
@@ -20,7 +20,7 @@ namespace enclave
     template <ccf::ActorsType T>
     void register_frontend(
       const std::vector<std::string>& redirect_names,
-      std::shared_ptr<RpcHandler> handler_)
+      std::shared_ptr<AbstractFrontend> handler_)
     {
       const auto name = get_actor_prefix(T);
       actors_map.emplace(name, T);
@@ -46,7 +46,7 @@ namespace enclave
       return search->second;
     }
 
-    std::optional<std::shared_ptr<RpcHandler>> find(ccf::ActorsType index)
+    std::optional<std::shared_ptr<AbstractFrontend>> find(ccf::ActorsType index)
     {
       auto search = map.find(index);
       if (search == map.end())

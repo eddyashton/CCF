@@ -142,7 +142,7 @@ namespace http
     ws::RequestParser ws_request_parser;
 
     std::shared_ptr<enclave::RPCMap> rpc_map;
-    std::shared_ptr<enclave::RpcHandler> handler;
+    std::shared_ptr<enclave::AbstractFrontend> handler;
     std::shared_ptr<enclave::SessionContext> session_ctx;
     size_t session_id;
     size_t request_index = 0;

@@ -11,10 +11,10 @@
 
 namespace enclave
 {
-  class RpcHandler
+  class AbstractFrontend
   {
   public:
-    virtual ~RpcHandler() {}
+    virtual ~AbstractFrontend() {}
 
     // Used by enclave to initialise and tick frontends
     virtual void set_sig_intervals(size_t sig_max_tx_, size_t sig_max_ms_) = 0;

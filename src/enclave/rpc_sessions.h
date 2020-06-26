@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "abstract_frontend.h"
 #include "ds/logger.h"
 #include "ds/serialized.h"
 #include "forwarder_types.h"
 #include "http/http_endpoint.h"
-#include "rpc_handler.h"
 #include "tls/cert.h"
 #include "tls/client.h"
 #include "tls/context.h"

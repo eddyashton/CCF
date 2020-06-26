@@ -9,10 +9,10 @@
 
 namespace ccf
 {
-  class ForwardedRpcHandler
+  class ForwardedFrontend
   {
   public:
-    virtual ~ForwardedRpcHandler() {}
+    virtual ~ForwardedFrontend() {}
 
     virtual std::vector<uint8_t> process_forwarded(
       std::shared_ptr<enclave::RpcContext> fwd_ctx) = 0;
@@ -218,12 +218,12 @@ namespace ccf
             }
 
             auto fwd_handler =
-              dynamic_cast<ForwardedRpcHandler*>(handler.value().get());
+              dynamic_cast<ForwardedFrontend*>(handler.value().get());
             if (!fwd_handler)
             {
               LOG_FAIL_FMT(
                 "Failed to process forwarded command: handler is not a "
-                "ForwardedRpcHandler");
+                "ForwardedFrontend");
               return;
             }
 
