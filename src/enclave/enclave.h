@@ -100,7 +100,9 @@ namespace enclave
           network, *node, share_manager));
 
       rpc_map->register_frontend<ccf::ActorsType::users>(
-        {"users"}, ccfapp::get_rpc_handler(network, context));
+        {"users"},
+        std::make_shared<ccf::SimpleUserRpcFrontend>(
+          get_app_endpoints(network, context), network));
 
       rpc_map->register_frontend<ccf::ActorsType::nodes>(
         {"nodes"}, std::make_unique<ccf::NodeRpcFrontend>(network, *node));

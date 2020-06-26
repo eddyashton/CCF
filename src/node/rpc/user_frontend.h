@@ -89,19 +89,23 @@ namespace ccf
     {}
   };
 
+  // Simplify name of the primary app-visible type
+  using Endpoints = UserEndpointRegistry;
+  using EndpointsPtr = std::shared_ptr<Endpoints>;
+
   using UserHandlerRegistry CCF_DEPRECATED(
     "Handlers have been renamed to Endpoints. Please use "
-    "UserEndpointRegistry") = UserEndpointRegistry;
+    "Endpoints") = Endpoints;
 
   class SimpleUserRpcFrontend : public UserRpcFrontend
   {
   protected:
-    UserEndpointRegistry common_handlers;
+    EndpointsPtr endpoints;
 
   public:
-    SimpleUserRpcFrontend(kv::Store& tables) :
-      UserRpcFrontend(tables, common_handlers),
-      common_handlers(tables)
+    SimpleUserRpcFrontend(const EndpointsPtr& e, NetworkTables& network) :
+      UserRpcFrontend(*network.tables, *e),
+      endpoints(e)
     {}
   };
 }

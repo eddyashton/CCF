@@ -16,15 +16,15 @@ namespace ccfapp
     virtual ccf::historical::AbstractStateCache& get_historical_state() = 0;
   };
 
-  // SNIPPET_START: rpc_handler
-  /** To be implemented by the application to be registered by CCF.
+  /** To be implemented by the application to be registered by CCF. Should
+   * construct an Endpoints instance, installing the app's desired handlers
+   * during construction.
    *
    * @param network Access to the network's replicated tables
    * @param context Access to node and host services
    *
    * @return Shared pointer to the application handler instance
    */
-  std::shared_ptr<ccf::UserRpcFrontend> get_rpc_handler(
+  std::shared_ptr<ccf::Endpoints> get_app_endpoints(
     ccf::NetworkTables& network, AbstractNodeContext& context);
-  // SNIPPET_END: rpc_handler
 }

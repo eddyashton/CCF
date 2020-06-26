@@ -22,7 +22,7 @@ namespace loggingapp
   using Table = kv::Map<size_t, string>;
 
   // SNIPPET: inherit_frontend
-  class LoggerHandlers : public ccf::UserEndpointRegistry
+  class LoggingEndpoints : public ccf::UserEndpointRegistry
   {
   private:
     Table& records;
@@ -57,7 +57,7 @@ namespace loggingapp
 
   public:
     // SNIPPET_START: constructor
-    LoggerHandlers(
+    LoggingEndpoints(
       ccf::NetworkTables& nwt, ccfapp::AbstractNodeContext& context) :
       ccf::UserEndpointRegistry(nwt),
       records(
@@ -399,27 +399,15 @@ namespace loggingapp
         });
     }
   };
-
-  class Logger : public ccf::UserRpcFrontend
-  {
-  private:
-    LoggerHandlers logger_handlers;
-
-  public:
-    Logger(ccf::NetworkTables& network, ccfapp::AbstractNodeContext& context) :
-      ccf::UserRpcFrontend(*network.tables, logger_handlers),
-      logger_handlers(network, context)
-    {}
-  };
 }
 
 namespace ccfapp
 {
   // SNIPPET_START: rpc_handler
-  std::shared_ptr<ccf::UserRpcFrontend> get_rpc_handler(
-    ccf::NetworkTables& nwt, ccfapp::AbstractNodeContext& context)
+  std::shared_ptr<ccf::Endpoints> get_app_endpoints(
+    ccf::NetworkTables& network, AbstractNodeContext& context)
   {
-    return make_shared<loggingapp::Logger>(nwt, context);
+    return make_shared<loggingapp::LoggingEndpoints>(network, context);
   }
   // SNIPPET_END: rpc_handler
 }

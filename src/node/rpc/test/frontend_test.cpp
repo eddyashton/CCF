@@ -35,10 +35,22 @@ using namespace std;
 
 static constexpr auto default_pack = jsonrpc::Pack::MsgPack;
 
-class TestUserFrontend : public SimpleUserRpcFrontend
+class TestUserRpcFrontend : public ccf::UserRpcFrontend
+{
+protected:
+  ccf::Endpoints endpoints;
+
+public:
+  TestUserRpcFrontend(kv::Store& tables) :
+    ccf::UserRpcFrontend(tables, endpoints),
+    endpoints(tables)
+  {}
+};
+
+class TestUserFrontend : public TestUserRpcFrontend
 {
 public:
-  TestUserFrontend(kv::Store& tables) : SimpleUserRpcFrontend(tables)
+  TestUserFrontend(kv::Store& tables) : TestUserRpcFrontend(tables)
   {
     open();
 
@@ -67,10 +79,10 @@ public:
   }
 };
 
-class TestReqNotStoredFrontend : public SimpleUserRpcFrontend
+class TestReqNotStoredFrontend : public TestUserRpcFrontend
 {
 public:
-  TestReqNotStoredFrontend(kv::Store& tables) : SimpleUserRpcFrontend(tables)
+  TestReqNotStoredFrontend(kv::Store& tables) : TestUserRpcFrontend(tables)
   {
     open();
 
@@ -82,10 +94,10 @@ public:
   }
 };
 
-class TestMinimalEndpointFunction : public SimpleUserRpcFrontend
+class TestMinimalEndpointFunction : public TestUserRpcFrontend
 {
 public:
-  TestMinimalEndpointFunction(kv::Store& tables) : SimpleUserRpcFrontend(tables)
+  TestMinimalEndpointFunction(kv::Store& tables) : TestUserRpcFrontend(tables)
   {
     open();
 
@@ -119,10 +131,10 @@ public:
   }
 };
 
-class TestRestrictedVerbsFrontend : public SimpleUserRpcFrontend
+class TestRestrictedVerbsFrontend : public TestUserRpcFrontend
 {
 public:
-  TestRestrictedVerbsFrontend(kv::Store& tables) : SimpleUserRpcFrontend(tables)
+  TestRestrictedVerbsFrontend(kv::Store& tables) : TestUserRpcFrontend(tables)
   {
     open();
 
@@ -144,13 +156,13 @@ public:
   }
 };
 
-class TestExplicitCommitability : public SimpleUserRpcFrontend
+class TestExplicitCommitability : public TestUserRpcFrontend
 {
 public:
   kv::Map<size_t, size_t>& values;
 
   TestExplicitCommitability(kv::Store& tables) :
-    SimpleUserRpcFrontend(tables),
+    TestUserRpcFrontend(tables),
     values(tables.create<size_t, size_t>("test_values"))
   {
     open();
@@ -177,10 +189,10 @@ public:
   }
 };
 
-class TestAlternativeHandlerTypes : public SimpleUserRpcFrontend
+class TestAlternativeHandlerTypes : public TestUserRpcFrontend
 {
 public:
-  TestAlternativeHandlerTypes(kv::Store& tables) : SimpleUserRpcFrontend(tables)
+  TestAlternativeHandlerTypes(kv::Store& tables) : TestUserRpcFrontend(tables)
   {
     open();
 
@@ -254,11 +266,11 @@ public:
   }
 };
 
-class TestForwardingUserFrontEnd : public SimpleUserRpcFrontend,
+class TestForwardingUserFrontEnd : public TestUserRpcFrontend,
                                    public RpcContextRecorder
 {
 public:
-  TestForwardingUserFrontEnd(kv::Store& tables) : SimpleUserRpcFrontend(tables)
+  TestForwardingUserFrontEnd(kv::Store& tables) : TestUserRpcFrontend(tables)
   {
     open();
 
