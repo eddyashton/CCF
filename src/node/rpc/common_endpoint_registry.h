@@ -38,7 +38,7 @@ namespace ccf
     {
       EndpointRegistry::init_handlers(t);
 
-      auto get_commit = [this](auto& args, nlohmann::json&& params) {
+      auto get_commit = [this](auto& ctx, nlohmann::json&& params) {
         if (consensus != nullptr)
         {
           auto [view, seqno] = consensus->get_committed_txid();
@@ -55,7 +55,7 @@ namespace ccf
         .set_auto_schema<void, GetCommit::Out>()
         .install();
 
-      auto get_tx_status = [this](auto& args, nlohmann::json&& params) {
+      auto get_tx_status = [this](auto& ctx, nlohmann::json&& params) {
         const auto in = params.get<GetTxStatus::In>();
 
         if (consensus != nullptr)
@@ -77,7 +77,7 @@ namespace ccf
         .set_auto_schema<GetTxStatus>()
         .install();
 
-      auto get_metrics = [this](auto& args, nlohmann::json&& params) {
+      auto get_metrics = [this](auto& ctx, nlohmann::json&& params) {
         auto result = metrics.get_metrics();
         return make_success(result);
       };
@@ -87,7 +87,7 @@ namespace ccf
         .set_execute_locally(true)
         .install();
 
-      auto make_signature = [this](auto& args, nlohmann::json&& params) {
+      auto make_signature = [this](auto& ctx, nlohmann::json&& params) {
         if (consensus != nullptr)
         {
           if (consensus->type() == ConsensusType::RAFT)
@@ -115,7 +115,7 @@ namespace ccf
 
       if (certs != nullptr)
       {
-        auto user_id = [this](auto& args, nlohmann::json&& params) {
+        auto user_id = [this](auto& ctx, nlohmann::json&& params) {
           if (certs == nullptr)
           {
             return make_error(
@@ -123,12 +123,12 @@ namespace ccf
               "This frontend does not support 'user_id'");
           }
 
-          auto caller_id = args.caller_id;
+          auto caller_id = ctx.caller_id;
 
           if (!params.is_null())
           {
             const GetUserId::In in = params;
-            auto certs_view = args.tx.get_read_only_view(*certs);
+            auto certs_view = ctx.tx.get_read_only_view(*certs);
             auto caller_id_opt = certs_view->get(in.cert);
 
             if (!caller_id_opt.has_value())
@@ -148,13 +148,13 @@ namespace ccf
           .install();
       }
 
-      auto get_primary_info = [this](auto& args, nlohmann::json&& params) {
+      auto get_primary_info = [this](auto& ctx, nlohmann::json&& params) {
         if ((nodes != nullptr) && (consensus != nullptr))
         {
           NodeId primary_id = consensus->primary();
           auto current_view = consensus->get_view();
 
-          auto nodes_view = args.tx.get_read_only_view(*nodes);
+          auto nodes_view = ctx.tx.get_read_only_view(*nodes);
           auto info = nodes_view->get(primary_id);
 
           if (info)
@@ -176,14 +176,14 @@ namespace ccf
         .set_auto_schema<void, GetPrimaryInfo::Out>()
         .install();
 
-      auto get_network_info = [this](auto& args, nlohmann::json&& params) {
+      auto get_network_info = [this](auto& ctx, nlohmann::json&& params) {
         GetNetworkInfo::Out out;
         if (consensus != nullptr)
         {
           out.primary_id = consensus->primary();
         }
 
-        auto nodes_view = args.tx.get_read_only_view(*nodes);
+        auto nodes_view = ctx.tx.get_read_only_view(*nodes);
         nodes_view->foreach([&out](const NodeId& nid, const NodeInfo& ni) {
           if (ni.status == ccf::NodeStatus::TRUSTED)
           {
@@ -199,10 +199,10 @@ namespace ccf
         .set_auto_schema<void, GetNetworkInfo::Out>()
         .install();
 
-      auto get_code = [this](auto& args, nlohmann::json&& params) {
+      auto get_code = [this](auto& ctx, nlohmann::json&& params) {
         GetCode::Out out;
 
-        auto code_view = args.tx.get_read_only_view(*node_code_ids);
+        auto code_view = ctx.tx.get_read_only_view(*node_code_ids);
         code_view->foreach(
           [&out](const ccf::CodeDigest& cd, const ccf::CodeStatus& cs) {
             auto digest = fmt::format("{:02x}", fmt::join(cd, ""));
@@ -218,11 +218,11 @@ namespace ccf
         .install();
 
       auto get_nodes_by_rpc_address = [this](
-                                        auto& args, nlohmann::json&& params) {
+                                        auto& ctx, nlohmann::json&& params) {
         const auto in = params.get<GetNodesByRPCAddress::In>();
 
         GetNodesByRPCAddress::Out out;
-        auto nodes_view = args.tx.get_read_only_view(*nodes);
+        auto nodes_view = ctx.tx.get_read_only_view(*nodes);
         nodes_view->foreach([&in, &out](const NodeId& nid, const NodeInfo& ni) {
           if (ni.rpchost == in.host && ni.rpcport == in.port)
           {
@@ -254,7 +254,7 @@ namespace ccf
         .set_auto_schema<void, ListMethods::Out>()
         .install();
 
-      auto get_schema = [this](auto& args, nlohmann::json&& params) {
+      auto get_schema = [this](auto& ctx, nlohmann::json&& params) {
         const auto in = params.get<GetSchema::In>();
 
         const auto it = installed_handlers.find(in.method);
@@ -286,7 +286,7 @@ namespace ccf
         .set_auto_schema<GetSchema>()
         .install();
 
-      auto get_receipt = [this](auto& args, nlohmann::json&& params) {
+      auto get_receipt = [this](auto& ctx, nlohmann::json&& params) {
         const auto in = params.get<GetReceipt::In>();
 
         if (history != nullptr)
@@ -317,7 +317,7 @@ namespace ccf
         .set_auto_schema<GetReceipt>()
         .install();
 
-      auto verify_receipt = [this](auto& args, nlohmann::json&& params) {
+      auto verify_receipt = [this](auto& ctx, nlohmann::json&& params) {
         const auto in = params.get<VerifyReceipt::In>();
 
         if (history != nullptr)

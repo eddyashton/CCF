@@ -105,8 +105,8 @@ namespace ccfapp
       }
       tsr = std::make_unique<AppTsr>(network, app_tables);
 
-      auto default_handler = [this](EndpointContext& args, nlohmann::json&&) {
-        const auto method = args.rpc_ctx->get_method();
+      auto default_handler = [this](EndpointContext& ctx, nlohmann::json&&) {
+        const auto method = ctx.rpc_ctx->get_method();
         const auto local_method = method.substr(method.find_first_not_of('/'));
         if (local_method == UserScriptIds::ENV_HANDLER)
         {
@@ -115,7 +115,7 @@ namespace ccfapp
             fmt::format("Cannot call environment script ('{}')", local_method));
         }
 
-        const auto scripts = args.tx.get_view(this->network.app_scripts);
+        const auto scripts = ctx.tx.get_view(this->network.app_scripts);
 
         // try find script for method
         // - First try a script called "foo"
@@ -124,7 +124,7 @@ namespace ccfapp
         if (!handler_script)
         {
           const auto verb_prefixed = fmt::format(
-            "{} {}", args.rpc_ctx->get_request_verb().c_str(), local_method);
+            "{} {}", ctx.rpc_ctx->get_request_verb().c_str(), local_method);
           handler_script = scripts->get(verb_prefixed);
           if (!handler_script)
           {
@@ -135,13 +135,13 @@ namespace ccfapp
         }
 
         auto response = tsr->run<nlohmann::json>(
-          args.tx,
+          ctx.tx,
           {*handler_script,
            {},
            WlIds::USER_APP_CAN_READ_ONLY,
            scripts->get(UserScriptIds::ENV_HANDLER)},
           // vvv arguments to the script vvv
-          args);
+          ctx);
 
         auto err_it = response.find("error");
         if (err_it == response.end())

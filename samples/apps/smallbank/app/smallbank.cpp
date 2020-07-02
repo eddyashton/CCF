@@ -29,25 +29,25 @@ namespace ccfapp
     SmallBankTables tables;
 
     void set_error_status(
-      EndpointContext& args, int status, std::string&& message)
+      EndpointContext& ctx, int status, std::string&& message)
     {
-      args.rpc_ctx->set_response_status(status);
-      args.rpc_ctx->set_response_header(
+      ctx.rpc_ctx->set_response_status(status);
+      ctx.rpc_ctx->set_response_header(
         http::headers::CONTENT_TYPE, http::headervalues::contenttype::TEXT);
-      args.rpc_ctx->set_response_body(std::move(message));
+      ctx.rpc_ctx->set_response_body(std::move(message));
     }
 
-    void set_ok_status(EndpointContext& args)
+    void set_ok_status(EndpointContext& ctx)
     {
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
-      args.rpc_ctx->set_response_header(
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+      ctx.rpc_ctx->set_response_header(
         http::headers::CONTENT_TYPE,
         http::headervalues::contenttype::OCTET_STREAM);
     }
 
-    void set_no_content_status(EndpointContext& args)
+    void set_no_content_status(EndpointContext& ctx)
     {
-      args.rpc_ctx->set_response_status(HTTP_STATUS_NO_CONTENT);
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_NO_CONTENT);
     }
 
   public:
@@ -60,64 +60,64 @@ namespace ccfapp
     {
       UserEndpointRegistry::init_handlers(store);
 
-      auto create = [this](auto& args) {
+      auto create = [this](auto& ctx) {
         // Create an account with a balance from thin air.
-        BankDeserializer bd(args.rpc_ctx->get_request_body().data());
+        BankDeserializer bd(ctx.rpc_ctx->get_request_body().data());
         auto name = bd.name();
         auto acc_id = bd.id();
         int64_t checking_amt = bd.checking_amt();
         int64_t savings_amt = bd.savings_amt();
-        auto account_view = args.tx.get_view(tables.accounts);
+        auto account_view = ctx.tx.get_view(tables.accounts);
         auto account_r = account_view->get(name);
 
         if (account_r.has_value())
         {
           set_error_status(
-            args, HTTP_STATUS_BAD_REQUEST, "Account already exists");
+            ctx, HTTP_STATUS_BAD_REQUEST, "Account already exists");
           return;
         }
 
         account_view->put(name, acc_id);
 
-        auto savings_view = args.tx.get_view(tables.savings);
+        auto savings_view = ctx.tx.get_view(tables.savings);
         auto savings_r = savings_view->get(acc_id);
 
         if (savings_r.has_value())
         {
           set_error_status(
-            args, HTTP_STATUS_BAD_REQUEST, "Account already exists");
+            ctx, HTTP_STATUS_BAD_REQUEST, "Account already exists");
           return;
         }
 
         savings_view->put(acc_id, savings_amt);
 
-        auto checking_view = args.tx.get_view(tables.checkings);
+        auto checking_view = ctx.tx.get_view(tables.checkings);
         auto checking_r = checking_view->get(acc_id);
 
         if (checking_r.has_value())
         {
           set_error_status(
-            args, HTTP_STATUS_BAD_REQUEST, "Account already exists");
+            ctx, HTTP_STATUS_BAD_REQUEST, "Account already exists");
           return;
         }
 
         checking_view->put(acc_id, checking_amt);
 
-        set_no_content_status(args);
+        set_no_content_status(ctx);
       };
 
-      auto create_batch = [this](auto& args) {
+      auto create_batch = [this](auto& ctx) {
         // Create N accounts with identical balances from thin air.
         // Create an account with a balance from thin air.
-        AccountsDeserializer ad(args.rpc_ctx->get_request_body().data());
+        AccountsDeserializer ad(ctx.rpc_ctx->get_request_body().data());
         auto from = ad.from();
         auto to = ad.to();
         auto checking_amt = ad.checking_amt();
         auto savings_amt = ad.savings_amt();
 
-        auto account_view = args.tx.get_view(tables.accounts);
-        auto savings_view = args.tx.get_view(tables.savings);
-        auto checking_view = args.tx.get_view(tables.checkings);
+        auto account_view = ctx.tx.get_view(tables.accounts);
+        auto savings_view = ctx.tx.get_view(tables.savings);
+        auto checking_view = ctx.tx.get_view(tables.checkings);
 
         for (auto acc_id = from; acc_id < to; ++acc_id)
         {
@@ -127,7 +127,7 @@ namespace ccfapp
           if (account_r.has_value())
           {
             set_error_status(
-              args,
+              ctx,
               HTTP_STATUS_BAD_REQUEST,
               fmt::format(
                 "Account already exists in accounts table: '{}'", name));
@@ -139,7 +139,7 @@ namespace ccfapp
           if (savings_r.has_value())
           {
             set_error_status(
-              args,
+              ctx,
               HTTP_STATUS_BAD_REQUEST,
               fmt::format(
                 "Account already exists in savings table: '{}'", name));
@@ -151,7 +151,7 @@ namespace ccfapp
           if (checking_r.has_value())
           {
             set_error_status(
-              args,
+              ctx,
               HTTP_STATUS_BAD_REQUEST,
               fmt::format(
                 "Account already exists in checkings table: '{}'", name));
@@ -160,151 +160,151 @@ namespace ccfapp
           checking_view->put(acc_id, checking_amt);
         }
 
-        set_no_content_status(args);
+        set_no_content_status(ctx);
       };
 
-      auto balance = [this](auto& args) {
+      auto balance = [this](auto& ctx) {
         // Check the combined balance of an account
-        BankDeserializer bd(args.rpc_ctx->get_request_body().data());
+        BankDeserializer bd(ctx.rpc_ctx->get_request_body().data());
         auto name = bd.name();
-        auto account_view = args.tx.get_view(tables.accounts);
+        auto account_view = ctx.tx.get_view(tables.accounts);
         auto account_r = account_view->get(name);
 
         if (!account_r.has_value())
         {
           set_error_status(
-            args, HTTP_STATUS_BAD_REQUEST, "Account does not exist");
+            ctx, HTTP_STATUS_BAD_REQUEST, "Account does not exist");
           return;
         }
 
-        auto savings_view = args.tx.get_view(tables.savings);
+        auto savings_view = ctx.tx.get_view(tables.savings);
         auto savings_r = savings_view->get(account_r.value());
 
         if (!savings_r.has_value())
         {
           set_error_status(
-            args, HTTP_STATUS_BAD_REQUEST, "Savings account does not exist");
+            ctx, HTTP_STATUS_BAD_REQUEST, "Savings account does not exist");
           return;
         }
 
-        auto checking_view = args.tx.get_view(tables.checkings);
+        auto checking_view = ctx.tx.get_view(tables.checkings);
         auto checking_r = checking_view->get(account_r.value());
 
         if (!checking_r.has_value())
         {
           set_error_status(
-            args, HTTP_STATUS_BAD_REQUEST, "Checking account does not exist");
+            ctx, HTTP_STATUS_BAD_REQUEST, "Checking account does not exist");
           return;
         }
 
         auto result = checking_r.value() + savings_r.value();
 
-        set_ok_status(args);
+        set_ok_status(ctx);
         BalanceSerializer bs(result);
         auto buff = bs.get_buffer();
-        args.rpc_ctx->set_response_body(
+        ctx.rpc_ctx->set_response_body(
           std::vector<uint8_t>(buff.p, buff.p + buff.n));
       };
 
-      auto transact_savings = [this](auto& args) {
+      auto transact_savings = [this](auto& ctx) {
         // Add or remove money to the savings account
-        TransactionDeserializer td(args.rpc_ctx->get_request_body().data());
+        TransactionDeserializer td(ctx.rpc_ctx->get_request_body().data());
         auto name = td.name();
         auto value = td.value();
 
         if (name.empty())
         {
           set_error_status(
-            args, HTTP_STATUS_BAD_REQUEST, "A name must be specified");
+            ctx, HTTP_STATUS_BAD_REQUEST, "A name must be specified");
           return;
         }
 
-        auto account_view = args.tx.get_view(tables.accounts);
+        auto account_view = ctx.tx.get_view(tables.accounts);
         auto account_r = account_view->get(name);
 
         if (!account_r.has_value())
         {
           set_error_status(
-            args, HTTP_STATUS_BAD_REQUEST, "Account does not exist");
+            ctx, HTTP_STATUS_BAD_REQUEST, "Account does not exist");
         }
 
-        auto savings_view = args.tx.get_view(tables.savings);
+        auto savings_view = ctx.tx.get_view(tables.savings);
         auto savings_r = savings_view->get(account_r.value());
 
         if (!savings_r.has_value())
         {
           set_error_status(
-            args, HTTP_STATUS_BAD_REQUEST, "Savings account does not exist");
+            ctx, HTTP_STATUS_BAD_REQUEST, "Savings account does not exist");
           return;
         }
 
         if (savings_r.value() + value < 0)
         {
           set_error_status(
-            args,
+            ctx,
             HTTP_STATUS_BAD_REQUEST,
             "Not enough money in savings account");
           return;
         }
 
         savings_view->put(account_r.value(), value + savings_r.value());
-        set_no_content_status(args);
+        set_no_content_status(ctx);
       };
 
-      auto deposit_checking = [this](auto& args) {
+      auto deposit_checking = [this](auto& ctx) {
         // Desposit money into the checking account out of thin air
-        TransactionDeserializer td(args.rpc_ctx->get_request_body().data());
+        TransactionDeserializer td(ctx.rpc_ctx->get_request_body().data());
         auto name = td.name();
         int64_t value = td.value();
 
         if (name.empty())
         {
           set_error_status(
-            args, HTTP_STATUS_BAD_REQUEST, "A name must be specified");
+            ctx, HTTP_STATUS_BAD_REQUEST, "A name must be specified");
           return;
         }
 
         if (value <= 0)
         {
-          set_error_status(args, HTTP_STATUS_BAD_REQUEST, "Value <= 0");
+          set_error_status(ctx, HTTP_STATUS_BAD_REQUEST, "Value <= 0");
           return;
         }
 
-        auto account_view = args.tx.get_view(tables.accounts);
+        auto account_view = ctx.tx.get_view(tables.accounts);
         auto account_r = account_view->get(name);
 
         if (!account_r.has_value())
         {
           set_error_status(
-            args, HTTP_STATUS_BAD_REQUEST, "Account does not exist");
+            ctx, HTTP_STATUS_BAD_REQUEST, "Account does not exist");
           return;
         }
 
-        auto checking_view = args.tx.get_view(tables.checkings);
+        auto checking_view = ctx.tx.get_view(tables.checkings);
         auto checking_r = checking_view->get(account_r.value());
 
         if (!checking_r.has_value())
         {
           set_error_status(
-            args, HTTP_STATUS_BAD_REQUEST, "Checking account does not exist");
+            ctx, HTTP_STATUS_BAD_REQUEST, "Checking account does not exist");
           return;
         }
         checking_view->put(account_r.value(), value + checking_r.value());
-        set_no_content_status(args);
+        set_no_content_status(ctx);
       };
 
-      auto amalgamate = [this](auto& args) {
+      auto amalgamate = [this](auto& ctx) {
         // Move the contents of one users account to another users account
-        AmalgamateDeserializer ad(args.rpc_ctx->get_request_body().data());
+        AmalgamateDeserializer ad(ctx.rpc_ctx->get_request_body().data());
         auto name_1 = ad.name_src();
         auto name_2 = ad.name_dest();
-        auto account_view = args.tx.get_view(tables.accounts);
+        auto account_view = ctx.tx.get_view(tables.accounts);
         auto account_1_r = account_view->get(name_1);
 
         if (!account_1_r.has_value())
         {
           set_error_status(
-            args, HTTP_STATUS_BAD_REQUEST, "Source account does not exist");
+            ctx, HTTP_STATUS_BAD_REQUEST, "Source account does not exist");
           return;
         }
 
@@ -313,31 +313,29 @@ namespace ccfapp
         if (!account_2_r.has_value())
         {
           set_error_status(
-            args,
-            HTTP_STATUS_BAD_REQUEST,
-            "Destination account does not exist");
+            ctx, HTTP_STATUS_BAD_REQUEST, "Destination account does not exist");
           return;
         }
 
-        auto savings_view = args.tx.get_view(tables.savings);
+        auto savings_view = ctx.tx.get_view(tables.savings);
         auto savings_r = savings_view->get(account_1_r.value());
 
         if (!savings_r.has_value())
         {
           set_error_status(
-            args,
+            ctx,
             HTTP_STATUS_BAD_REQUEST,
             "Source savings account does not exist");
           return;
         }
 
-        auto checking_view = args.tx.get_view(tables.checkings);
+        auto checking_view = ctx.tx.get_view(tables.checkings);
         auto checking_r = checking_view->get(account_1_r.value());
 
         if (!checking_r.has_value())
         {
           set_error_status(
-            args,
+            ctx,
             HTTP_STATUS_BAD_REQUEST,
             "Source checking account does not exist");
           return;
@@ -347,13 +345,13 @@ namespace ccfapp
         checking_view->put(account_1_r.value(), 0);
         savings_view->put(account_1_r.value(), 0);
 
-        auto checking_2_view = args.tx.get_view(tables.checkings);
+        auto checking_2_view = ctx.tx.get_view(tables.checkings);
         auto checking_2_r = checking_2_view->get(account_2_r.value());
 
         if (!checking_2_r.has_value())
         {
           set_error_status(
-            args,
+            ctx,
             HTTP_STATUS_BAD_REQUEST,
             "Destination checking account does not exist");
           return;
@@ -362,42 +360,42 @@ namespace ccfapp
         checking_2_view->put(
           account_2_r.value(), checking_2_r.value() + sum_account_1);
 
-        set_no_content_status(args);
+        set_no_content_status(ctx);
       };
 
-      auto writeCheck = [this](auto& args) {
+      auto writeCheck = [this](auto& ctx) {
         // Write a check, if not enough funds then also charge an extra 1 money
-        TransactionDeserializer td(args.rpc_ctx->get_request_body().data());
+        TransactionDeserializer td(ctx.rpc_ctx->get_request_body().data());
         auto name = td.name();
         uint32_t amount = td.value();
 
-        auto account_view = args.tx.get_view(tables.accounts);
+        auto account_view = ctx.tx.get_view(tables.accounts);
         auto account_r = account_view->get(name);
 
         if (!account_r.has_value())
         {
           set_error_status(
-            args, HTTP_STATUS_BAD_REQUEST, "Account does not exist");
+            ctx, HTTP_STATUS_BAD_REQUEST, "Account does not exist");
           return;
         }
 
-        auto savings_view = args.tx.get_view(tables.savings);
+        auto savings_view = ctx.tx.get_view(tables.savings);
         auto savings_r = savings_view->get(account_r.value());
 
         if (!savings_r.has_value())
         {
           set_error_status(
-            args, HTTP_STATUS_BAD_REQUEST, "Savings account does not exist");
+            ctx, HTTP_STATUS_BAD_REQUEST, "Savings account does not exist");
           return;
         }
 
-        auto checking_view = args.tx.get_view(tables.checkings);
+        auto checking_view = ctx.tx.get_view(tables.checkings);
         auto checking_r = checking_view->get(account_r.value());
 
         if (!checking_r.has_value())
         {
           set_error_status(
-            args, HTTP_STATUS_BAD_REQUEST, "Checking account does not exist");
+            ctx, HTTP_STATUS_BAD_REQUEST, "Checking account does not exist");
           return;
         }
 
@@ -407,7 +405,7 @@ namespace ccfapp
           ++amount;
         }
         checking_view->put(account_r.value(), account_value - amount);
-        set_no_content_status(args);
+        set_no_content_status(ctx);
       };
 
       std::vector<ccf::RESTVerb> verbs = {HTTP_POST, ws::Verb::WEBSOCKET};

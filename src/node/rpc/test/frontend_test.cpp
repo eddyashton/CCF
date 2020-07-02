@@ -42,23 +42,23 @@ public:
   {
     open();
 
-    auto empty_function = [this](auto& args) {
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+    auto empty_function = [this](auto& ctx) {
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
     make_endpoint("empty_function", HTTP_POST, empty_function)
       .set_forwarding_required(ForwardingRequired::Sometimes)
       .install();
 
-    auto empty_function_signed = [this](auto& args) {
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+    auto empty_function_signed = [this](auto& ctx) {
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
     make_endpoint("empty_function_signed", HTTP_POST, empty_function_signed)
       .set_forwarding_required(ForwardingRequired::Sometimes)
       .set_require_client_signature(true)
       .install();
 
-    auto empty_function_no_auth = [this](auto& args) {
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+    auto empty_function_no_auth = [this](auto& ctx) {
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
     make_endpoint("empty_function_no_auth", HTTP_POST, empty_function_no_auth)
       .set_forwarding_required(ForwardingRequired::Sometimes)
@@ -74,8 +74,8 @@ public:
   {
     open();
 
-    auto empty_function = [this](auto& args) {
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+    auto empty_function = [this](auto& ctx) {
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
     make_endpoint("empty_function", HTTP_POST, empty_function).install();
     disable_request_storing();
@@ -126,18 +126,18 @@ public:
   {
     open();
 
-    auto get_only = [this](auto& args) {
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+    auto get_only = [this](auto& ctx) {
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
     make_endpoint("get_only", HTTP_GET, get_only).install();
 
-    auto post_only = [this](auto& args) {
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+    auto post_only = [this](auto& ctx) {
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
     make_endpoint("post_only", HTTP_POST, post_only).install();
 
-    auto put_or_delete = [this](auto& args) {
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+    auto put_or_delete = [this](auto& ctx) {
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
     make_endpoint("put_or_delete", HTTP_PUT, put_or_delete).install();
     make_endpoint("put_or_delete", HTTP_DELETE, put_or_delete).install();
@@ -155,23 +155,23 @@ public:
   {
     open();
 
-    auto maybe_commit = [this](EndpointContext& args) {
+    auto maybe_commit = [this](EndpointContext& ctx) {
       const auto parsed =
-        jsonrpc::unpack(args.rpc_ctx->get_request_body(), default_pack);
+        jsonrpc::unpack(ctx.rpc_ctx->get_request_body(), default_pack);
 
       const auto new_value = parsed["value"].get<size_t>();
-      auto view = args.tx.get_view(values);
+      auto view = ctx.tx.get_view(values);
       view->put(0, new_value);
 
       const auto apply_it = parsed.find("apply");
       if (apply_it != parsed.end())
       {
         const auto should_apply = apply_it->get<bool>();
-        args.rpc_ctx->set_apply_writes(should_apply);
+        ctx.rpc_ctx->set_apply_writes(should_apply);
       }
 
       const auto status = parsed["status"].get<http_status>();
-      args.rpc_ctx->set_response_status(status);
+      ctx.rpc_ctx->set_response_status(status);
     };
     make_endpoint("maybe_commit", HTTP_POST, maybe_commit).install();
   }
@@ -184,13 +184,13 @@ public:
   {
     open();
 
-    auto command = [this](CommandEndpointContext& args) {
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+    auto command = [this](CommandEndpointContext& ctx) {
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
     make_command_endpoint("command", HTTP_POST, command).install();
 
-    auto read_only = [this](ReadOnlyEndpointContext& args) {
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+    auto read_only = [this](ReadOnlyEndpointContext& ctx) {
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
     make_read_only_endpoint("read_only", HTTP_POST, read_only).install();
     make_read_only_endpoint("read_only", HTTP_GET, read_only).install();
@@ -208,8 +208,8 @@ public:
   {
     open();
 
-    auto empty_function = [this](auto& args) {
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+    auto empty_function = [this](auto& ctx) {
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
     member_endpoints.make_endpoint("empty_function", HTTP_POST, empty_function)
       .set_forwarding_required(ForwardingRequired::Sometimes)
@@ -228,8 +228,8 @@ public:
   {
     open();
 
-    auto empty_function = [this](auto& args) {
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+    auto empty_function = [this](auto& ctx) {
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
     endpoints.make_endpoint("empty_function", HTTP_POST, empty_function)
       .set_forwarding_required(ForwardingRequired::Sometimes)
@@ -247,10 +247,10 @@ public:
   std::vector<uint8_t> last_caller_cert;
   CallerId last_caller_id;
 
-  void record_ctx(EndpointContext& args)
+  void record_ctx(EndpointContext& ctx)
   {
-    last_caller_cert = std::vector<uint8_t>(args.rpc_ctx->session->caller_cert);
-    last_caller_id = args.caller_id;
+    last_caller_cert = std::vector<uint8_t>(ctx.rpc_ctx->session->caller_cert);
+    last_caller_id = ctx.caller_id;
   }
 };
 
@@ -262,17 +262,17 @@ public:
   {
     open();
 
-    auto empty_function = [this](auto& args) {
-      record_ctx(args);
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+    auto empty_function = [this](auto& ctx) {
+      record_ctx(ctx);
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
     // Note that this a Write function so that a backup executing this command
     // will forward it to the primary
     make_endpoint("empty_function", HTTP_POST, empty_function).install();
 
-    auto empty_function_no_auth = [this](auto& args) {
-      record_ctx(args);
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+    auto empty_function_no_auth = [this](auto& ctx) {
+      record_ctx(ctx);
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
     make_endpoint("empty_function_no_auth", HTTP_POST, empty_function_no_auth)
       .set_require_client_identity(false)
@@ -290,9 +290,9 @@ public:
   {
     open();
 
-    auto empty_function = [this](auto& args) {
-      record_ctx(args);
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+    auto empty_function = [this](auto& ctx) {
+      record_ctx(ctx);
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
     // Note that this a Write function so that a backup executing this command
     // will forward it to the primary
@@ -314,9 +314,9 @@ public:
   {
     open();
 
-    auto empty_function = [this](auto& args) {
-      record_ctx(args);
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+    auto empty_function = [this](auto& ctx) {
+      record_ctx(ctx);
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
     // Note that this a Write function so that a backup executing this command
     // will forward it to the primary
@@ -1468,7 +1468,7 @@ public:
   {
     open();
 
-    auto conflict_once = [this](auto& args) {
+    auto conflict_once = [this](auto& ctx) {
       static bool conflict_next = true;
       if (conflict_next)
       {
@@ -1481,11 +1481,11 @@ public:
         conflict_next = false;
       }
 
-      auto view = args.tx.get_view(values);
+      auto view = ctx.tx.get_view(values);
       view->get(0); // Record a read dependency
       view->put(0, 0);
 
-      args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+      ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
     };
     make_endpoint("conflict_once", HTTP_POST, conflict_once).install();
   }

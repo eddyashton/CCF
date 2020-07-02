@@ -102,9 +102,9 @@ namespace loggingapp
 
       // SNIPPET_START: get
       auto get =
-        [this](ccf::ReadOnlyEndpointContext& args, nlohmann::json&& params) {
+        [this](ccf::ReadOnlyEndpointContext& ctx, nlohmann::json&& params) {
           const auto in = params.get<LoggingGet::In>();
-          auto view = args.tx.get_read_only_view(records);
+          auto view = ctx.tx.get_read_only_view(records);
           auto r = view->get(in.id);
 
           if (r.has_value())
@@ -165,7 +165,7 @@ namespace loggingapp
 
       // SNIPPET_START: get_public
       auto get_public =
-        [this](ccf::ReadOnlyEndpointContext& args, nlohmann::json&& params) {
+        [this](ccf::ReadOnlyEndpointContext& ctx, nlohmann::json&& params) {
           const auto validation_error =
             validate(params, get_public_params_schema);
 
@@ -174,7 +174,7 @@ namespace loggingapp
             return ccf::make_error(HTTP_STATUS_BAD_REQUEST, *validation_error);
           }
 
-          auto view = args.tx.get_read_only_view(public_records);
+          auto view = ctx.tx.get_read_only_view(public_records);
           const auto id = params["id"];
           auto r = view->get(id);
 
@@ -208,37 +208,37 @@ namespace loggingapp
         .install();
 
       // SNIPPET_START: log_record_prefix_cert
-      auto log_record_prefix_cert = [this](ccf::EndpointContext& args) {
+      auto log_record_prefix_cert = [this](ccf::EndpointContext& ctx) {
         const auto body_j =
-          nlohmann::json::parse(args.rpc_ctx->get_request_body());
+          nlohmann::json::parse(ctx.rpc_ctx->get_request_body());
 
         const auto in = body_j.get<LoggingRecord::In>();
         if (in.msg.empty())
         {
-          args.rpc_ctx->set_response_status(HTTP_STATUS_BAD_REQUEST);
-          args.rpc_ctx->set_response_header(
+          ctx.rpc_ctx->set_response_status(HTTP_STATUS_BAD_REQUEST);
+          ctx.rpc_ctx->set_response_header(
             http::headers::CONTENT_TYPE, http::headervalues::contenttype::TEXT);
-          args.rpc_ctx->set_response_body("Cannot record an empty log message");
+          ctx.rpc_ctx->set_response_body("Cannot record an empty log message");
           return;
         }
 
         mbedtls_x509_crt cert;
         mbedtls_x509_crt_init(&cert);
 
-        const auto& cert_data = args.rpc_ctx->session->caller_cert;
+        const auto& cert_data = ctx.rpc_ctx->session->caller_cert;
         const auto ret =
           mbedtls_x509_crt_parse(&cert, cert_data.data(), cert_data.size());
 
         const auto log_line = fmt::format("{}: {}", cert.subject, in.msg);
-        auto view = args.tx.get_view(records);
+        auto view = ctx.tx.get_view(records);
         view->put(in.id, log_line);
 
         mbedtls_x509_crt_free(&cert);
 
-        args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
-        args.rpc_ctx->set_response_header(
+        ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+        ctx.rpc_ctx->set_response_header(
           http::headers::CONTENT_TYPE, http::headervalues::contenttype::JSON);
-        args.rpc_ctx->set_response_body(nlohmann::json(true).dump());
+        ctx.rpc_ctx->set_response_body(nlohmann::json(true).dump());
       };
       make_endpoint(
         "log/private/prefix_cert", HTTP_POST, log_record_prefix_cert)
@@ -246,7 +246,7 @@ namespace loggingapp
       // SNIPPET_END: log_record_prefix_cert
 
       auto log_record_anonymous =
-        [this](ccf::EndpointContext& args, nlohmann::json&& params) {
+        [this](ccf::EndpointContext& ctx, nlohmann::json&& params) {
           const auto in = params.get<LoggingRecord::In>();
           if (in.msg.empty())
           {
@@ -255,7 +255,7 @@ namespace loggingapp
           }
 
           const auto log_line = fmt::format("Anonymous: {}", in.msg);
-          auto view = args.tx.get_view(records);
+          auto view = ctx.tx.get_view(records);
           view->put(in.id, log_line);
           return ccf::make_success(true);
         };
@@ -268,62 +268,62 @@ namespace loggingapp
         .install();
 
       // SNIPPET_START: log_record_text
-      auto log_record_text = [this](auto& args) {
+      auto log_record_text = [this](auto& ctx) {
         const auto expected = http::headervalues::contenttype::TEXT;
         const auto actual =
-          args.rpc_ctx->get_request_header(http::headers::CONTENT_TYPE)
+          ctx.rpc_ctx->get_request_header(http::headers::CONTENT_TYPE)
             .value_or("");
         if (expected != actual)
         {
-          args.rpc_ctx->set_response_status(HTTP_STATUS_UNSUPPORTED_MEDIA_TYPE);
-          args.rpc_ctx->set_response_header(
+          ctx.rpc_ctx->set_response_status(HTTP_STATUS_UNSUPPORTED_MEDIA_TYPE);
+          ctx.rpc_ctx->set_response_header(
             http::headers::CONTENT_TYPE, http::headervalues::contenttype::TEXT);
-          args.rpc_ctx->set_response_body(fmt::format(
+          ctx.rpc_ctx->set_response_body(fmt::format(
             "Expected content-type '{}'. Got '{}'.", expected, actual));
           return;
         }
 
         constexpr auto log_id_header = "x-log-id";
-        const auto id_it = args.rpc_ctx->get_request_header(log_id_header);
+        const auto id_it = ctx.rpc_ctx->get_request_header(log_id_header);
         if (!id_it.has_value())
         {
-          args.rpc_ctx->set_response_status(HTTP_STATUS_BAD_REQUEST);
-          args.rpc_ctx->set_response_header(
+          ctx.rpc_ctx->set_response_status(HTTP_STATUS_BAD_REQUEST);
+          ctx.rpc_ctx->set_response_header(
             http::headers::CONTENT_TYPE, http::headervalues::contenttype::TEXT);
-          args.rpc_ctx->set_response_body(
+          ctx.rpc_ctx->set_response_body(
             fmt::format("Missing ID header '{}'", log_id_header));
           return;
         }
 
         const auto id = strtoul(id_it.value().c_str(), nullptr, 10);
 
-        const std::vector<uint8_t>& content = args.rpc_ctx->get_request_body();
+        const std::vector<uint8_t>& content = ctx.rpc_ctx->get_request_body();
         const std::string log_line(content.begin(), content.end());
 
-        auto view = args.tx.get_view(records);
+        auto view = ctx.tx.get_view(records);
         view->put(id, log_line);
 
-        args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+        ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
       };
       make_endpoint("log/private/raw_text", HTTP_POST, log_record_text)
         .install();
       // SNIPPET_END: log_record_text
 
       auto get_historical = [this](
-                              ccf::EndpointContext& args,
+                              ccf::EndpointContext& ctx,
                               ccf::historical::StorePtr historical_store,
                               kv::Consensus::View historical_view,
                               kv::Consensus::SeqNo historical_seqno) {
         const auto [pack, params] =
-          ccf::jsonhandler::get_json_params(args.rpc_ctx);
+          ccf::jsonhandler::get_json_params(ctx.rpc_ctx);
 
         auto* historical_map = historical_store->get(records);
         if (historical_map == nullptr)
         {
-          args.rpc_ctx->set_response_status(HTTP_STATUS_INTERNAL_SERVER_ERROR);
-          args.rpc_ctx->set_response_header(
+          ctx.rpc_ctx->set_response_status(HTTP_STATUS_INTERNAL_SERVER_ERROR);
+          ctx.rpc_ctx->set_response_header(
             http::headers::CONTENT_TYPE, http::headervalues::contenttype::TEXT);
-          args.rpc_ctx->set_response_body(fmt::format(
+          ctx.rpc_ctx->set_response_body(fmt::format(
             "Unable to get table '{}' at {}.{}",
             records.get_name(),
             historical_view,
@@ -342,11 +342,11 @@ namespace loggingapp
           LoggingGetHistorical::Out out;
           out.msg = v.value();
           nlohmann::json j = out;
-          ccf::jsonhandler::set_response(std::move(j), args.rpc_ctx, pack);
+          ccf::jsonhandler::set_response(std::move(j), ctx.rpc_ctx, pack);
         }
         else
         {
-          args.rpc_ctx->set_response_status(HTTP_STATUS_NO_CONTENT);
+          ctx.rpc_ctx->set_response_status(HTTP_STATUS_NO_CONTENT);
         }
       };
 

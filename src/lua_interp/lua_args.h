@@ -9,7 +9,7 @@
 
 /**
  * @brief Convert from ccf::EndpointContext to a lua table, giving named
- * access to RPC args and explicit errors on attempts to access missing keys.
+ * access to RPC ctx and explicit errors on attempts to access missing keys.
  */
 namespace ccf
 {
@@ -19,7 +19,7 @@ namespace ccf
      * __index metamethod for EndpointContext table.
      * stack: 1 = EndpointContext table, 2 = desired index
      */
-    static int index_request_args(lua_State* l)
+    static int index_request_ctx(lua_State* l)
     {
       auto s = lua_tostring(l, 2);
       return luaL_error(l, "'%s' is not a lua argument", s);
@@ -33,27 +33,27 @@ namespace ccf
      * which should be accessible to lua RPC handlers.
      */
     template <>
-    inline void push_raw(lua_State* l, const EndpointContext& args)
+    inline void push_raw(lua_State* l, const EndpointContext& ctx)
     {
       lua_createtable(l, 0, 3);
 
-      push_raw(l, args.caller_id);
+      push_raw(l, ctx.caller_id);
       lua_setfield(l, -2, "caller_id");
 
-      push_raw(l, args.rpc_ctx->get_method());
+      push_raw(l, ctx.rpc_ctx->get_method());
       lua_setfield(l, -2, "method");
 
-      push_raw(l, args.rpc_ctx->get_request_verb().c_str());
+      push_raw(l, ctx.rpc_ctx->get_request_verb().c_str());
       lua_setfield(l, -2, "verb");
 
       const auto [pack, params] =
-        ccf::jsonhandler::get_json_params(args.rpc_ctx);
+        ccf::jsonhandler::get_json_params(ctx.rpc_ctx);
       push_raw(l, params);
       lua_setfield(l, -2, "params");
 
       // Overwrite __index metamethod for this table
       lua_createtable(l, 0, 1);
-      lua_pushcfunction(l, index_request_args);
+      lua_pushcfunction(l, index_request_ctx);
       lua_setfield(l, -2, "__index");
       lua_setmetatable(l, -2);
     }

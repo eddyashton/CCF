@@ -149,8 +149,7 @@ namespace ccf
 
       signatures = tables->get<Signatures>(Tables::SIGNATURES);
 
-      auto accept = [this](
-                      EndpointContext& args, const nlohmann::json& params) {
+      auto accept = [this](EndpointContext& ctx, const nlohmann::json& params) {
         const auto in = params.get<JoinNetworkNodeToNode::In>();
 
         if (
@@ -174,7 +173,7 @@ namespace ccf
         }
 
         auto [nodes_view, service_view] =
-          args.tx.get_view(this->network.nodes, this->network.service);
+          ctx.tx.get_view(this->network.nodes, this->network.service);
 
         auto active_service = service_view->get(0);
         if (!active_service.has_value())
@@ -187,7 +186,7 @@ namespace ccf
         // Convert caller cert from DER to PEM as PEM certificates
         // are quoted
         auto caller_pem_raw =
-          tls::cert_der_to_pem(args.rpc_ctx->session->caller_cert);
+          tls::cert_der_to_pem(ctx.rpc_ctx->session->caller_cert);
 
         if (active_service->status == ServiceStatus::OPENING)
         {
@@ -196,7 +195,7 @@ namespace ccf
 
           // If the node is already trusted, return network secrets
           auto existing_node_id =
-            check_node_exists(args.tx, caller_pem_raw, joining_node_status);
+            check_node_exists(ctx.tx, caller_pem_raw, joining_node_status);
           if (existing_node_id.has_value())
           {
             return make_success(JoinNetworkNodeToNode::Out(
@@ -210,7 +209,7 @@ namespace ccf
                 *this->network.encryption_key.get()}}));
           }
 
-          return add_node(args.tx, caller_pem_raw, in, joining_node_status);
+          return add_node(ctx.tx, caller_pem_raw, in, joining_node_status);
         }
 
         // If the service is open, new nodes are first added as pending and
@@ -218,7 +217,7 @@ namespace ccf
         // node polls the network to retrieve the network secrets until it is
         // trusted
 
-        auto existing_node_id = check_node_exists(args.tx, caller_pem_raw);
+        auto existing_node_id = check_node_exists(ctx.tx, caller_pem_raw);
         if (existing_node_id.has_value())
         {
           // If the node already exists, return network secrets if is already
@@ -250,12 +249,12 @@ namespace ccf
         else
         {
           // If the node does not exist, add it to the KV in state pending
-          return add_node(args.tx, caller_pem_raw, in, NodeStatus::PENDING);
+          return add_node(ctx.tx, caller_pem_raw, in, NodeStatus::PENDING);
         }
       };
       make_endpoint("join", HTTP_POST, json_adapter(accept)).install();
 
-      auto get_signed_index = [this](auto& args, nlohmann::json&& params) {
+      auto get_signed_index = [this](auto& ctx, nlohmann::json&& params) {
         GetSignedIndex::Out result;
         if (this->node.is_reading_public_ledger())
         {
@@ -279,7 +278,7 @@ namespace ccf
             HTTP_STATUS_BAD_REQUEST, "Network is not in recovery mode");
         }
 
-        auto sig_view = args.tx.get_read_only_view(*signatures);
+        auto sig_view = ctx.tx.get_read_only_view(*signatures);
         auto sig = sig_view->get(0);
         if (!sig.has_value())
           result.signed_index = 0;
@@ -293,11 +292,11 @@ namespace ccf
         .set_auto_schema<GetSignedIndex>()
         .install();
 
-      auto get_quote = [this](auto& args, nlohmann::json&&) {
+      auto get_quote = [this](auto& ctx, nlohmann::json&&) {
         GetQuotes::Out result;
         std::set<NodeId> filter;
         filter.insert(this->node.get_node_id());
-        this->node.node_quotes(args.tx, result, filter);
+        this->node.node_quotes(ctx.tx, result, filter);
 
         return make_success(result);
       };
@@ -306,9 +305,9 @@ namespace ccf
         .set_auto_schema<GetQuotes>()
         .install();
 
-      auto get_quotes = [this](auto& args, nlohmann::json&&) {
+      auto get_quotes = [this](auto& ctx, nlohmann::json&&) {
         GetQuotes::Out result;
-        this->node.node_quotes(args.tx, result);
+        this->node.node_quotes(ctx.tx, result);
 
         return make_success(result);
       };
@@ -316,8 +315,8 @@ namespace ccf
         "quotes", HTTP_GET, json_read_only_adapter(get_quotes))
         .set_auto_schema<GetQuotes>()
         .install();
-      auto network_status = [this](auto& args, nlohmann::json&&) {
-        auto service_view = args.tx.get_read_only_view(network.service);
+      auto network_status = [this](auto& ctx, nlohmann::json&&) {
+        auto service_view = ctx.tx.get_read_only_view(network.service);
         auto service_state = service_view->get(0);
         if (service_state.has_value())
         {

@@ -17,12 +17,12 @@ namespace ccf
    * fields, to reduce handler complexity and repetition.
    *
    * Rather than:
-   * auto foo = [](auto& args) {
+   * auto foo = [](auto& ctx) {
    *   nlohmann::json params;
    *   jsonrpc::Pack pack_type;
    *   if (<content-type is JSON>)
    *   {
-   *     params = unpack(args.rpc_ctx->get_request_body());
+   *     params = unpack(ctx.rpc_ctx->get_request_body());
    *     pack_type = Text;
    *   }
    *   else
@@ -32,14 +32,14 @@ namespace ccf
    *   auto result = fn(params);
    *   if (is_error(result))
    *   {
-   *     args.rpc_ctx->set_response_status(SOME_ERROR);
-   *     args.rpc_ctx->set_response_header(content_type, Text);
-   *     args.rpc_ctx->set_response_body(error_msg(result));
+   *     ctx.rpc_ctx->set_response_status(SOME_ERROR);
+   *     ctx.rpc_ctx->set_response_header(content_type, Text);
+   *     ctx.rpc_ctx->set_response_body(error_msg(result));
    *   }
    *   if (pack_type == Text)
    *   {
-   *     args.rpc_ctx->set_response_header(content_type, JSON);
-   *     args.rpc_ctx->set_response_body(pack(result, Text));
+   *     ctx.rpc_ctx->set_response_header(content_type, JSON);
+   *     ctx.rpc_ctx->set_response_body(pack(result, Text));
    *   }
    *   else
    *   {
@@ -259,9 +259,9 @@ namespace ccf
 
   static EndpointFunction json_adapter(const HandlerTxOnly& f)
   {
-    return [f](EndpointContext& args) {
-      const auto [packing, params] = jsonhandler::get_json_params(args.rpc_ctx);
-      jsonhandler::set_response(f(args.tx), args.rpc_ctx, packing);
+    return [f](EndpointContext& ctx) {
+      const auto [packing, params] = jsonhandler::get_json_params(ctx.rpc_ctx);
+      jsonhandler::set_response(f(ctx.tx), ctx.rpc_ctx, packing);
     };
   }
 
@@ -270,10 +270,10 @@ namespace ccf
 
   static EndpointFunction json_adapter(const HandlerJsonParamsOnly& f)
   {
-    return [f](EndpointContext& args) {
-      auto [packing, params] = jsonhandler::get_json_params(args.rpc_ctx);
+    return [f](EndpointContext& ctx) {
+      auto [packing, params] = jsonhandler::get_json_params(ctx.rpc_ctx);
       jsonhandler::set_response(
-        f(args.tx, std::move(params)), args.rpc_ctx, packing);
+        f(ctx.tx, std::move(params)), ctx.rpc_ctx, packing);
     };
   }
 
@@ -283,50 +283,50 @@ namespace ccf
 
   static EndpointFunction json_adapter(const HandlerJsonParamsAndCallerId& f)
   {
-    return [f](EndpointContext& args) {
-      auto [packing, params] = jsonhandler::get_json_params(args.rpc_ctx);
+    return [f](EndpointContext& ctx) {
+      auto [packing, params] = jsonhandler::get_json_params(ctx.rpc_ctx);
       jsonhandler::set_response(
-        f(args.tx, args.caller_id, std::move(params)), args.rpc_ctx, packing);
+        f(ctx.tx, ctx.caller_id, std::move(params)), ctx.rpc_ctx, packing);
     };
   }
 
   using HandlerJsonParamsAndForward =
     std::function<jsonhandler::JsonAdapterResponse(
-      EndpointContext& args, nlohmann::json&& params)>;
+      EndpointContext& ctx, nlohmann::json&& params)>;
 
   static EndpointFunction json_adapter(const HandlerJsonParamsAndForward& f)
   {
-    return [f](EndpointContext& args) {
-      auto [packing, params] = jsonhandler::get_json_params(args.rpc_ctx);
+    return [f](EndpointContext& ctx) {
+      auto [packing, params] = jsonhandler::get_json_params(ctx.rpc_ctx);
       jsonhandler::set_response(
-        f(args, std::move(params)), args.rpc_ctx, packing);
+        f(ctx, std::move(params)), ctx.rpc_ctx, packing);
     };
   }
 
   using ReadOnlyHandlerWithJson =
     std::function<jsonhandler::JsonAdapterResponse(
-      ReadOnlyEndpointContext& args, nlohmann::json&& params)>;
+      ReadOnlyEndpointContext& ctx, nlohmann::json&& params)>;
 
   static ReadOnlyEndpointFunction json_read_only_adapter(
     const ReadOnlyHandlerWithJson& f)
   {
-    return [f](ReadOnlyEndpointContext& args) {
-      auto [packing, params] = jsonhandler::get_json_params(args.rpc_ctx);
+    return [f](ReadOnlyEndpointContext& ctx) {
+      auto [packing, params] = jsonhandler::get_json_params(ctx.rpc_ctx);
       jsonhandler::set_response(
-        f(args, std::move(params)), args.rpc_ctx, packing);
+        f(ctx, std::move(params)), ctx.rpc_ctx, packing);
     };
   }
 
   using CommandHandlerWithJson = std::function<jsonhandler::JsonAdapterResponse(
-    CommandEndpointContext& args, nlohmann::json&& params)>;
+    CommandEndpointContext& ctx, nlohmann::json&& params)>;
 
   static CommandEndpointFunction json_command_adapter(
     const CommandHandlerWithJson& f)
   {
-    return [f](CommandEndpointContext& args) {
-      auto [packing, params] = jsonhandler::get_json_params(args.rpc_ctx);
+    return [f](CommandEndpointContext& ctx) {
+      auto [packing, params] = jsonhandler::get_json_params(ctx.rpc_ctx);
       jsonhandler::set_response(
-        f(args, std::move(params)), args.rpc_ctx, packing);
+        f(ctx, std::move(params)), ctx.rpc_ctx, packing);
     };
   }
 }

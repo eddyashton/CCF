@@ -25,7 +25,7 @@ namespace ccf
     kv::Tx& tx;
     CallerId caller_id;
   };
-  using EndpointFunction = std::function<void(EndpointContext& args)>;
+  using EndpointFunction = std::function<void(EndpointContext& ctx)>;
 
   using RequestArgs CCF_DEPRECATED(
     "Handlers have been renamed to Endpoints. Please use EndpointContext "
@@ -40,7 +40,7 @@ namespace ccf
     CallerId caller_id;
   };
   using ReadOnlyEndpointFunction =
-    std::function<void(ReadOnlyEndpointContext& args)>;
+    std::function<void(ReadOnlyEndpointContext& ctx)>;
 
   // Commands are endpoints which do not interact with the kv, even to read
   struct CommandEndpointContext
@@ -49,7 +49,7 @@ namespace ccf
     CallerId caller_id;
   };
   using CommandEndpointFunction =
-    std::function<void(CommandEndpointContext& args)>;
+    std::function<void(CommandEndpointContext& ctx)>;
 
   enum class ForwardingRequired
   {
@@ -349,10 +349,10 @@ namespace ccf
       return make_endpoint(
                method,
                verb,
-               [f](EndpointContext& args) {
-                 ReadOnlyEndpointContext ro_args{
-                   args.rpc_ctx, args.tx, args.caller_id};
-                 f(ro_args);
+               [f](EndpointContext& ctx) {
+                 ReadOnlyEndpointContext ro_ctx{
+                   ctx.rpc_ctx, ctx.tx, ctx.caller_id};
+                 f(ro_ctx);
                })
         .set_forwarding_required(ForwardingRequired::Sometimes);
     }
@@ -370,10 +370,9 @@ namespace ccf
       return make_endpoint(
                method,
                verb,
-               [f](EndpointContext& args) {
-                 CommandEndpointContext command_args{args.rpc_ctx,
-                                                     args.caller_id};
-                 f(command_args);
+               [f](EndpointContext& ctx) {
+                 CommandEndpointContext command_ctx{ctx.rpc_ctx, ctx.caller_id};
+                 f(command_ctx);
                })
         .set_forwarding_required(ForwardingRequired::Sometimes);
     }
