@@ -153,18 +153,18 @@ namespace ccfapp
     {
       auto& tables = *network.tables;
 
-      auto default_handler = [this](EndpointContext& ctx) {
-        const auto method = ctx.rpc_ctx->get_method();
+      auto default_handler = [this](EndpointContext& context) {
+        const auto method = context.rpc_ctx->get_method();
         const auto local_method = method.substr(method.find_first_not_of('/'));
         if (local_method == UserScriptIds::ENV_HANDLER)
         {
-          ctx.rpc_ctx->set_response_status(HTTP_STATUS_NOT_FOUND);
-          ctx.rpc_ctx->set_response_body(
+          context.rpc_ctx->set_response_status(HTTP_STATUS_NOT_FOUND);
+          context.rpc_ctx->set_response_body(
             fmt::format("Cannot call environment script ('{}')", local_method));
           return;
         }
 
-        const auto scripts = ctx.tx.get_view(this->network.app_scripts);
+        const auto scripts = context.tx.get_view(this->network.app_scripts);
 
         // Try find script for method
         // - First try a script called "foo"
@@ -173,12 +173,12 @@ namespace ccfapp
         if (!handler_script)
         {
           const auto verb_prefixed = fmt::format(
-            "{} {}", ctx.rpc_ctx->get_request_verb().c_str(), local_method);
+            "{} {}", context.rpc_ctx->get_request_verb().c_str(), local_method);
           handler_script = scripts->get(verb_prefixed);
           if (!handler_script)
           {
-            ctx.rpc_ctx->set_response_status(HTTP_STATUS_NOT_FOUND);
-            ctx.rpc_ctx->set_response_body(fmt::format(
+            context.rpc_ctx->set_response_status(HTTP_STATUS_NOT_FOUND);
+            context.rpc_ctx->set_response_body(fmt::format(
               "No handler script found for method '{}'", verb_prefixed));
             return;
           }
@@ -197,7 +197,7 @@ namespace ccfapp
           throw std::runtime_error("Failed to initialise QuickJS context");
         }
 
-        auto ltv = ctx.tx.get_view(table);
+        auto ltv = context.tx.get_view(table);
         JS_SetContextOpaque(ctx, (void*)ltv);
 
         auto global_obj = JS_GetGlobalObject(ctx);
@@ -224,12 +224,12 @@ namespace ccfapp
         JS_SetPropertyStr(ctx, tables_, "data", data);
         JS_SetPropertyStr(ctx, global_obj, "tables", tables_);
 
-        const auto& request_query = ctx.rpc_ctx->get_request_query();
+        const auto& request_query = context.rpc_ctx->get_request_query();
         auto query_str =
           JS_NewStringLen(ctx, request_query.c_str(), request_query.size());
         JS_SetPropertyStr(ctx, global_obj, "query", query_str);
 
-        const auto& request_body = ctx.rpc_ctx->get_request_body();
+        const auto& request_body = context.rpc_ctx->get_request_body();
         auto body_str = JS_NewStringLen(
           ctx, (const char*)request_body.data(), request_body.size());
         JS_SetPropertyStr(ctx, global_obj, "body", body_str);
@@ -251,8 +251,10 @@ namespace ccfapp
         if (JS_IsException(val))
         {
           js_dump_error(ctx);
-          ctx.rpc_ctx->set_response_status(HTTP_STATUS_INTERNAL_SERVER_ERROR);
-          ctx.rpc_ctx->set_response_body("Exception thrown while executing");
+          context.rpc_ctx->set_response_status(
+            HTTP_STATUS_INTERNAL_SERVER_ERROR);
+          context.rpc_ctx->set_response_body(
+            "Exception thrown while executing");
           return;
         }
 
@@ -270,10 +272,10 @@ namespace ccfapp
         JS_FreeContext(ctx);
         JS_FreeRuntime(rt);
 
-        ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
-        ctx.rpc_ctx->set_response_body(
+        context.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+        context.rpc_ctx->set_response_body(
           jsonrpc::pack(response, jsonrpc::Pack::Text));
-        ctx.rpc_ctx->set_response_header(
+        context.rpc_ctx->set_response_header(
           http::headers::CONTENT_TYPE, http::headervalues::contenttype::JSON);
         return;
       };
