@@ -254,43 +254,24 @@ namespace ccf
     return jsonhandler::ErrorDetails{status, msg};
   }
 
-  using HandlerJsonParamsAndForward =
-    std::function<jsonhandler::JsonAdapterResponse(
-      EndpointContext& ctx, nlohmann::json&& params)>;
-
-  static EndpointFunction json_adapter(const HandlerJsonParamsAndForward& f)
+  template <typename RetFunc, typename Context>
+  static RetFunc json_adapter_for(
+    const std::function<jsonhandler::JsonAdapterResponse(
+      Context& ctx, nlohmann::json&& params)>& f)
   {
-    return [f](EndpointContext& ctx) {
+    return [f](Context& ctx) {
       auto [packing, params] = jsonhandler::get_json_params(ctx.rpc_ctx);
       jsonhandler::set_response(
         f(ctx, std::move(params)), ctx.rpc_ctx, packing);
     };
   }
 
-  using ReadOnlyHandlerWithJson =
-    std::function<jsonhandler::JsonAdapterResponse(
-      ReadOnlyEndpointContext& ctx, nlohmann::json&& params)>;
+  static auto json_adapter =
+    json_adapter_for<EndpointFunction, EndpointContext>;
 
-  static ReadOnlyEndpointFunction json_read_only_adapter(
-    const ReadOnlyHandlerWithJson& f)
-  {
-    return [f](ReadOnlyEndpointContext& ctx) {
-      auto [packing, params] = jsonhandler::get_json_params(ctx.rpc_ctx);
-      jsonhandler::set_response(
-        f(ctx, std::move(params)), ctx.rpc_ctx, packing);
-    };
-  }
+  static auto json_read_only_adapter =
+    json_adapter_for<ReadOnlyEndpointFunction, ReadOnlyEndpointContext>;
 
-  using CommandHandlerWithJson = std::function<jsonhandler::JsonAdapterResponse(
-    CommandEndpointContext& ctx, nlohmann::json&& params)>;
-
-  static CommandEndpointFunction json_command_adapter(
-    const CommandHandlerWithJson& f)
-  {
-    return [f](CommandEndpointContext& ctx) {
-      auto [packing, params] = jsonhandler::get_json_params(ctx.rpc_ctx);
-      jsonhandler::set_response(
-        f(ctx, std::move(params)), ctx.rpc_ctx, packing);
-    };
-  }
+  static auto json_command_adapter =
+    json_adapter_for<CommandEndpointFunction, CommandEndpointContext>;
 }
