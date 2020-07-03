@@ -72,7 +72,7 @@ namespace loggingapp
       get_public_result_schema(nlohmann::json::parse(j_get_public_out))
     {
       // SNIPPET_START: record
-      auto record = [this](kv::Tx& tx, nlohmann::json&& params) {
+      auto record = [this](auto& ctx, nlohmann::json&& params) {
         // SNIPPET_START: macro_validation_record
         const auto in = params.get<LoggingRecord::In>();
         // SNIPPET_END: macro_validation_record
@@ -83,7 +83,7 @@ namespace loggingapp
             HTTP_STATUS_BAD_REQUEST, "Cannot record an empty log message");
         }
 
-        auto view = tx.get_view(records);
+        auto view = ctx.tx.get_view(records);
         view->put(in.id, in.msg);
         return ccf::make_success(true);
       };
@@ -122,9 +122,9 @@ namespace loggingapp
         .install();
       // SNIPPET_END: install_get
 
-      auto remove = [this](kv::Tx& tx, nlohmann::json&& params) {
+      auto remove = [this](auto& ctx, nlohmann::json&& params) {
         const auto in = params.get<LoggingRemove::In>();
-        auto view = tx.get_view(records);
+        auto view = ctx.tx.get_view(records);
         auto removed = view->remove(in.id);
 
         return ccf::make_success(LoggingRemove::Out{removed});
@@ -134,7 +134,7 @@ namespace loggingapp
         .install();
 
       // SNIPPET_START: record_public
-      auto record_public = [this](kv::Tx& tx, nlohmann::json&& params) {
+      auto record_public = [this](auto& ctx, nlohmann::json&& params) {
         // SNIPPET_START: valijson_record_public
         const auto validation_error =
           validate(params, record_public_params_schema);
@@ -153,7 +153,7 @@ namespace loggingapp
             HTTP_STATUS_BAD_REQUEST, "Cannot record an empty log message");
         }
 
-        auto view = tx.get_view(public_records);
+        auto view = ctx.tx.get_view(public_records);
         view->put(params["id"], msg);
         return ccf::make_success(true);
       };
@@ -196,9 +196,9 @@ namespace loggingapp
         .set_result_schema(get_public_result_schema)
         .install();
 
-      auto remove_public = [this](kv::Tx& tx, nlohmann::json&& params) {
+      auto remove_public = [this](auto& ctx, nlohmann::json&& params) {
         const auto in = params.get<LoggingRemove::In>();
-        auto view = tx.get_view(public_records);
+        auto view = ctx.tx.get_view(public_records);
         auto removed = view->remove(in.id);
 
         return ccf::make_success(LoggingRemove::Out{removed});

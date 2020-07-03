@@ -48,7 +48,7 @@ namespace ccf
    * };
    *
    * it is possible to write the shorter, clearer, return-based lambda:
-   * auto foo = json_adapter([](kv::Tx& tx, nlohmann::json&& params)
+   * auto foo = json_adapter([](auto& ctx, nlohmann::json&& params)
    * {
    *    auto result = fn(params);
    *    if (is_error(result))
@@ -252,42 +252,6 @@ namespace ccf
     http_status status, const std::string& msg = "")
   {
     return jsonhandler::ErrorDetails{status, msg};
-  }
-
-  using HandlerTxOnly =
-    std::function<jsonhandler::JsonAdapterResponse(kv::Tx& tx)>;
-
-  static EndpointFunction json_adapter(const HandlerTxOnly& f)
-  {
-    return [f](EndpointContext& ctx) {
-      const auto [packing, params] = jsonhandler::get_json_params(ctx.rpc_ctx);
-      jsonhandler::set_response(f(ctx.tx), ctx.rpc_ctx, packing);
-    };
-  }
-
-  using HandlerJsonParamsOnly = std::function<jsonhandler::JsonAdapterResponse(
-    kv::Tx& tx, nlohmann::json&& params)>;
-
-  static EndpointFunction json_adapter(const HandlerJsonParamsOnly& f)
-  {
-    return [f](EndpointContext& ctx) {
-      auto [packing, params] = jsonhandler::get_json_params(ctx.rpc_ctx);
-      jsonhandler::set_response(
-        f(ctx.tx, std::move(params)), ctx.rpc_ctx, packing);
-    };
-  }
-
-  using HandlerJsonParamsAndCallerId =
-    std::function<jsonhandler::JsonAdapterResponse(
-      kv::Tx& tx, CallerId caller_id, nlohmann::json&& params)>;
-
-  static EndpointFunction json_adapter(const HandlerJsonParamsAndCallerId& f)
-  {
-    return [f](EndpointContext& ctx) {
-      auto [packing, params] = jsonhandler::get_json_params(ctx.rpc_ctx);
-      jsonhandler::set_response(
-        f(ctx.tx, ctx.caller_id, std::move(params)), ctx.rpc_ctx, packing);
-    };
   }
 
   using HandlerJsonParamsAndForward =

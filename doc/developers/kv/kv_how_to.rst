@@ -175,12 +175,12 @@ By default CCF decides which transactions are successful (so should be applied t
 
 .. code-block:: cpp
 
-    args.rpc_ctx->set_response_status(HTTP_STATUS_FORBIDDEN);
+    ctx.rpc_ctx->set_response_status(HTTP_STATUS_FORBIDDEN);
     auto forbidden_requests_view = tx.get_view(forbidden_requests);
 
     // Log details of forbidden request
     forbidden_requests_view->put(...);
 
      // Apply this, even though it has an error response
-    args.rpc_ctx->set_apply_writes(true);
+    ctx.rpc_ctx->set_apply_writes(true);
 

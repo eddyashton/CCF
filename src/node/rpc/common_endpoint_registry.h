@@ -241,10 +241,10 @@ namespace ccf
         .set_auto_schema<GetNodesByRPCAddress::In, GetNodesByRPCAddress::Out>()
         .install();
 
-      auto list_methods_fn = [this](kv::Tx& tx, nlohmann::json&& params) {
+      auto list_methods_fn = [this](auto& ctx, nlohmann::json&& params) {
         ListMethods::Out out;
 
-        list_methods(tx, out);
+        list_methods(ctx.tx, out);
 
         std::sort(out.methods.begin(), out.methods.end());
 

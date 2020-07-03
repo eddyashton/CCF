@@ -561,9 +561,9 @@ namespace ccf
       CommonEndpointRegistry::init_handlers(tables_);
 
       auto read = [this](
-                    kv::Tx& tx, CallerId caller_id, nlohmann::json&& params) {
+                    auto& ctx, nlohmann::json&& params) {
         if (!check_member_status(
-              tx, caller_id, {MemberStatus::ACTIVE, MemberStatus::ACCEPTED}))
+              ctx.tx, ctx.caller_id, {MemberStatus::ACTIVE, MemberStatus::ACCEPTED}))
         {
           return make_error(
             HTTP_STATUS_FORBIDDEN, "Member is not active or accepted");
@@ -577,7 +577,7 @@ namespace ccf
         )xxx");
 
         auto value = tsr.run<nlohmann::json>(
-          tx, {read_script, {}, WlIds::MEMBER_CAN_READ, {}}, in.table, in.key);
+          ctx.tx, {read_script, {}, WlIds::MEMBER_CAN_READ, {}}, in.table, in.key);
         if (value.empty())
         {
           return make_error(
@@ -595,17 +595,16 @@ namespace ccf
         .set_auto_schema<KVRead>()
         .install();
 
-      auto query =
-        [this](kv::Tx& tx, CallerId caller_id, nlohmann::json&& params) {
-          if (!check_member_accepted(tx, caller_id))
-          {
-            return make_error(HTTP_STATUS_FORBIDDEN, "Member is not accepted");
-          }
+      auto query = [this](auto& ctx, nlohmann::json&& params) {
+        if (!check_member_accepted(ctx.tx, ctx.caller_id))
+        {
+          return make_error(HTTP_STATUS_FORBIDDEN, "Member is not accepted");
+        }
 
-          const auto script = params.get<ccf::Script>();
-          return make_success(tsr.run<nlohmann::json>(
-            tx, {script, {}, WlIds::MEMBER_CAN_READ, {}}));
-        };
+        const auto script = params.get<ccf::Script>();
+        return make_success(tsr.run<nlohmann::json>(
+          ctx.tx, {script, {}, WlIds::MEMBER_CAN_READ, {}}));
+      };
       make_endpoint("query", HTTP_POST, json_adapter(query))
         // This can be executed locally, but can't currently take ReadOnlyTx due
         // to restristions in our lua wrappers
@@ -739,28 +738,27 @@ namespace ccf
         .set_require_client_signature(true)
         .install();
 
-      auto complete =
-        [this](kv::Tx& tx, CallerId caller_id, nlohmann::json&& params) {
-          if (!check_member_active(tx, caller_id))
-          {
-            return make_error(HTTP_STATUS_FORBIDDEN, "Member is not active");
-          }
+      auto complete = [this](auto& ctx, nlohmann::json&& params) {
+        if (!check_member_active(ctx.tx, ctx.caller_id))
+        {
+          return make_error(HTTP_STATUS_FORBIDDEN, "Member is not active");
+        }
 
-          const auto proposal_action = params.get<ProposalAction>();
-          const auto proposal_id = proposal_action.id;
+        const auto proposal_action = params.get<ProposalAction>();
+        const auto proposal_id = proposal_action.id;
 
-          auto proposals = tx.get_view(this->network.proposals);
-          auto proposal = proposals->get(proposal_id);
-          if (!proposal.has_value())
-          {
-            return make_error(
-              HTTP_STATUS_BAD_REQUEST,
-              fmt::format("No such proposal: {}", proposal_id));
-          }
+        auto proposals = ctx.tx.get_view(this->network.proposals);
+        auto proposal = proposals->get(proposal_id);
+        if (!proposal.has_value())
+        {
+          return make_error(
+            HTTP_STATUS_BAD_REQUEST,
+            fmt::format("No such proposal: {}", proposal_id));
+        }
 
-          return make_success(
-            complete_proposal(tx, proposal_id, proposal.value()));
-        };
+        return make_success(
+          complete_proposal(ctx.tx, proposal_id, proposal.value()));
+      };
       make_endpoint("complete", HTTP_POST, json_adapter(complete))
         .set_auto_schema<ProposalAction, ProposalInfo>()
         .set_require_client_signature(true)
@@ -831,29 +829,28 @@ namespace ccf
         .install();
 
       //! A member asks for a fresher state digest
-      auto update_state_digest =
-        [this](kv::Tx& tx, CallerId caller_id, nlohmann::json&& params) {
-          auto [ma_view, sig_view] =
-            tx.get_view(this->network.member_acks, this->network.signatures);
-          auto ma = ma_view->get(caller_id);
-          if (!ma)
-          {
-            return make_error(
-              HTTP_STATUS_FORBIDDEN,
-              fmt::format("No ACK record exists for caller {}", caller_id));
-          }
+      auto update_state_digest = [this](auto& ctx, nlohmann::json&& params) {
+        auto [ma_view, sig_view] =
+          ctx.tx.get_view(this->network.member_acks, this->network.signatures);
+        auto ma = ma_view->get(ctx.caller_id);
+        if (!ma)
+        {
+          return make_error(
+            HTTP_STATUS_FORBIDDEN,
+            fmt::format("No ACK record exists for caller {}", ctx.caller_id));
+        }
 
-          auto s = sig_view->get(0);
-          if (s)
-          {
-            ma->state_digest =
-              std::vector<uint8_t>(s->root.h.begin(), s->root.h.end());
+        auto s = sig_view->get(0);
+        if (s)
+        {
+          ma->state_digest =
+            std::vector<uint8_t>(s->root.h.begin(), s->root.h.end());
 
-            ma_view->put(caller_id, ma.value());
-          }
+          ma_view->put(ctx.caller_id, ma.value());
+        }
 
-          return make_success(ma.value());
-        };
+        return make_success(ma.value());
+      };
       make_endpoint(
         "ack/update_state_digest", HTTP_POST, json_adapter(update_state_digest))
         .set_auto_schema<void, StateDigest>()
@@ -974,11 +971,11 @@ namespace ccf
         .set_auto_schema<std::string, std::string>()
         .install();
 
-      auto create = [this](kv::Tx& tx, nlohmann::json&& params) {
+      auto create = [this](auto& ctx, nlohmann::json&& params) {
         LOG_DEBUG_FMT("Processing create RPC");
         const auto in = params.get<CreateNetworkNodeToNode::In>();
 
-        GenesisGenerator g(this->network, tx);
+        GenesisGenerator g(this->network, ctx.tx);
 
         // This endpoint can only be called once, directly from the starting
         // node for the genesis transaction to initialise the service

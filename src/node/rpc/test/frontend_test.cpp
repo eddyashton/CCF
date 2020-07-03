@@ -89,20 +89,20 @@ public:
   {
     open();
 
-    auto echo_function = [this](kv::Tx& tx, nlohmann::json&& params) {
+    auto echo_function = [this](auto& ctx, nlohmann::json&& params) {
       return make_success(std::move(params));
     };
     make_endpoint("echo", HTTP_POST, json_adapter(echo_function)).install();
 
     auto get_caller_function =
-      [this](kv::Tx& tx, CallerId caller_id, nlohmann::json&& params) {
-        return make_success(caller_id);
+      [this](auto& ctx, nlohmann::json&& params) {
+        return make_success(ctx.caller_id);
       };
     make_endpoint("get_caller", HTTP_POST, json_adapter(get_caller_function))
       .install();
 
     auto failable_function =
-      [this](kv::Tx& tx, CallerId caller_id, nlohmann::json&& params) {
+      [this](auto& ctx, nlohmann::json&& params) {
         const auto it = params.find("error");
         if (it != params.end())
         {
