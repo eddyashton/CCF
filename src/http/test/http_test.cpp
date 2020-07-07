@@ -279,16 +279,16 @@ DOCTEST_TEST_CASE("Pessimal transport")
 DOCTEST_TEST_CASE("Escaping")
 {
   {
-    const std::string unescaped =
+    const std::string decoded =
       "This has many@many+many \\% \" AWKWARD :;-=?!& ++ characters %20%20";
-    const std::string escaped =
+    const std::string encoded =
       "This+has+many%40many%2Bmany+%5C%25+%22+AWKWARD+%3A%3B-%3D%3F%21%26+%2B%"
       "2b+"
       "characters+%2520%2520";
 
-    std::string s = escaped;
-    http::url_unescape(s);
-    DOCTEST_REQUIRE(s == unescaped);
+    std::string s = encoded;
+    http::url_decode(s);
+    DOCTEST_REQUIRE(s == decoded);
   }
 
   {

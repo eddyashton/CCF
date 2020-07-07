@@ -32,7 +32,7 @@ namespace http
     return c;
   }
 
-  static void url_unescape(std::string& s)
+  static void url_decode(std::string& s)
   {
     char const* src = s.c_str();
     char const* end = s.c_str() + s.size();
@@ -376,7 +376,7 @@ namespace http
       {
         const auto [path, query] = parse_url(url);
         std::string unescaped_query(query);
-        url_unescape(unescaped_query);
+        url_decode(unescaped_query);
         proc.handle_request(
           http_method(parser.method),
           path,
