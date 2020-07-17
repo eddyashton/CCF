@@ -22,6 +22,14 @@
 
 namespace ccf
 {
+  struct AddJSEndpoint
+  {
+    std::string dispatch_path;
+    std::string script;
+  };
+  DECLARE_JSON_TYPE(AddJSEndpoint)
+  DECLARE_JSON_REQUIRED_FIELDS(AddJSEndpoint, dispatch_path, script)
+
   struct SetUserData
   {
     UserId user_id;
@@ -96,6 +104,13 @@ namespace ccf
       }
     }
 
+    void add_js_endpoint(kv::Tx& tx, const AddJSEndpoint& args)
+    {
+      auto tx_scripts = tx.get_view(network.app_scripts);
+
+      tx_scripts->put(args.dispatch_path, {args.script});
+    }
+
     bool add_new_code_id(
       kv::Tx& tx,
       const CodeDigest& new_code_id,
@@ -134,6 +149,13 @@ namespace ccf
          [this](ObjectId proposal_id, kv::Tx& tx, const nlohmann::json& args) {
            const std::string app = args;
            set_js_scripts(tx, lua::Interpreter().invoke<nlohmann::json>(app));
+           return true;
+         }},
+         // add a single js endpoint
+         {"add_js_endpoint",
+         [this](ObjectId proposal_id, kv::Tx& tx, const nlohmann::json& args) {
+           const auto proposed = args.get<AddJSEndpoint>();
+           add_js_endpoint(tx, proposed);
            return true;
          }},
         // add a new member
