@@ -252,6 +252,14 @@ def set_js_app(app_script_path, **kwargs):
 
 
 @cli_proposal
+def add_js_endpoint(dispatch_path, endpoint_script_path, **kwargs):
+    with open(endpoint_script_path) as f:
+        endpoint_script = f.read()
+    proposed_call_args = {"dispatch_path": dispatch_path, "script": endpoint_script}
+    return build_proposal("add_js_endpoint", proposed_call_args, **kwargs)
+
+
+@cli_proposal
 def trust_node(node_id, **kwargs):
     return build_proposal("trust_node", node_id, **kwargs)
 
