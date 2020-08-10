@@ -105,7 +105,8 @@ namespace pbft
            &signatures,
            pp,
            root = std::vector<uint8_t>(root.p, root.p + root.n)]() {
-            kv::Tx tx(txid.version);
+            // TODO: This isn't right...
+            kv::ReservedTx tx(nullptr, txid.version);
             auto pp_view = tx.get_view(pbft_pre_prepares_map);
             pp_view->put(0, pp);
             auto sig_view = tx.get_view(signatures);
@@ -159,7 +160,7 @@ namespace pbft
         p->commit(
           txid,
           [txid, &pbft_new_views_map, new_view]() {
-            kv::Tx tx(txid.version);
+            auto tx = kv::ReservedTx(nullptr, txid.version);
             auto vc_view = tx.get_view(pbft_new_views_map);
             vc_view->put(0, new_view);
             return tx.commit_reserved();

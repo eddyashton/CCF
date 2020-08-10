@@ -126,11 +126,11 @@ namespace ccf
       store.commit(
         txid,
         [txid, this]() {
-          kv::Tx sig(txid.version);
-          auto sig_view = sig.get_view(signatures);
+          auto sig_tx = store.create_reserved_tx(txid.version);
+          auto sig_view = sig_tx.get_view(signatures);
           Signature sig_value(id, txid.version);
           sig_view->put(0, sig_value);
-          return sig.commit_reserved();
+          return sig_tx.commit_reserved();
         },
         true);
     }
@@ -598,8 +598,8 @@ namespace ccf
         store.commit(
           txid,
           [txid, commit_txid, this]() {
-            kv::Tx sig(txid.version);
-            auto sig_view = sig.get_view(signatures);
+            auto sig_tx = store.create_reserved_tx(txid.version);
+            auto sig_view = sig_tx.get_view(signatures);
             crypto::Sha256Hash root = replicated_state_tree.get_root();
             Signature sig_value(
               id,
@@ -611,7 +611,7 @@ namespace ccf
               kp.sign_hash(root.h.data(), root.h.size()),
               replicated_state_tree.serialise());
             sig_view->put(0, sig_value);
-            return sig.commit_reserved();
+            return sig_tx.commit_reserved();
           },
           true);
       }

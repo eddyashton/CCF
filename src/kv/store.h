@@ -7,6 +7,7 @@
 #include "kv_types.h"
 #include "map.h"
 #include "snapshot.h"
+#include "tx.h"
 #include "view_containers.h"
 
 #include <fmt/format.h>
@@ -71,7 +72,7 @@ namespace kv
 
       for (auto& [name, map] : from.maps)
       {
-        maps[name] = std::unique_ptr<AbstractMap>(map->clone(this));
+        maps[name] = std::unique_ptr<AbstractMap>(map->clone());
       }
     }
 
@@ -215,7 +216,7 @@ namespace kv
         }
       }
 
-      auto result = new M(this, name, security_domain, replicated);
+      auto result = new M(name, security_domain, replicated);
       maps[name] = std::unique_ptr<AbstractMap>(result);
       return *result;
     }
@@ -893,6 +894,21 @@ namespace kv
         lhs->unlock();
         rhs->unlock();
       }
+    }
+
+    ReadOnlyTx create_read_only_tx()
+    {
+      return ReadOnlyTx(this);
+    }
+
+    Tx create_tx()
+    {
+      return Tx(this);
+    }
+
+    ReservedTx create_reserved_tx(Version v)
+    {
+      return ReservedTx(this, v);
     }
   };
 }

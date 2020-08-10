@@ -100,6 +100,7 @@ If a Key-Value pair was written to a ``Map`` by a previous ``Transaction``, it i
 .. code-block:: cpp
 
     // Assuming that "key1" has already been committed
+    // TODO: Tx must now be created with reference to a Store
     kv::Tx tx;
     auto view_map1 = tx.get_view(map_priv);
     auto v = view_map1->get("key1"); // v.value() == "value1"

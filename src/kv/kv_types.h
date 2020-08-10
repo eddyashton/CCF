@@ -376,7 +376,6 @@ namespace kv
     virtual bool operator==(const AbstractMap& that) const = 0;
     virtual bool operator!=(const AbstractMap& that) const = 0;
 
-    virtual AbstractStore* get_store() = 0;
     virtual void serialise(
       const AbstractTxView* view, KvStoreSerialiser& s, bool include_reads) = 0;
     virtual AbstractTxView* deserialise(
@@ -394,7 +393,7 @@ namespace kv
     virtual bool is_replicated() = 0;
     virtual void clear() = 0;
 
-    virtual AbstractMap* clone(AbstractStore* store) = 0;
+    virtual AbstractMap* clone() = 0;
     virtual void swap(AbstractMap* map) = 0;
   };
 

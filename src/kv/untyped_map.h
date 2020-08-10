@@ -107,7 +107,6 @@ namespace kv::untyped
     using CommitHook = CommitHook<Write>;
 
   private:
-    AbstractStore* store;
     std::string name;
     Roll roll;
     CommitHook local_hook = nullptr;
@@ -330,11 +329,9 @@ namespace kv::untyped
     using TxView = ConcreteTxView;
 
     Map(
-      AbstractStore* store_,
       std::string name_,
       SecurityDomain security_domain_,
       bool replicated_) :
-      store(store_),
       name(name_),
       roll{std::make_unique<LocalCommits>(), 0, {}},
       security_domain(security_domain_),
@@ -345,9 +342,9 @@ namespace kv::untyped
 
     Map(const Map& that) = delete;
 
-    virtual AbstractMap* clone(AbstractStore* other) override
+    virtual AbstractMap* clone() override
     {
-      return new Map(other, name, security_domain, replicated);
+      return new Map(name, security_domain, replicated);
     }
 
     void serialise(
@@ -477,15 +474,6 @@ namespace kv::untyped
     const std::string& get_name() const override
     {
       return name;
-    }
-
-    /** Get store that the map belongs to
-     *
-     * @return Pointer to `kv::AbstractStore`
-     */
-    AbstractStore* get_store() override
-    {
-      return store;
     }
 
     /** Set handler to be called on local transaction commit

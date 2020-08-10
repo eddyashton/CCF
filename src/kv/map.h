@@ -49,11 +49,6 @@ namespace kv
       return !(*this == that);
     }
 
-    AbstractStore* get_store() override
-    {
-      return untyped_map.get_store();
-    }
-
     void serialise(
       const AbstractTxView* view,
       KvStoreSerialiser& s,
@@ -124,10 +119,9 @@ namespace kv
       untyped_map.clear();
     }
 
-    AbstractMap* clone(AbstractStore* store) override
+    AbstractMap* clone() override
     {
       return new TypedMap(
-        store,
         untyped_map.get_name(),
         untyped_map.get_security_domain(),
         untyped_map.is_replicated());

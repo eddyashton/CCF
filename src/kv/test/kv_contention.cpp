@@ -59,7 +59,7 @@ DOCTEST_TEST_CASE("Concurrent kv access" * doctest::test_suite("concurrency"))
     }
   }
 
-  auto thread_fn = [](void* a) {
+  auto thread_fn = [&kv_store](void* a) {
     auto args = static_cast<ThreadArgs*>(a);
 
     for (size_t i = 0u; i < tx_count; ++i)
@@ -78,7 +78,7 @@ DOCTEST_TEST_CASE("Concurrent kv access" * doctest::test_suite("concurrency"))
       while (true)
       {
         // Start a transaction over selected maps
-        kv::Tx tx;
+        auto tx = kv_store.create_tx();
 
         std::vector<MapType::TxView*> views;
         for (const auto map : args->maps)

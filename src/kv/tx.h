@@ -14,7 +14,10 @@ namespace kv
   class BaseTx : public AbstractViewContainer
   {
   protected:
-    OrderedViews view_list;
+    AbstractStore* store =
+      nullptr; // TODO: Should never really be null, but for eases
+
+    OrderedViews view_list = {};
     bool committed = false;
     bool success = false;
     Version read_version = NoVersion;
@@ -45,19 +48,14 @@ namespace kv
         return std::make_tuple(view);
       }
 
-      auto it = view_list.begin();
-      if (it != view_list.end())
-      {
-        // All Maps must be in the same store.
-        if (it->second.map->get_store() != m.get_store())
-          throw std::logic_error(
-            "Transaction must be over maps in the same store");
-      }
-
       if (read_version == NoVersion)
       {
         // Grab opacity version that all Maps should be queried at.
-        auto txid = m.get_store()->current_txid();
+        if (store == nullptr)
+        {
+          throw std::logic_error("store in null");
+        }
+        auto txid = store->current_txid();
         term = txid.term;
         read_version = txid.version;
       }
@@ -93,6 +91,7 @@ namespace kv
 
   public:
     BaseTx() : view_list() {}
+    BaseTx(AbstractStore* _store) : store(_store) {}
 
     BaseTx(const BaseTx& that) = delete;
 
@@ -151,9 +150,12 @@ namespace kv
         return CommitSuccess::OK;
       }
 
-      auto store = view_list.begin()->second.map->get_store();
+      if (store == nullptr)
+      {
+        throw std::logic_error("store in null");
+      }
       auto c =
-        apply_views(view_list, [store]() { return store->next_version(); });
+        apply_views(view_list, [this]() { return store->next_version(); });
       success = c.has_value();
 
       if (!success)
@@ -258,9 +260,14 @@ namespace kv
         return {};
       }
 
+      if (store == nullptr)
+      {
+        throw std::logic_error("store in null");
+      }
+
       // Retrieve encryptor.
       auto map = view_list.begin()->second.map;
-      auto e = map->get_store()->get_encryptor();
+      auto e = store->get_encryptor();
 
       KvStoreSerialiser replicated_serialiser(e, version);
 
@@ -282,34 +289,6 @@ namespace kv
 
       // Return serialised Tx.
       return replicated_serialiser.get_raw_data();
-    }
-
-    // Used by frontend for reserved transactions
-    BaseTx(Version reserved) :
-      view_list(),
-      committed(false),
-      success(false),
-      read_version(reserved - 1),
-      version(reserved)
-    {}
-
-    // Used by frontend to commit reserved transactions
-    PendingTxInfo commit_reserved()
-    {
-      if (committed)
-        throw std::logic_error("Transaction already committed");
-
-      if (view_list.empty())
-        throw std::logic_error("Reserved transaction cannot be empty");
-
-      auto c = apply_views(view_list, [this]() { return version; });
-      success = c.has_value();
-
-      if (!success)
-        throw std::logic_error("Failed to commit reserved transaction");
-
-      committed = true;
-      return {CommitSuccess::OK, {0, 0, 0}, serialise()};
     }
   };
 
@@ -370,6 +349,40 @@ namespace kv
       M& m, Ms&... ms)
     {
       return std::tuple_cat(get_tuple(m), get_tuple(ms...));
+    }
+  };
+
+  // Used by frontend for reserved transactions. These are constructed with a
+  // pre-reserved Version, and must succeed to supply this version
+  class ReservedTx : public Tx
+  {
+  public:
+    ReservedTx(AbstractStore* _store, Version reserved)
+    {
+      store = _store;
+      committed = false;
+      success = false;
+      read_version = reserved - 1;
+      version = reserved;
+    }
+
+    // Used by frontend to commit reserved transactions
+    PendingTxInfo commit_reserved()
+    {
+      if (committed)
+        throw std::logic_error("Transaction already committed");
+
+      if (view_list.empty())
+        throw std::logic_error("Reserved transaction cannot be empty");
+
+      auto c = apply_views(view_list, [this]() { return version; });
+      success = c.has_value();
+
+      if (!success)
+        throw std::logic_error("Failed to commit reserved transaction");
+
+      committed = true;
+      return {CommitSuccess::OK, {0, 0, 0}, serialise()};
     }
   };
 }

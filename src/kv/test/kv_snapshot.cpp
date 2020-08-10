@@ -27,19 +27,19 @@ TEST_CASE("Simple snapshot" * doctest::test_suite("snapshot"))
 
   INFO("Apply transactions to original store");
   {
-    kv::Tx tx1;
+    auto tx1 = store.create_tx();
     auto view_1 = tx1.get_view(string_map);
     view_1->put("foo", "bar");
     REQUIRE(tx1.commit() == kv::CommitSuccess::OK);
     first_snapshot_version = tx1.commit_version();
 
-    kv::Tx tx2;
+    auto tx2 = store.create_tx();
     auto view_2 = tx2.get_view(num_map);
     view_2->put(42, 123);
     REQUIRE(tx2.commit() == kv::CommitSuccess::OK);
     second_snapshot_version = tx2.commit_version();
 
-    kv::Tx tx3;
+    auto tx3 = store.create_tx();
     auto view_3 = tx1.get_view(string_map);
     view_3->put("key", "not committed");
     // Do not commit tx3
@@ -60,7 +60,7 @@ TEST_CASE("Simple snapshot" * doctest::test_suite("snapshot"))
     auto new_string_map = new_store.get<MapTypes::StringString>("string_map");
     auto new_num_map = new_store.get<MapTypes::NumNum>("num_map");
 
-    kv::Tx tx1;
+    auto tx1 = store.create_tx();
     auto view = tx1.get_view(*new_string_map);
     auto v = view->get("foo");
     REQUIRE(v.has_value());
@@ -86,7 +86,7 @@ TEST_CASE("Simple snapshot" * doctest::test_suite("snapshot"))
     auto new_string_map = new_store.get<MapTypes::StringString>("string_map");
     auto new_num_map = new_store.get<MapTypes::NumNum>("num_map");
 
-    kv::Tx tx1;
+    auto tx1 = new_store.create_tx();
     auto view = tx1.get_view(*new_string_map);
 
     auto v = view->get("foo");
@@ -115,12 +115,12 @@ TEST_CASE(
   kv::Version snapshot_version = kv::NoVersion;
   INFO("Apply transactions to original store");
   {
-    kv::Tx tx1;
+    auto tx1 = store.create_tx();
     auto view_1 = tx1.get_view(string_map);
     view_1->put("foo", "foo");
     REQUIRE(tx1.commit() == kv::CommitSuccess::OK); // Committed at 1
 
-    kv::Tx tx2;
+    auto tx2 = store.create_tx();
     auto view_2 = tx2.get_view(string_map);
     view_2->put("bar", "bar");
     REQUIRE(tx2.commit() == kv::CommitSuccess::OK); // Committed at 2
@@ -135,7 +135,7 @@ TEST_CASE(
     new_store.clone_schema(store);
 
     auto new_string_map = new_store.get<MapTypes::StringString>("string_map");
-    kv::Tx tx;
+    auto tx = store.create_tx();
     auto view = tx.get_view(*new_string_map);
     view->put("in", "flight");
     // tx is not committed until the snapshot is deserialised
