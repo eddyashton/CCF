@@ -22,6 +22,10 @@ namespace kv
     using Maps = std::map<std::string, std::unique_ptr<AbstractMap>>;
     Maps maps;
 
+    using DynamicMaps = std::
+      map<std::string, std::pair<kv::Version, std::shared_ptr<AbstractMap>>>;
+    DynamicMaps dynamic_maps;
+
     std::shared_ptr<Consensus> consensus = nullptr;
     std::shared_ptr<TxHistory> history = nullptr;
     std::shared_ptr<AbstractTxEncryptor> encryptor = nullptr;
@@ -48,7 +52,7 @@ namespace kv
 
     DeserialiseSuccess commit_deserialised(OrderedViews& views, Version& v)
     {
-      auto c = apply_views(views, [v]() { return v; });
+      auto c = apply_views(this, views, [v]() { return v; });
       if (!c.has_value())
       {
         LOG_FAIL_FMT("Failed to commit deserialised Tx at version {}", v);
@@ -60,6 +64,19 @@ namespace kv
         last_replicated = version;
       }
       return DeserialiseSuccess::PASS;
+    }
+
+    bool has_map_internal(const std::string& name)
+    {
+      auto search = maps.find(name);
+      if (search != maps.end())
+        return true;
+
+      auto dynamic_search = dynamic_maps.find(name);
+      if (dynamic_search != dynamic_maps.end())
+        return true;
+
+      return false;
     }
 
   public:
@@ -147,6 +164,17 @@ namespace kv
         return result;
       }
 
+      auto dynamic_search = dynamic_maps.find(name);
+      if (dynamic_search != dynamic_maps.end())
+      {
+        auto result = dynamic_cast<M*>(dynamic_search->second.second.get());
+
+        if (result == nullptr)
+          return nullptr;
+
+        return result;
+      }
+
       return nullptr;
     }
 
@@ -200,9 +228,9 @@ namespace kv
     {
       std::lock_guard<SpinLock> mguard(maps_lock);
 
-      auto search = maps.find(name);
-      if (search != maps.end())
+      if (has_map_internal(name))
         throw std::logic_error("Map already exists");
+
       auto replicated = true;
       if (replicate_type == kv::ReplicateType::NONE)
       {
@@ -219,6 +247,25 @@ namespace kv
       auto result = new M(name, security_domain, replicated);
       maps[name] = std::unique_ptr<AbstractMap>(result);
       return *result;
+    }
+
+    // TODO: Docs
+    void add_dynamic_map(Version v, const std::shared_ptr<AbstractMap>& map) override
+    {
+      std::lock_guard<SpinLock> mguard(maps_lock);
+
+      const auto name = map->get_name();
+
+      if (has_map_internal(name))
+        throw std::logic_error("Map already exists");
+
+      dynamic_maps[name] = std::make_pair(v, map);
+    }
+
+    bool has_map(const std::string& map_name) override
+    {
+      std::lock_guard<SpinLock> mguard(maps_lock);
+      return has_map_internal(map_name);
     }
 
     std::vector<uint8_t> serialise_snapshot(Version v) override
@@ -409,6 +456,23 @@ namespace kv
 
       for (auto& map : maps)
         map.second->rollback(v);
+
+      // TODO: Lock dynamic maps? Or perhaps flatten both into a single
+      // container?
+      auto dynamic_it = dynamic_maps.begin();
+      while (dynamic_it != dynamic_maps.end())
+      {
+        auto& [map_creation_version, map] = dynamic_it->second;
+        if (map_creation_version > v)
+        {
+          dynamic_it = dynamic_maps.erase(dynamic_it);
+        }
+        else
+        {
+          map->rollback(v);
+          ++dynamic_it;
+        }
+      }
 
       for (auto& map : maps)
         map.second->unlock();
@@ -769,6 +833,16 @@ namespace kv
         LOG_DEBUG_FMT("Failed to replicate");
         return CommitSuccess::NO_REPLICATE;
       }
+    }
+
+    void lock() override
+    {
+      maps_lock.lock();
+    }
+
+    void unlock() override
+    {
+      maps_lock.unlock();
     }
 
     Version next_version() override

@@ -26,6 +26,8 @@ namespace kv
 
     kv::TxHistory::RequestID req_id;
 
+    std::map<std::string, std::shared_ptr<AbstractMap>> created_maps;
+
     template <class M>
     std::tuple<typename M::TxView*> get_tuple(M& m)
     {
@@ -143,7 +145,7 @@ namespace kv
       if (committed)
         throw std::logic_error("Transaction already committed");
 
-      if (view_list.empty())
+      if (view_list.empty() && created_maps.empty())
       {
         committed = true;
         success = true;
@@ -154,8 +156,9 @@ namespace kv
       {
         throw std::logic_error("store in null");
       }
-      auto c =
-        apply_views(view_list, [this]() { return store->next_version(); });
+
+      auto c = apply_views(
+        store, view_list, [this]() { return store->next_version(); });
       success = c.has_value();
 
       if (!success)
@@ -290,6 +293,29 @@ namespace kv
       // Return serialised Tx.
       return replicated_serialiser.get_raw_data();
     }
+    /** Create a Map
+     *
+     * Note this call will throw a logic_error if a map by that name already
+     * exists.
+     *
+     * @param name Map name
+     *
+     * @return Newly created Map
+     */
+    template <class M>
+    M& create_map(
+      std::string name,
+      SecurityDomain security_domain = kv::SecurityDomain::PRIVATE)
+    {
+      auto search = created_maps.find(name);
+      if (search != created_maps.end())
+        throw std::logic_error("Map already exists");
+
+      // TODO: Assume these maps are always replicated?
+      auto result = new M(this, name, security_domain, true);
+      created_maps[name] = std::unique_ptr<AbstractMap>(result);
+      return *result;
+    }
   };
 
   class ReadOnlyTx : public BaseTx
@@ -375,7 +401,7 @@ namespace kv
       if (view_list.empty())
         throw std::logic_error("Reserved transaction cannot be empty");
 
-      auto c = apply_views(view_list, [this]() { return version; });
+      auto c = apply_views(store, view_list, [this]() { return version; });
       success = c.has_value();
 
       if (!success)

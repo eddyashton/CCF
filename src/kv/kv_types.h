@@ -348,6 +348,8 @@ namespace kv
       Version version, const std::vector<uint8_t>& raw_ledger_key) = 0;
   };
 
+  class AbstractStore;
+
   class AbstractTxView
   {
   public:
@@ -355,12 +357,12 @@ namespace kv
 
     virtual bool has_writes() = 0;
     virtual bool has_changes() = 0;
-    virtual bool prepare() = 0;
-    virtual void commit(Version v) = 0;
+    virtual bool has_map_creation() = 0;
+    virtual bool prepare(AbstractStore* store) = 0;
+    virtual void commit(AbstractStore* store, Version v) = 0;
     virtual void post_commit() = 0;
   };
 
-  class AbstractStore;
   class AbstractMap
   {
   public:
@@ -411,6 +413,9 @@ namespace kv
 
     virtual ~AbstractStore() {}
 
+    virtual void lock() = 0;
+    virtual void unlock() = 0;
+
     virtual Version next_version() = 0;
     virtual TxID next_txid() = 0;
 
@@ -418,6 +423,9 @@ namespace kv
     virtual TxID current_txid() = 0;
 
     virtual Version commit_version() = 0;
+
+    virtual bool has_map(const std::string& map_name) = 0;
+    virtual void add_dynamic_map(Version v, const std::shared_ptr<AbstractMap>& map) = 0;
 
     virtual std::shared_ptr<Consensus> get_consensus() = 0;
     virtual std::shared_ptr<TxHistory> get_history() = 0;

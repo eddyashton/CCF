@@ -32,7 +32,7 @@ namespace kv
   // to their underlying Maps. Calls f() at most once, iff the writes are
   // applied, to retrieve a unique Version for the write set.
   static inline std::optional<Version> apply_views(
-    OrderedViews& views, std::function<Version()> f)
+    AbstractStore* store, OrderedViews& views, std::function<Version()> f)
   {
     // All maps with pending writes are locked, transactions are prepared
     // and possibly committed, and then all maps with pending writes are
@@ -40,6 +40,7 @@ namespace kv
     // interleaved fashion.
     Version version = 0;
     bool has_writes = false;
+    bool has_map_creations = false;
 
     for (auto it = views.begin(); it != views.end(); ++it)
     {
@@ -48,13 +49,20 @@ namespace kv
         it->second.map->lock();
         has_writes = true;
       }
+
+      has_map_creations |= it->second.view->has_map_creation();
+    }
+
+    if (has_map_creations)
+    {
+      store->lock();
     }
 
     bool ok = true;
 
     for (auto it = views.begin(); it != views.end(); ++it)
     {
-      if (!it->second.view->prepare())
+      if (!it->second.view->prepare(store))
       {
         ok = false;
         break;
@@ -67,10 +75,15 @@ namespace kv
       version = f();
 
       for (auto it = views.begin(); it != views.end(); ++it)
-        it->second.view->commit(version);
+        it->second.view->commit(store, version);
 
       for (auto it = views.begin(); it != views.end(); ++it)
         it->second.view->post_commit();
+    }
+
+    if (has_map_creations)
+    {
+      store->unlock();
     }
 
     for (auto it = views.begin(); it != views.end(); ++it)

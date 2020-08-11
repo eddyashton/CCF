@@ -95,7 +95,7 @@ namespace kv::untyped
     }
   };
 
-  class Map : public AbstractMap
+  class Map : public AbstractMap, public std::enable_shared_from_this<Map>
   {
   public:
     using K = SerialisedEntry;
@@ -129,6 +129,7 @@ namespace kv::untyped
 
       bool changes = false;
       bool committed_writes = false;
+      bool creates_map = false;
 
     public:
       template <typename... Ts>
@@ -149,8 +150,20 @@ namespace kv::untyped
         return changes;
       }
 
-      bool prepare() override
+      bool has_map_creation() override
       {
+        return creates_map;
+      }
+
+      bool prepare(AbstractStore* store) override
+      {
+        // If this map name has already been taken, this transaction conflicts and must fail
+        if (creates_map)
+        {
+          if (store->has_map(map.get_name()))
+            return false;
+        }
+
         if (change_set.writes.empty())
           return true;
 
@@ -203,8 +216,13 @@ namespace kv::untyped
         return true;
       }
 
-      void commit(Version v) override
+      void commit(AbstractStore* store, Version v) override
       {
+        if (creates_map)
+        {
+          store->add_dynamic_map(v, map.shared_from_this());
+        }
+
         if (change_set.writes.empty())
         {
           commit_version = change_set.start_version;
