@@ -75,7 +75,14 @@ namespace kv
       version = f();
 
       for (auto it = views.begin(); it != views.end(); ++it)
+      {
+        if (it->second.view->has_map_creation())
+        {
+          store->add_dynamic_map(version, it->second.map->shared_from_this());
+        }
+
         it->second.view->commit(store, version);
+      }
 
       for (auto it = views.begin(); it != views.end(); ++it)
         it->second.view->post_commit();

@@ -95,7 +95,7 @@ namespace kv::untyped
     }
   };
 
-  class Map : public AbstractMap, public std::enable_shared_from_this<Map>
+  class Map : public AbstractMap
   {
   public:
     using K = SerialisedEntry;
@@ -133,8 +133,9 @@ namespace kv::untyped
 
     public:
       template <typename... Ts>
-      TxViewCommitter(Map& m, size_t rollbacks, Ts&&... ts) :
+      TxViewCommitter(Map& m, bool includes_creation, size_t rollbacks, Ts&&... ts) :
         map(m),
+        creates_map(includes_creation),
         rollback_counter(rollbacks),
         change_set(std::forward<Ts>(ts)...)
       {}
@@ -218,11 +219,6 @@ namespace kv::untyped
 
       void commit(AbstractStore* store, Version v) override
       {
-        if (creates_map)
-        {
-          store->add_dynamic_map(v, map.shared_from_this());
-        }
-
         if (change_set.writes.empty())
         {
           commit_version = change_set.start_version;
@@ -298,10 +294,11 @@ namespace kv::untyped
       ConcreteTxView(
         Map& m,
         size_t rollbacks,
+        bool includes_creation,
         State& current_state,
         State& committed_state,
         Version v) :
-        TxViewCommitter(m, rollbacks, current_state, committed_state, v),
+        TxViewCommitter(m, includes_creation, rollbacks, current_state, committed_state, v),
         TxView(TxViewCommitter::change_set)
       {}
     };
@@ -448,7 +445,7 @@ namespace kv::untyped
     TView* deserialise_internal(KvStoreDeserialiser& d, Version version)
     {
       // Create a new change set, and deserialise d's contents into it.
-      auto view = create_view<TView>(version);
+      auto view = create_view<TView>(version, false);
       view->set_commit_version(version);
 
       auto& change_set = view->get_change_set();
@@ -751,7 +748,7 @@ namespace kv::untyped
     }
 
     template <typename TView>
-    TView* create_view(Version version)
+    TView* create_view(Version version, bool map_just_created)
     {
       lock();
 
@@ -765,6 +762,7 @@ namespace kv::untyped
         {
           view = new TView(
             *this,
+            map_just_created,
             roll.rollback_counter,
             current->state,
             roll.commits->get_head()->state,
@@ -777,6 +775,7 @@ namespace kv::untyped
       {
         view = new TView(
           *this,
+          map_just_created,
           roll.rollback_counter,
           roll.commits->get_head()->state,
           roll.commits->get_head()->state,

@@ -363,7 +363,7 @@ namespace kv
     virtual void post_commit() = 0;
   };
 
-  class AbstractMap
+  class AbstractMap : public std::enable_shared_from_this<AbstractMap>
   {
   public:
     class Snapshot
@@ -425,7 +425,8 @@ namespace kv
     virtual Version commit_version() = 0;
 
     virtual bool has_map(const std::string& map_name) = 0;
-    virtual void add_dynamic_map(Version v, const std::shared_ptr<AbstractMap>& map) = 0;
+    virtual void add_dynamic_map(
+      Version v, const std::shared_ptr<AbstractMap>& map) = 0;
 
     virtual std::shared_ptr<Consensus> get_consensus() = 0;
     virtual std::shared_ptr<TxHistory> get_history() = 0;

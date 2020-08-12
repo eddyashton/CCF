@@ -138,9 +138,9 @@ namespace kv
     }
 
     template <typename TView>
-    TView* create_view(Version v)
+    TView* create_view(Version v, bool map_just_created)
     {
-      return untyped_map.create_view<TView>(v);
+      return untyped_map.create_view<TView>(v, map_just_created);
     }
 
     static kv::untyped::Map::CommitHook wrap_commit_hook(const CommitHook& hook)

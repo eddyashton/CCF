@@ -252,7 +252,8 @@ namespace kv
     // TODO: Docs
     void add_dynamic_map(Version v, const std::shared_ptr<AbstractMap>& map) override
     {
-      std::lock_guard<SpinLock> mguard(maps_lock);
+      //TODO: Expects to _be_ locked
+      //std::lock_guard<SpinLock> mguard(maps_lock);
 
       const auto name = map->get_name();
 
@@ -264,7 +265,8 @@ namespace kv
 
     bool has_map(const std::string& map_name) override
     {
-      std::lock_guard<SpinLock> mguard(maps_lock);
+      // TODO: Can't lock this, because we're already locked in commit...
+      // std::lock_guard<SpinLock> mguard(maps_lock);
       return has_map_internal(map_name);
     }
 

@@ -1026,7 +1026,7 @@ TEST_CASE("Conflict resolution")
   auto try_write = [&](kv::Tx& tx, const std::string& s) {
     auto view = tx.get_view(map);
 
-    // Numroduce read-dependency
+    // Introduce read-dependency
     view->get("foo");
     view->put("foo", s);
 
@@ -1085,4 +1085,43 @@ TEST_CASE("Conflict resolution")
   // Re-running a _committed_ transaction is exceptionally bad
   REQUIRE_THROWS(tx1.commit());
   REQUIRE_THROWS(tx2.commit());
+}
+
+TEST_CASE("Dynamic tables")
+{
+  kv::Store kv_store;
+
+  auto encryptor = std::make_shared<kv::NullTxEncryptor>();
+  kv_store.set_encryptor(encryptor);
+
+  {
+    INFO("Dynamically created maps can be used like normal maps");
+
+    {
+      auto map_a = kv_store.get<MapTypes::StringString>("mapA");
+      REQUIRE(map_a == nullptr);
+    }
+
+    {
+      auto tx = kv_store.create_tx();
+      auto& map_a = tx.create_map<MapTypes::StringString>("mapA");
+
+      auto view = tx.get_view(map_a);
+      view->put("foo", "bar");
+
+      REQUIRE(tx.commit() == kv::CommitSuccess::OK);
+    }
+
+    {
+      auto map_a = kv_store.get<MapTypes::StringString>("mapA");
+      REQUIRE(map_a != nullptr);
+
+      auto tx = kv_store.create_tx();
+
+      auto view = tx.get_view(*map_a);
+      const auto it = view->get("foo");
+      REQUIRE(it.has_value());
+      REQUIRE(it.value() == "bar");
+    }
+  }
 }

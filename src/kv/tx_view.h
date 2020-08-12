@@ -20,12 +20,13 @@ namespace kv
 
     ReadOnlyTxView(
       kv::untyped::Map& m,
+      bool just_created,
       size_t rollbacks,
       kv::untyped::State& current_state,
       kv::untyped::State& committed_state,
       Version v) :
       kv::untyped::Map::TxViewCommitter(
-        m, rollbacks, current_state, committed_state, v),
+        m, just_created, rollbacks, current_state, committed_state, v),
       untyped_view(kv::untyped::Map::TxViewCommitter::change_set)
     {}
 

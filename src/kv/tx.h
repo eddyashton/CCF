@@ -62,7 +62,9 @@ namespace kv
         read_version = txid.version;
       }
 
-      MapView* typed_view = m.template create_view<MapView>(read_version);
+      bool is_created = created_maps.find(m.get_name()) != created_maps.end();
+
+      MapView* typed_view = m.template create_view<MapView>(read_version, is_created);
       auto abstract_view = dynamic_cast<AbstractTxView*>(typed_view);
       if (abstract_view == nullptr)
       {
@@ -293,6 +295,7 @@ namespace kv
       // Return serialised Tx.
       return replicated_serialiser.get_raw_data();
     }
+
     /** Create a Map
      *
      * Note this call will throw a logic_error if a map by that name already
@@ -312,8 +315,8 @@ namespace kv
         throw std::logic_error("Map already exists");
 
       // TODO: Assume these maps are always replicated?
-      auto result = new M(this, name, security_domain, true);
-      created_maps[name] = std::unique_ptr<AbstractMap>(result);
+      auto result = std::make_shared<M>(name, security_domain, true);
+      created_maps[name] = result;
       return *result;
     }
   };
