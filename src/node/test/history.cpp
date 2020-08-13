@@ -285,8 +285,8 @@ TEST_CASE(
 
     store.commit(
       rv,
-      [rv, &other_table]() {
-        kv::Tx txr(rv.version);
+      [rv, &other_table, &store]() {
+        auto txr = store.create_reserved_tx(rv.version);
         auto txrv = txr.get_view(other_table);
         txrv->put(0, 1);
         return txr.commit_reserved();

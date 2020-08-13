@@ -135,9 +135,9 @@ namespace kv::untyped
       template <typename... Ts>
       TxViewCommitter(Map& m, bool includes_creation, size_t rollbacks, Ts&&... ts) :
         map(m),
-        creates_map(includes_creation),
         rollback_counter(rollbacks),
-        change_set(std::forward<Ts>(ts)...)
+        change_set(std::forward<Ts>(ts)...),
+        creates_map(includes_creation)
       {}
 
       // Commit-related methods
@@ -156,15 +156,8 @@ namespace kv::untyped
         return creates_map;
       }
 
-      bool prepare(AbstractStore* store) override
+      bool prepare() override
       {
-        // If this map name has already been taken, this transaction conflicts and must fail
-        if (creates_map)
-        {
-          if (store->has_map(map.get_name()))
-            return false;
-        }
-
         if (change_set.writes.empty())
           return true;
 
@@ -217,7 +210,7 @@ namespace kv::untyped
         return true;
       }
 
-      void commit(AbstractStore* store, Version v) override
+      void commit(Version v) override
       {
         if (change_set.writes.empty())
         {

@@ -358,8 +358,8 @@ namespace kv
     virtual bool has_writes() = 0;
     virtual bool has_changes() = 0;
     virtual bool has_map_creation() = 0;
-    virtual bool prepare(AbstractStore* store) = 0;
-    virtual void commit(AbstractStore* store, Version v) = 0;
+    virtual bool prepare() = 0;
+    virtual void commit(Version v) = 0;
     virtual void post_commit() = 0;
   };
 

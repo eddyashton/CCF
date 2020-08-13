@@ -271,7 +271,6 @@ namespace kv
       }
 
       // Retrieve encryptor.
-      auto map = view_list.begin()->second.map;
       auto e = store->get_encryptor();
 
       KvStoreSerialiser replicated_serialiser(e, version);

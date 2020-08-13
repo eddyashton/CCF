@@ -62,7 +62,18 @@ namespace kv
 
     for (auto it = views.begin(); it != views.end(); ++it)
     {
-      if (!it->second.view->prepare(store))
+      // If this map name has already been taken, this transaction conflicts and
+      // must fail
+      if (it->second.view->has_map_creation())
+      {
+        if (store->has_map(it->second.map->get_name()))
+        {
+          ok = false;
+          break;
+        }
+      }
+
+      if (!it->second.view->prepare())
       {
         ok = false;
         break;
@@ -81,7 +92,7 @@ namespace kv
           store->add_dynamic_map(version, it->second.map->shared_from_this());
         }
 
-        it->second.view->commit(store, version);
+        it->second.view->commit(version);
       }
 
       for (auto it = views.begin(); it != views.end(); ++it)
