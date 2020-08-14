@@ -112,6 +112,7 @@ namespace ccf
 
     std::optional<std::vector<uint8_t>> forward_or_redirect_json(
       std::shared_ptr<enclave::RpcContext> ctx,
+      kv::ReadOnlyTx& tx,
       EndpointRegistry::Endpoint* endpoint,
       CallerId caller_id)
     {
@@ -145,8 +146,7 @@ namespace ccf
         if ((nodes != nullptr) && (consensus != nullptr))
         {
           NodeId primary_id = consensus->primary();
-          kv::Tx tx;
-          auto nodes_view = tx.get_view(*nodes);
+          auto nodes_view = tx.get_read_only_view(*nodes);
           auto info = nodes_view->get(primary_id);
 
           if (info)
@@ -344,7 +344,7 @@ namespace ccf
           {
             if (ctx->session->is_forwarding)
             {
-              return forward_or_redirect_json(ctx, endpoint, caller_id);
+              return forward_or_redirect_json(ctx, tx, endpoint, caller_id);
             }
             break;
           }
@@ -352,7 +352,7 @@ namespace ccf
           case ForwardingRequired::Always:
           {
             ctx->session->is_forwarding = true;
-            return forward_or_redirect_json(ctx, endpoint, caller_id);
+            return forward_or_redirect_json(ctx, tx, endpoint, caller_id);
           }
         }
       }
@@ -526,7 +526,7 @@ namespace ccf
     {
       update_consensus();
 
-      kv::Tx tx;
+      auto tx = tables.create_tx();
 
       auto caller_id = endpoints.get_caller_id(tx, ctx->session->caller_cert);
 
@@ -584,7 +584,7 @@ namespace ccf
     ProcessPbftResp process_pbft(
       std::shared_ptr<enclave::RpcContext> ctx) override
     {
-      kv::Tx tx;
+      auto tx = tables.create_tx();
       return process_pbft(ctx, tx, false);
     }
 
@@ -649,7 +649,7 @@ namespace ccf
 
       update_consensus();
 
-      kv::Tx tx;
+      auto tx = tables.create_tx();
 
       auto rep =
         process_command(ctx, tx, ctx->session->original_caller->caller_id);

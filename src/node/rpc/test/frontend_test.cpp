@@ -409,7 +409,7 @@ nlohmann::json parse_response_body(
 
 std::optional<SignedReq> get_signed_req(CallerId caller_id)
 {
-  kv::Tx tx;
+  auto tx = network.tables->create_tx();
   auto client_sig_view = tx.get_view(network.user_client_signatures);
   return client_sig_view->get(caller_id);
 }
@@ -465,10 +465,10 @@ void prepare_callers()
   auto backup_consensus = std::make_shared<kv::PrimaryStubConsensus>();
   network.tables->set_consensus(backup_consensus);
 
-  kv::Tx tx;
   network.tables->set_encryptor(encryptor);
   network2.tables->set_encryptor(encryptor);
 
+  auto tx = network.tables->create_tx();
   GenesisGenerator g(network, tx);
   g.init_values();
   g.create_service({});
@@ -481,8 +481,9 @@ void prepare_callers()
 
 void add_callers_primary_store()
 {
-  kv::Tx gen_tx;
   network2.tables->clear();
+  // TODO: network1 vs network2!?!?!
+  auto gen_tx = network2.tables->create_tx();
   GenesisGenerator g(network2, gen_tx);
   g.init_values();
   g.create_service({});
@@ -493,7 +494,6 @@ void add_callers_primary_store()
 
 void add_callers_pbft_store()
 {
-  kv::Tx gen_tx;
   pbft_network.tables->set_encryptor(encryptor);
   pbft_network.tables->clear();
   pbft_network.tables->set_history(history);
@@ -501,6 +501,7 @@ void add_callers_pbft_store()
     std::make_shared<kv::PrimaryStubConsensus>(ConsensusType::PBFT);
   pbft_network.tables->set_consensus(backup_consensus);
 
+  auto gen_tx = pbft_network.tables->create_tx();
   GenesisGenerator g(pbft_network, gen_tx);
   g.init_values();
   g.create_service({});
@@ -527,7 +528,7 @@ TEST_CASE("process_pbft")
   auto ctx = enclave::make_rpc_context(session, request.raw);
   frontend.process_pbft(ctx);
 
-  kv::Tx tx;
+  auto tx = pbft_network.tables->create_tx();
   auto pbft_requests_map = tx.get_view(pbft_network.pbft_requests_map);
   auto request_value = pbft_requests_map->get(0);
   REQUIRE(request_value.has_value());
@@ -997,7 +998,7 @@ TEST_CASE("Explicit commitability")
   size_t next_value = 0;
 
   auto get_value = [&]() {
-    kv::Tx tx;
+    auto tx = network.tables->create_tx();
     auto view = tx.get_view(frontend.values);
     auto actual_v = view->get(0).value();
     return actual_v;
@@ -1005,7 +1006,7 @@ TEST_CASE("Explicit commitability")
 
   // Set initial value
   {
-    kv::Tx tx;
+    auto tx = network.tables->create_tx();
     tx.get_view(frontend.values)->put(0, next_value);
     REQUIRE(tx.commit() == kv::CommitSuccess::OK);
   }
@@ -1373,7 +1374,7 @@ TEST_CASE("Forwarding" * doctest::test_suite("forwarding"))
 
     user_frontend_primary.process_forwarded(fwd_ctx);
 
-    kv::Tx tx;
+    auto tx = network2.tables->create_tx();
     auto client_sig_view = tx.get_view(network2.user_client_signatures);
     auto client_sig = client_sig_view->get(user_id);
     REQUIRE(client_sig.has_value());
@@ -1529,13 +1530,13 @@ public:
   {
     open();
 
-    auto conflict_once = [this](auto& args) {
+    auto conflict_once = [this, &tables](auto& args) {
       static bool conflict_next = true;
       if (conflict_next)
       {
         // Warning: Never do this in a real application!
         // Create another transaction that conflicts with the frontend one
-        kv::Tx tx;
+        auto tx = tables.create_tx();
         auto view = tx.get_view(values);
         view->put(0, 42);
         REQUIRE(tx.commit() == kv::CommitSuccess::OK);
@@ -1561,7 +1562,7 @@ TEST_CASE("Signature is stored even after conflicts")
 
   INFO("Check that no client signatures have been recorded");
   {
-    kv::Tx tx;
+    auto tx = network.tables->create_tx();
     auto client_signatures_view = tx.get_view(network.user_client_signatures);
     REQUIRE_FALSE(client_signatures_view->get(0).has_value());
   }
@@ -1579,7 +1580,7 @@ TEST_CASE("Signature is stored even after conflicts")
 
   INFO("Check that a client signatures have been recorded");
   {
-    kv::Tx tx;
+    auto tx = network.tables->create_tx();
     auto client_signatures_view = tx.get_view(network.user_client_signatures);
     REQUIRE(client_signatures_view->get(0).has_value());
   }
