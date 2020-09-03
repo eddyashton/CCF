@@ -323,6 +323,12 @@ namespace raft
 
     void add_configuration(Index idx, const Configuration::Nodes& conf)
     {
+      if (!lock.is_held_by_current_thread())
+      {
+        LOG_FATAL_FMT("Called add_configuration without holding Raft lock");
+        throw std::logic_error("Called add_configuration without holding Raft lock");
+      }
+
       // This should only be called when the spin lock is held.
       configurations.push_back({idx, std::move(conf)});
       create_and_remove_node_state();
