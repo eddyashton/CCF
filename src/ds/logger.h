@@ -22,6 +22,12 @@
 #include <string>
 #include <thread>
 
+#ifdef INSIDE_ENCLAVE
+#  include <openenclave/bits/defs.h>
+#  include <openenclave/bits/result.h>
+#  include <openenclave/trace.h>
+#endif
+
 namespace logger
 {
   enum Level
@@ -532,4 +538,50 @@ namespace logger
   logger::config::ok(logger::FATAL) && \
     logger::Out() == logger::LogLine(logger::FATAL, __FILE__, __LINE__)
 #define LOG_FATAL_FMT(...) LOG_FATAL << fmt::format(__VA_ARGS__) << std::endl
+
+#ifdef INSIDE_ENCLAVE
+  [[maybe_unused]] static void oe_log_callback(
+    [[maybe_unused]] void* context,
+    [[maybe_unused]] bool is_enclave,
+    [[maybe_unused]] const struct tm* t,
+    [[maybe_unused]] long int usecs,
+    [[maybe_unused]] oe_log_level_t level,
+    [[maybe_unused]] uint64_t host_thread_id,
+    [[maybe_unused]] const char* message)
+  {
+    switch (level)
+    {
+      case (OE_LOG_LEVEL_FATAL):
+      {
+        LOG_FATAL_FMT("{}", message);
+        break;
+      }
+      case (OE_LOG_LEVEL_ERROR):
+      {
+        LOG_FAIL_FMT("{}", message);
+        break;
+      }
+      case (OE_LOG_LEVEL_WARNING):
+      {
+        LOG_FAIL_FMT("{}", message);
+        break;
+      }
+      case (OE_LOG_LEVEL_INFO):
+      {
+        LOG_INFO_FMT("{}", message);
+        break;
+      }
+      case (OE_LOG_LEVEL_VERBOSE):
+      {
+        LOG_TRACE_FMT("{}", message);
+        break;
+      }
+      default:
+      {
+        LOG_FAIL_FMT("Unhandled OE log level: {}", level);
+        LOG_FAIL_FMT("{}", message);
+      }
+    }
+  }
+#endif
 }

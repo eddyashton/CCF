@@ -79,6 +79,8 @@ namespace enclave
       logger::config::msg() = AdminMessage::log_msg;
       logger::config::writer() = writer_factory.create_writer_to_outside();
 
+      oe_log_set_callback(nullptr, logger::oe_log_callback);
+
       to_host = writer_factory.create_writer_to_outside();
 
       node = std::make_unique<ccf::NodeState>(
