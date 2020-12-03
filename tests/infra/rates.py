@@ -21,7 +21,7 @@ def samples_to_tx_per_s(samples):
             count_in_bucket = 0
             ms_used_in_bucket = 0
 
-    if count_in_bucket > 0:
+    if ms_used_in_bucket > 0:
         final_duration = ms_used_in_bucket / 1000
         final_rate = count_in_bucket / final_duration
         rates.append(final_rate)
@@ -97,7 +97,9 @@ class TxRates:
             if samples is None:
                 LOG.error("No tx count samples found")
             else:
-                self.tx_rates_data = samples_to_tx_per_s(samples)
+                rates = samples_to_tx_per_s(samples)
+                # For parity with old numbers, ignore any buckets of 0
+                self.tx_rates_data = [rate for rate in rates if rate != 0]
 
             histogram = self.all_metrics.get("rates_histogram")
             if histogram is None:
