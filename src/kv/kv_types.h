@@ -356,8 +356,6 @@ namespace kv
 
     struct Statistics
     {
-      uint32_t time_spent = 0;
-      uint32_t count_num_samples = 0;
       uint32_t tx_count = 0;
     };
     virtual Statistics get_statistics()

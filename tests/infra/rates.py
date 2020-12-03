@@ -61,8 +61,8 @@ class TxRates:
             return more_to_process
 
     def get_metrics(self):
-        with self.primary.client() as client:
-            rv = client.get("/node/metrics")
+        with self.primary.client("client0") as client:
+            rv = client.get("/app/metrics")
             self.all_metrics = rv.body.json()
 
             all_rates = []

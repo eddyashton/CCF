@@ -30,8 +30,6 @@ namespace metrics
     struct TxStatistics
     {
       uint32_t tx_count = 0;
-      uint32_t cumulative_time = 0;
-      uint32_t time_samples = 0;
     };
     std::array<TxStatistics, 100> times;
 
@@ -68,17 +66,10 @@ namespace metrics
         }
       }
 
-      LOG_INFO << "Printing time series"
-               << ", this:" << (uint64_t)this << std::endl;
+      LOG_INFO << "Printing time series, this:" << (uint64_t)this << std::endl;
       for (uint32_t i = 0; i < times.size(); ++i)
       {
-        uint32_t latency = 0;
-        if (times[i].time_samples != 0)
-        {
-          latency = (times[i].cumulative_time / times[i].time_samples);
-        }
-
-        LOG_INFO_FMT("{} - {}, {}", i, times[i].tx_count, latency);
+        LOG_INFO_FMT("{} - {}", i, times[i].tx_count);
       }
 
       return result;
@@ -117,8 +108,6 @@ namespace metrics
       if (bucket < times.size())
       {
         times[bucket].tx_count += stats.tx_count;
-        times[bucket].cumulative_time += stats.time_spent;
-        times[bucket].time_samples += stats.count_num_samples;
       }
     }
   };
