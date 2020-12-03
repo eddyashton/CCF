@@ -95,6 +95,7 @@ namespace metrics
     std::vector<Sample> get_all_samples()
     {
       std::vector<Sample> ret_samples;
+      // Convert ringbuffer to ordered vector
       const size_t start_index = all_samples_filled ? next_sample_index : 0;
       const size_t end_index = all_samples_filled ?
         start_index + MAX_SAMPLES_COUNT :
@@ -104,8 +105,8 @@ namespace metrics
         const size_t index = i % MAX_SAMPLES_COUNT;
         ret_samples.push_back(samples[index]);
       }
-
-      LOG_INFO << "Printing time series, this:" << (uint64_t)this << std::endl;
+      
+      LOG_INFO_FMT("Printing time series, this: {}", (uint64_t)this);
       for (uint32_t i = 0; i < times.size(); ++i)
       {
         LOG_INFO_FMT("{} - {}", i, times[i].tx_count);
