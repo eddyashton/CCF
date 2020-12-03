@@ -11,7 +11,6 @@
 #define HIST_MAX (1 << 17)
 #define HIST_MIN 1
 #define HIST_BUCKET_GRANULARITY 5
-#define TX_RATE_BUCKETS_LEN 4000
 
 namespace metrics
 {

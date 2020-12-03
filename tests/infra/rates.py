@@ -48,13 +48,16 @@ class TxRates:
         def format_line(s, n):
             out_list.append(f"--- {s:>20}: {n:>12.2f} ---")
 
-        format_title("Summary")
-        format_line("mean", mean(self.tx_rates_data))
-        format_line("harmonic mean", harmonic_mean(self.tx_rates_data))
-        format_line("standard deviation", pstdev(self.tx_rates_data))
-        format_line("median", median(self.tx_rates_data))
-        format_line("max", max(self.tx_rates_data))
-        format_line("min", min(self.tx_rates_data))
+        if len(self.tx_rates_data) > 0:
+            format_title("Summary")
+            format_line("mean", mean(self.tx_rates_data))
+            format_line("harmonic mean", harmonic_mean(self.tx_rates_data))
+            format_line("standard deviation", pstdev(self.tx_rates_data))
+            format_line("median", median(self.tx_rates_data))
+            format_line("max", max(self.tx_rates_data))
+            format_line("min", min(self.tx_rates_data))
+        else:
+            format_title("No rates found")
 
         format_title("Histogram")
         buckets = self.histogram_data["buckets"]
