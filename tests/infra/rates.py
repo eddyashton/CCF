@@ -6,6 +6,29 @@ from statistics import mean, harmonic_mean, median, pstdev
 from loguru import logger as LOG
 
 
+def samples_to_tx_per_s(samples):
+    rates = []
+    count_in_bucket = 0
+    ms_used_in_bucket = 0
+    for sample in samples:
+        sample_duration = sample["end_time_ms"] - sample["start_time_ms"]
+        count_in_bucket += sample["tx_count"]
+
+        ms_used_in_bucket += sample_duration
+        # NB: Assuming durations cut-off near each second, doing no splitting of samples which cross second boundaries
+        if ms_used_in_bucket >= 1000:
+            rates.append(count_in_bucket)
+            count_in_bucket = 0
+            ms_used_in_bucket = 0
+
+    if count_in_bucket > 0:
+        final_duration = ms_used_in_bucket / 1000
+        final_rate = count_in_bucket / final_duration
+        rates.append(final_rate)
+
+    return rates
+
+
 class TxRates:
     def __init__(self, primary):
         self.get_histogram = False
@@ -34,22 +57,27 @@ class TxRates:
         format_line("min", min(self.tx_rates_data))
 
         format_title("Histogram")
-        buckets_list = self.histogram_data["buckets"]
-        buckets = {tuple(e[0]): e[1] for e in buckets_list}
-        out_list.append(f"({sum(buckets.values())} samples in {len(buckets)} buckets)")
-        max_count = max(buckets.values())
-        for k, count in sorted(buckets.items()):
+        buckets = self.histogram_data["buckets"]
+        bucket_counts = [bucket["count"] for bucket in buckets]
+        out_list.append(
+            f"({sum(bucket_counts)} samples in {len(bucket_counts)} buckets)"
+        )
+        max_count = max(bucket_counts)
+        for bucket in buckets:
+            count = bucket["count"]
             out_list.append(
                 "{:>12}: {}".format(
-                    f"{k[0]}-{k[1]}", "*" * min(count, (60 * count // max_count))
+                    f"{bucket['lower_bound']}-{bucket['upper_bound']}",
+                    "*" * min(count, (60 * count // max_count)),
                 )
             )
 
         return "\n".join(out_list)
 
     def save_results(self, output_file):
+        LOG.info(f"Saving metrics to {output_file}")
         with open(output_file, "w") as mfile:
-            json.dump(self.all_metrics, mfile)
+            json.dump(self.all_metrics, mfile, indent=2)
 
     def process_next(self):
         with self.primary.client() as client:
@@ -65,20 +93,15 @@ class TxRates:
             rv = client.get("/app/metrics")
             self.all_metrics = rv.body.json()
 
-            all_rates = []
-            all_durations = []
-            rates = self.all_metrics.get("tx_rates")
-            if rates is None:
-                LOG.info("No tx rate metrics found...")
+            samples = self.all_metrics.get("samples")
+            if samples is None:
+                LOG.error("No tx count samples found")
             else:
-                for key in rates:
-                    all_rates.append(rates[key]["rate"])
-                    all_durations.append(float(rates[key]["duration"]))
-                self.tx_rates_data = all_rates
+                self.tx_rates_data = samples_to_tx_per_s(samples)
 
-            histogram = self.all_metrics.get("histogram")
+            histogram = self.all_metrics.get("rates_histogram")
             if histogram is None:
-                LOG.info("No histogram metrics found...")
+                LOG.error("No rates histogram found")
             else:
                 self.histogram_data = histogram
 

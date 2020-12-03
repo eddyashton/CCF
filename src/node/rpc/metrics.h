@@ -15,17 +15,31 @@
 
 namespace metrics
 {
-  struct HistogramResults
+  struct HistogramBucket
   {
-    int low = {};
-    int high = {};
-    size_t overflow = {};
-    size_t underflow = {};
-    nlohmann::json buckets = {};
+    size_t lower_bound;
+    size_t upper_bound;
+    size_t count;
   };
-  DECLARE_JSON_TYPE(HistogramResults)
+  DECLARE_JSON_TYPE(HistogramBucket)
+  DECLARE_JSON_REQUIRED_FIELDS(HistogramBucket, lower_bound, upper_bound, count)
+
+  struct RateHistogram
+  {
+    size_t min_rate = {};
+    size_t max_rate = {};
+    size_t count_below_buckets = {};
+    size_t count_above_buckets = {};
+    std::vector<HistogramBucket> buckets = {};
+  };
+  DECLARE_JSON_TYPE(RateHistogram)
   DECLARE_JSON_REQUIRED_FIELDS(
-    HistogramResults, low, high, overflow, underflow, buckets)
+    RateHistogram,
+    min_rate,
+    max_rate,
+    count_below_buckets,
+    count_above_buckets,
+    buckets)
 
   struct Sample
   {
@@ -60,24 +74,22 @@ namespace metrics
     };
     std::array<TxStatistics, 100> times;
 
-    HistogramResults get_histogram_results()
+    RateHistogram get_histogram_results()
     {
-      HistogramResults result;
-      result.low = histogram.get_low();
-      result.high = histogram.get_high();
-      result.overflow = histogram.get_overflow();
-      result.underflow = histogram.get_underflow();
+      RateHistogram result;
+      result.min_rate = histogram.get_low();
+      result.max_rate = histogram.get_high();
+      result.count_above_buckets = histogram.get_overflow();
+      result.count_below_buckets = histogram.get_underflow();
       auto range_counts = histogram.get_range_count();
-      nlohmann::json buckets;
-      for (auto const& e : range_counts)
+      for (auto const& [range, count] : range_counts)
       {
-        const auto count = e.second;
         if (count > 0)
         {
-          buckets.push_back(e);
+          const auto& [begin, end] = range;
+          result.buckets.push_back({begin, end, count});
         }
       }
-      result.buckets = buckets;
       return result;
     }
 

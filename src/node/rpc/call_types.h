@@ -42,7 +42,7 @@ namespace ccf
   {
     struct Out
     {
-      metrics::HistogramResults histogram;
+      metrics::RateHistogram rates_histogram;
       std::vector<metrics::Sample> samples;
     };
   };

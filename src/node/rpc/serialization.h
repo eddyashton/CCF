@@ -82,7 +82,7 @@ namespace ccf
   DECLARE_JSON_REQUIRED_FIELDS(GetTxStatus::Out, status)
 
   DECLARE_JSON_TYPE(GetMetrics::Out)
-  DECLARE_JSON_REQUIRED_FIELDS(GetMetrics::Out, histogram, samples)
+  DECLARE_JSON_REQUIRED_FIELDS(GetMetrics::Out, rates_histogram, samples)
 
   DECLARE_JSON_TYPE(GetPrimaryInfo::Out)
   DECLARE_JSON_REQUIRED_FIELDS(
