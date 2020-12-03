@@ -84,7 +84,10 @@ namespace ccf
         .install();
 
       auto get_metrics = [this](auto&, nlohmann::json&&) {
-        auto result = metrics.get_metrics();
+        const auto [histogram, samples] = metrics.get_metrics();
+        GetMetrics::Out result;
+        result.histogram = std::move(histogram);
+        result.samples = std::move(samples);
         return make_success(result);
       };
       make_command_endpoint(

@@ -810,12 +810,11 @@ namespace ccf
       {
         stats = consensus->get_statistics();
       }
-      stats.tx_count = tx_count;
+
+      // Fetch current tx_count, and reset for next tick interval
+      stats.tx_count = std::atomic_exchange(&tx_count, 0ul);
 
       endpoints.tick(elapsed, stats);
-
-      // reset tx_counter for next tick interval
-      tx_count = 0;
     }
 
     // Return false if frontend believes it should be able to look up caller
