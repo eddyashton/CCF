@@ -84,45 +84,18 @@
         ],
         "type": "object"
       },
-      "GetMetrics__HistogramResults": {
-        "properties": {
-          "buckets": {
-            "$ref": "#/components/schemas/json"
-          },
-          "high": {
-            "$ref": "#/components/schemas/int32"
-          },
-          "low": {
-            "$ref": "#/components/schemas/int32"
-          },
-          "overflow": {
-            "$ref": "#/components/schemas/uint64"
-          },
-          "underflow": {
-            "$ref": "#/components/schemas/uint64"
-          }
-        },
-        "required": [
-          "low",
-          "high",
-          "overflow",
-          "underflow",
-          "buckets"
-        ],
-        "type": "object"
-      },
       "GetMetrics__Out": {
         "properties": {
-          "histogram": {
-            "$ref": "#/components/schemas/GetMetrics__HistogramResults"
+          "rates_histogram": {
+            "$ref": "#/components/schemas/RateHistogram"
           },
-          "tx_rates": {
-            "$ref": "#/components/schemas/json"
+          "samples": {
+            "$ref": "#/components/schemas/Sample_array"
           }
         },
         "required": [
-          "histogram",
-          "tx_rates"
+          "rates_histogram",
+          "samples"
         ],
         "type": "object"
       },
@@ -306,6 +279,31 @@
         ],
         "type": "object"
       },
+      "HistogramBucket": {
+        "properties": {
+          "count": {
+            "$ref": "#/components/schemas/uint64"
+          },
+          "lower_bound": {
+            "$ref": "#/components/schemas/uint64"
+          },
+          "upper_bound": {
+            "$ref": "#/components/schemas/uint64"
+          }
+        },
+        "required": [
+          "lower_bound",
+          "upper_bound",
+          "count"
+        ],
+        "type": "object"
+      },
+      "HistogramBucket_array": {
+        "items": {
+          "$ref": "#/components/schemas/HistogramBucket"
+        },
+        "type": "array"
+      },
       "MemoryUsage__Out": {
         "properties": {
           "current_allocated_heap_size": {
@@ -331,6 +329,58 @@
           "TRUSTED",
           "RETIRED"
         ]
+      },
+      "RateHistogram": {
+        "properties": {
+          "buckets": {
+            "$ref": "#/components/schemas/HistogramBucket_array"
+          },
+          "count_above_buckets": {
+            "$ref": "#/components/schemas/uint64"
+          },
+          "count_below_buckets": {
+            "$ref": "#/components/schemas/uint64"
+          },
+          "max_rate": {
+            "$ref": "#/components/schemas/uint64"
+          },
+          "min_rate": {
+            "$ref": "#/components/schemas/uint64"
+          }
+        },
+        "required": [
+          "min_rate",
+          "max_rate",
+          "count_below_buckets",
+          "count_above_buckets",
+          "buckets"
+        ],
+        "type": "object"
+      },
+      "Sample": {
+        "properties": {
+          "end_time_ms": {
+            "$ref": "#/components/schemas/uint64"
+          },
+          "start_time_ms": {
+            "$ref": "#/components/schemas/uint64"
+          },
+          "tx_count": {
+            "$ref": "#/components/schemas/uint64"
+          }
+        },
+        "required": [
+          "start_time_ms",
+          "end_time_ms",
+          "tx_count"
+        ],
+        "type": "object"
+      },
+      "Sample_array": {
+        "items": {
+          "$ref": "#/components/schemas/Sample"
+        },
+        "type": "array"
       },
       "TxStatus": {
         "enum": [
@@ -375,11 +425,6 @@
           "readingPublicLedger",
           "readingPrivateLedger"
         ]
-      },
-      "int32": {
-        "maximum": 2147483647,
-        "minimum": -2147483648,
-        "type": "integer"
       },
       "int64": {
         "maximum": 9223372036854775807,
