@@ -470,18 +470,16 @@ namespace kv
       return get_handle_by_name<typename M::Handle>(map_name);
     }
 
+    // Enabled iff the type has a static function named M which takes 0
+    // arguments and returns a std::string - this will be used as the name to
+    // retrieve the map.
     template <class M>
-    CCF_DEPRECATED("Replace with ro")
-    typename M::ReadOnlyHandle* get_read_only_view(M& m)
+    typename std::enable_if<
+      std::is_same<decltype(&M::name), std::string (*)()>::value,
+      typename M::ReadOnlyHandle*>::type
+    ro()
     {
-      return ro<M>(m);
-    }
-
-    template <class M>
-    CCF_DEPRECATED("Replace with ro")
-    typename M::ReadOnlyHandle* get_read_only_view(const std::string& map_name)
-    {
-      return ro<M>(map_name);
+      return get_handle_by_name<typename M::Handle>(M::name());
     }
   };
 
@@ -522,20 +520,6 @@ namespace kv
     typename M::Handle* rw(const std::string& map_name)
     {
       return get_handle_by_name<typename M::Handle>(map_name);
-    }
-
-    template <class M>
-    CCF_DEPRECATED("Replace with rw")
-    typename M::ReadOnlyHandle* get_view(M& m)
-    {
-      return rw<M>(m);
-    }
-
-    template <class M>
-    CCF_DEPRECATED("Replace with rw")
-    typename M::ReadOnlyHandle* get_view(const std::string& map_name)
-    {
-      return rw<M>(map_name);
     }
 
     /** Get a write-only handle from a map instance.

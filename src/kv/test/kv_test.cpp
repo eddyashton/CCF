@@ -22,6 +22,14 @@ struct MapTypes
   using NumNum = kv::Map<size_t, size_t>;
   using NumString = kv::Map<size_t, std::string>;
   using StringNum = kv::Map<std::string, size_t>;
+
+  struct StaticallyNamedMap : public kv::Map<std::string, std::string>
+  {
+    static std::string name()
+    {
+      return "public:some.name.that.every.instance.of.this.map.should.use";
+    }
+  };
 };
 
 TEST_CASE("Map name parsing")
@@ -795,6 +803,14 @@ TEST_CASE("Read-only tx")
     // handle->get(k);
     // handle->foreach([](const auto&, const auto&) {});
   }
+}
+
+TEST_CASE("Statically named maps")
+{
+  kv::Store kv_store;
+
+  auto tx = kv_store.create_tx();
+  auto ro = tx.ro<MapTypes::StaticallyNamedMap>();
 }
 
 TEST_CASE("Rollback and compact")
