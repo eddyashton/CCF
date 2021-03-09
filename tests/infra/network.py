@@ -668,7 +668,7 @@ class Network:
             # As an operator, query a well-known /app endpoint to find out
             # if the app has been opened to users
             with node.client() as c:
-                r = c.get("/app/commit")
+                r = c.get("/node/commit")
                 if not (r.status_code == http.HTTPStatus.NOT_FOUND.value):
                     return
                 time.sleep(0.1)
@@ -773,8 +773,7 @@ class Network:
             caught_up_nodes = []
             for node in self.get_joined_nodes():
                 with node.client() as c:
-                    c.get("/node/commit")
-                    resp = c.get(f"/node/local_tx?view={view}&seqno={seqno}")
+                    resp = c.get(f"/app/local_tx?view={view}&seqno={seqno}")
                     if resp.status_code != 200:
                         # Node may not have joined the network yet, try again
                         break

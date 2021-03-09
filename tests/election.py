@@ -60,7 +60,7 @@ def wait_for_seqno_to_commit(seqno, view, nodes):
             with f.client() as c:
                 logs[f.node_id] = []
                 r = c.get(
-                    f"/node/tx?view={view}&seqno={seqno}", log_capture=logs[f.node_id]
+                    f"/app/tx?view={view}&seqno={seqno}", log_capture=logs[f.node_id]
                 )
                 assert (
                     r.status_code == http.HTTPStatus.OK

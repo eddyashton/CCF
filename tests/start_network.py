@@ -60,9 +60,9 @@ def run(args):
         for node in [primary, *backups]:
             with node.client("user0") as c:
                 if args.verbose:
-                    r = c.get("/app/commit")
+                    r = c.get("/node/commit")
                 else:
-                    r = c.get("/app/commit", log_capture=[])
+                    r = c.get("/node/commit", log_capture=[])
                 assert r.status_code == http.HTTPStatus.OK, r.status_code
 
         LOG.info("Started CCF network with the following nodes:")

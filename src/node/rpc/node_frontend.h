@@ -712,6 +712,29 @@ namespace ccf
           ccf::endpoints::ExecuteOutsideConsensus::Locally)
         .set_auto_schema<MemoryUsage>()
         .install();
+
+      auto get_commit = [this](auto&, nlohmann::json&&) {
+        GetCommit::Out out;
+        const auto result = get_last_committed_txid_v1(out.view, out.seqno);
+
+        if (result == ccf::ApiResult::OK)
+        {
+          return make_success(out);
+        }
+        else
+        {
+          return make_error(
+            HTTP_STATUS_INTERNAL_SERVER_ERROR,
+            ccf::errors::InternalError,
+            fmt::format("Error code: {}", ccf::api_result_to_str(result)));
+        }
+      };
+      make_command_endpoint(
+        "commit", HTTP_GET, json_command_adapter(get_commit), no_auth_required)
+        .set_execute_outside_consensus(
+          ccf::endpoints::ExecuteOutsideConsensus::Locally)
+        .set_auto_schema<void, GetCommit::Out>()
+        .install();
     }
   };
 

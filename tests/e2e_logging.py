@@ -632,7 +632,7 @@ def test_view_history(network, args):
             for seqno in range(1, commit_seqno + 1):
                 views = []
                 for view in range(1, commit_view + 1):
-                    r = c.get(f"/node/tx?view={view}&seqno={seqno}", log_capture=[])
+                    r = c.get(f"/app/tx?view={view}&seqno={seqno}", log_capture=[])
                     check(r)
                     status = TxStatus(r.body.json()["status"])
                     if status == TxStatus.Committed:
@@ -745,7 +745,7 @@ def test_tx_statuses(network, args):
 
             done = False
             for view, seqno in SentTxs.get_all_tx_ids():
-                r = c.get(f"/node/tx?view={view}&seqno={seqno}")
+                r = c.get(f"/app/tx?view={view}&seqno={seqno}")
                 check(r)
                 status = TxStatus(r.body.json()["status"])
                 SentTxs.update_status(view, seqno, status)
