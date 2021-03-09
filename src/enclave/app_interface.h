@@ -3,8 +3,9 @@
 #pragma once
 
 #include "historical_queries_interface.h"
+#include "node/network_tables.h"
+#include "node/rpc/frontend.h"
 #include "node/rpc/node_interface.h"
-#include "node/rpc/user_frontend.h"
 
 namespace ccfapp
 {
@@ -24,7 +25,7 @@ namespace ccfapp
    *
    * @return Shared pointer to the application handler instance
    */
-  std::shared_ptr<ccf::UserRpcFrontend> get_rpc_handler(
+  std::shared_ptr<ccf::RpcFrontend> get_rpc_handler(
     ccf::NetworkTables& network, AbstractNodeContext& context);
   // SNIPPET_END: rpc_handler
 }

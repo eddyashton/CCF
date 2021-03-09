@@ -3,8 +3,9 @@
 #pragma once
 
 #include "enclave/rpc_context.h"
-#include "endpoint_registry.h"
 #include "http/http_consts.h"
+#include "http/query_parser.h"
+#include "node/rpc/endpoint_registry.h"
 #include "node/rpc/error.h"
 #include "node/rpc/rpc_exception.h"
 #include "node/rpc/serdes.h"
@@ -63,12 +64,6 @@ namespace ccf
    *    }
    * });
    */
-
-  class UrlQueryParseError : public std::invalid_argument
-  {
-  public:
-    using std::invalid_argument::invalid_argument;
-  };
 
   namespace jsonhandler
   {
@@ -191,7 +186,7 @@ namespace ccf
         const auto field_split = this_entry.find('=');
         if (field_split == std::string::npos)
         {
-          throw UrlQueryParseError(
+          throw http::UrlQueryParseError(
             fmt::format("No k=v in URL query fragment: {}", query));
         }
 
@@ -203,7 +198,7 @@ namespace ccf
         }
         catch (const std::exception& e)
         {
-          throw UrlQueryParseError(fmt::format(
+          throw http::UrlQueryParseError(fmt::format(
             "Unable to parse URL query value: {} ({})", query, e.what()));
         }
 
@@ -371,7 +366,7 @@ namespace ccf
   using CommandHandlerWithJson = std::function<jsonhandler::JsonAdapterResponse(
     CommandEndpointContext& args, nlohmann::json&& params)>;
 
-  static CommandEndpointFunction json_command_adapter(
+  [[maybe_unused]] static CommandEndpointFunction json_command_adapter(
     const CommandHandlerWithJson& f)
   {
     return [f](CommandEndpointContext& args) {

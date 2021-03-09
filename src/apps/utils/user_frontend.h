@@ -2,38 +2,22 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "frontend.h"
+#include "common_endpoint_registry.h"
 #include "node/client_signatures.h"
-#include "node/network_tables.h"
+#include "node/rpc/frontend.h"
 
 namespace ccf
 {
-  /** The CCF application must be an instance of UserRpcFrontend
-   */
-  class UserRpcFrontend : public RpcFrontend
-  {
-  public:
-    UserRpcFrontend(kv::Store& tables, EndpointRegistry& h) :
-      RpcFrontend(tables, h)
-    {}
-
-    void open(std::optional<crypto::Pem*> identity = std::nullopt) override
-    {
-      RpcFrontend::open(identity);
-      endpoints.openapi_info.title = "CCF Application API";
-    }
-  };
-
   class UserEndpointRegistry : public CommonEndpointRegistry
   {
   public:
     UserEndpointRegistry(ccf::AbstractNodeState& node) :
       CommonEndpointRegistry(
-        get_actor_prefix(ActorsType::users), node, Tables::USER_CERT_DERS)
+        get_actor_prefix(ActorsType::users), node)
     {}
   };
 
-  class SimpleUserRpcFrontend : public UserRpcFrontend
+  class SimpleUserRpcFrontend : public RpcFrontend
   {
   protected:
     UserEndpointRegistry common_handlers;
@@ -41,7 +25,7 @@ namespace ccf
   public:
     SimpleUserRpcFrontend(
       kv::Store& tables, ccf::AbstractNodeState& node_state) :
-      UserRpcFrontend(tables, common_handlers),
+      RpcFrontend(tables, common_handlers),
       common_handlers(node_state)
     {}
 

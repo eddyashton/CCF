@@ -3,8 +3,8 @@
 #pragma once
 
 #include "ds/json.h"
-#include "endpoint_registry.h"
 #include "node/quote.h"
+#include "node/rpc/endpoint_registry.h"
 #include "node/rpc/node_interface.h"
 
 namespace ccf

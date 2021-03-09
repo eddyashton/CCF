@@ -1,9 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
+
+// Local
 #include "../smallbank_serializer.h"
+
+// CCF
+#include "apps/utils/metrics_tracker.h"
+#include "apps/utils/user_frontend.h"
 #include "enclave/app_interface.h"
-#include "node/rpc/metrics_tracker.h"
-#include "node/rpc/user_frontend.h"
 
 #include <charconv>
 
@@ -26,7 +30,7 @@ namespace ccfapp
   {
   private:
     SmallBankTables tables;
-    metrics::Tracker metrics_tracker;
+    ccf::metrics::Tracker metrics_tracker;
 
     void set_error_status(
       EndpointContext& args, int status, std::string&& message)
@@ -452,9 +456,7 @@ namespace ccfapp
       metrics_tracker.install_endpoint(*this);
     }
 
-    void tick(
-      std::chrono::milliseconds elapsed,
-      size_t tx_count) override
+    void tick(std::chrono::milliseconds elapsed, size_t tx_count) override
     {
       metrics_tracker.tick(elapsed, tx_count);
 
@@ -462,19 +464,19 @@ namespace ccfapp
     }
   };
 
-  class SmallBank : public ccf::UserRpcFrontend
+  class SmallBank : public ccf::RpcFrontend
   {
   private:
     SmallBankHandlers sb_handlers;
 
   public:
     SmallBank(kv::Store& store, ccfapp::AbstractNodeContext& node_context) :
-      UserRpcFrontend(store, sb_handlers),
+      ccf::RpcFrontend(store, sb_handlers),
       sb_handlers(node_context.get_node_state())
     {}
   };
 
-  std::shared_ptr<ccf::UserRpcFrontend> get_rpc_handler(
+  std::shared_ptr<ccf::RpcFrontend> get_rpc_handler(
     NetworkTables& nwt, ccfapp::AbstractNodeContext& node_context)
   {
     return make_shared<SmallBank>(*nwt.tables, node_context);

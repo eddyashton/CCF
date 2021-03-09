@@ -11,6 +11,8 @@
 #include "node/members.h"
 #include "node/nodes.h"
 #include "node/quote.h"
+#include "node/rpc/endpoint_registry.h"
+#include "node/rpc/json_handler.h"
 #include "node/secret_share.h"
 #include "node/share_manager.h"
 #include "node_interface.h"
@@ -179,7 +181,8 @@ namespace ccf
   DECLARE_JSON_TYPE(SetCaCertBundle)
   DECLARE_JSON_REQUIRED_FIELDS(SetCaCertBundle, name, cert_bundle)
 
-  class MemberEndpoints : public CommonEndpointRegistry
+  // TODO: This is a major change, discuss it!
+  class MemberEndpoints : public EndpointRegistry
   {
   private:
     Script get_script(kv::Tx& tx, std::string name)
@@ -1188,6 +1191,7 @@ namespace ccf
     }
 
     NetworkState& network;
+    AbstractNodeState& node;
     ShareManager& share_manager;
     const MemberTsr tsr;
 
@@ -1196,11 +1200,9 @@ namespace ccf
       NetworkState& network,
       AbstractNodeState& node_state,
       ShareManager& share_manager) :
-      CommonEndpointRegistry(
-        get_actor_prefix(ActorsType::members),
-        node_state,
-        Tables::MEMBER_CERT_DERS),
+      EndpointRegistry(get_actor_prefix(ActorsType::members)),
       network(network),
+      node(node_state),
       share_manager(share_manager),
       tsr(network)
     {
@@ -1231,7 +1233,7 @@ namespace ccf
 
     void init_handlers() override
     {
-      CommonEndpointRegistry::init_handlers();
+      EndpointRegistry::init_handlers();
 
       const AuthnPolicies member_sig_only = {member_signature_auth_policy};
 

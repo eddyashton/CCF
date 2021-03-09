@@ -3,6 +3,7 @@
 #pragma once
 
 #include "ds/histogram.h"
+#include "ds/json.h"
 #include "ds/logger.h"
 
 #include <nlohmann/json.hpp>
@@ -12,7 +13,7 @@
 #define HIST_BUCKET_GRANULARITY 5
 #define TX_RATE_BUCKETS_LEN 4000
 
-namespace metrics
+namespace ccf::metrics
 {
   struct HistogramResults
   {
@@ -125,5 +126,4 @@ namespace metrics
       }
     }
   };
-
 }

@@ -2,16 +2,19 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "endpoint_registry.h"
-#include "json_handler.h"
+// Local
 #include "metrics.h"
 
-namespace metrics
+// CCF
+#include "node/rpc/endpoint_registry.h"
+#include "node/rpc/json_handler.h"
+
+namespace ccf::metrics
 {
   class Tracker
   {
   private:
-    metrics::Metrics metrics;
+    Metrics metrics;
 
   public:
     ccf::CommandEndpointFunction get_endpoint_handler()
@@ -29,14 +32,13 @@ namespace metrics
       reg
         .make_command_endpoint(
           "metrics", HTTP_GET, get_endpoint_handler(), ccf::no_auth_required)
-        .set_auto_schema<void, metrics::Report>()
+        .set_auto_schema<void, Report>()
         .set_execute_outside_consensus(
           ccf::endpoints::ExecuteOutsideConsensus::Locally)
         .install();
     }
 
-    void tick(
-      std::chrono::milliseconds elapsed, size_t tx_count)
+    void tick(std::chrono::milliseconds elapsed, size_t tx_count)
     {
       metrics.track_tx_rates(elapsed, tx_count);
     }

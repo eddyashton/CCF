@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
+
+#include "apps/utils/base_endpoint_registry.h"
 #include "ds/json.h"
 #include "enclave/app_interface.h"
+#include "node/rpc/json_handler.h"
 
 namespace nobuiltins
 {
@@ -134,7 +137,7 @@ namespace nobuiltins
     }
   };
 
-  class NoBuiltinsFrontend : public ccf::UserRpcFrontend
+  class NoBuiltinsFrontend : public ccf::RpcFrontend
   {
   private:
     NoBuiltinsRegistry nbr;
@@ -142,7 +145,7 @@ namespace nobuiltins
   public:
     NoBuiltinsFrontend(
       ccf::NetworkTables& network, ccfapp::AbstractNodeContext& context) :
-      ccf::UserRpcFrontend(*network.tables, nbr),
+      ccf::RpcFrontend(*network.tables, nbr),
       nbr(context)
     {}
   };
@@ -150,7 +153,7 @@ namespace nobuiltins
 
 namespace ccfapp
 {
-  std::shared_ptr<ccf::UserRpcFrontend> get_rpc_handler(
+  std::shared_ptr<ccf::RpcFrontend> get_rpc_handler(
     ccf::NetworkTables& nwt, ccfapp::AbstractNodeContext& context)
   {
     return std::make_shared<nobuiltins::NoBuiltinsFrontend>(nwt, context);

@@ -1,11 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include "enclave/app_interface.h"
+
+// Local
 #include "formatters.h"
 #include "logging_schema.h"
+
+// CCF
+#include "apps/utils/metrics_tracker.h"
+#include "apps/utils/user_frontend.h"
+#include "enclave/app_interface.h"
 #include "node/historical_queries_adapter.h"
-#include "node/rpc/metrics_tracker.h"
-#include "node/rpc/user_frontend.h"
 
 #include <charconv>
 #define FMT_HEADER_ONLY
@@ -110,7 +114,7 @@ namespace loggingapp
     const nlohmann::json get_public_params_schema;
     const nlohmann::json get_public_result_schema;
 
-    metrics::Tracker metrics_tracker;
+    ccf::metrics::Tracker metrics_tracker;
 
   public:
     // SNIPPET_START: constructor
@@ -798,9 +802,7 @@ namespace loggingapp
       metrics_tracker.install_endpoint(*this);
     }
 
-    void tick(
-      std::chrono::milliseconds elapsed,
-      size_t tx_count) override
+    void tick(std::chrono::milliseconds elapsed, size_t tx_count) override
     {
       metrics_tracker.tick(elapsed, tx_count);
 
@@ -808,20 +810,20 @@ namespace loggingapp
     }
   };
 
-  class Logger : public ccf::UserRpcFrontend
+  class Logger : public ccf::RpcFrontend
   {
   private:
     LoggerHandlers logger_handlers;
 
   public:
     Logger(ccf::NetworkTables& network, ccfapp::AbstractNodeContext& context) :
-      ccf::UserRpcFrontend(*network.tables, logger_handlers),
+      ccf::RpcFrontend(*network.tables, logger_handlers),
       logger_handlers(context)
     {}
 
     void open(std::optional<crypto::Pem*> identity = std::nullopt) override
     {
-      ccf::UserRpcFrontend::open(identity);
+      ccf::RpcFrontend::open(identity);
       logger_handlers.openapi_info.title = "CCF Sample Logging App";
       logger_handlers.openapi_info.description =
         "This CCF sample app implements a simple logging application, securely "
@@ -834,7 +836,7 @@ namespace loggingapp
 namespace ccfapp
 {
   // SNIPPET_START: rpc_handler
-  std::shared_ptr<ccf::UserRpcFrontend> get_rpc_handler(
+  std::shared_ptr<ccf::RpcFrontend> get_rpc_handler(
     ccf::NetworkTables& nwt, ccfapp::AbstractNodeContext& context)
   {
     return make_shared<loggingapp::Logger>(nwt, context);

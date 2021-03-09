@@ -8,6 +8,7 @@
 #include "node/network_state.h"
 #include "node/quote.h"
 #include "node_interface.h"
+#include "node/rpc/json_handler.h"
 
 namespace ccf
 {
@@ -38,10 +39,12 @@ namespace ccf
   DECLARE_JSON_TYPE(GetQuotes::Out)
   DECLARE_JSON_REQUIRED_FIELDS(GetQuotes::Out, quotes)
 
-  class NodeEndpoints : public CommonEndpointRegistry
+  // TODO: Big change!
+  class NodeEndpoints : public EndpointRegistry
   {
   private:
     NetworkState& network;
+    AbstractNodeState& node;
 
     using ExistingNodeInfo = std::pair<NodeId, std::optional<kv::Version>>;
 
@@ -176,8 +179,9 @@ namespace ccf
 
   public:
     NodeEndpoints(NetworkState& network, AbstractNodeState& node_state) :
-      CommonEndpointRegistry(get_actor_prefix(ActorsType::nodes), node_state),
-      network(network)
+      EndpointRegistry(get_actor_prefix(ActorsType::nodes)),
+      network(network),
+      node(node_state)
     {
       openapi_info.title = "CCF Public Node API";
       openapi_info.description =
@@ -187,7 +191,7 @@ namespace ccf
 
     void init_handlers() override
     {
-      CommonEndpointRegistry::init_handlers();
+      EndpointRegistry::init_handlers();
 
       auto accept =
         [this](EndpointContext& args, const nlohmann::json& params) {
@@ -338,40 +342,33 @@ namespace ccf
         .install();
 
       auto get_quote = [this](auto& args, nlohmann::json&&) {
-        QuoteInfo node_quote_info;
-        const auto result =
-          get_quote_for_this_node_v1(args.tx, node_quote_info);
-        if (result == ApiResult::OK)
-        {
-          Quote q;
-          q.node_id = node.get_node_id();
-          q.raw = fmt::format("{:02x}", fmt::join(node_quote_info.quote, ""));
-          q.endorsements =
-            fmt::format("{:02x}", fmt::join(node_quote_info.endorsements, ""));
-          q.format = node_quote_info.format;
+        const auto node_id = node.get_node_id();
+        auto nodes = args.tx.template ro<ccf::Nodes>(Tables::NODES);
+        const auto node_info = nodes->get(node_id);
 
-#ifdef GET_QUOTE
-          auto code_id =
-            EnclaveAttestationProvider::get_code_id(node_quote_info);
-          q.mrenclave = fmt::format("{:02x}", fmt::join(code_id, ""));
-#endif
-
-          return make_success(q);
-        }
-        else if (result == ApiResult::NotFound)
+        if (!node_info.has_value())
         {
           return make_error(
             HTTP_STATUS_NOT_FOUND,
             ccf::errors::ResourceNotFound,
             "Could not find node quote.");
         }
-        else
-        {
-          return make_error(
-            HTTP_STATUS_INTERNAL_SERVER_ERROR,
-            ccf::errors::InternalError,
-            fmt::format("Error code: {}", ccf::api_result_to_str(result)));
-        }
+
+        Quote q;
+        q.node_id = node.get_node_id();
+        q.raw =
+          fmt::format("{:02x}", fmt::join(node_info->quote_info.quote, ""));
+        q.endorsements = fmt::format(
+          "{:02x}", fmt::join(node_info->quote_info.endorsements, ""));
+        q.format = node_info->quote_info.format;
+
+#ifdef GET_QUOTE
+        auto code_id =
+          EnclaveAttestationProvider::get_code_id(node_info->quote_info);
+        q.mrenclave = fmt::format("{:02x}", fmt::join(code_id, ""));
+#endif
+
+        return make_success(q);
       };
       make_read_only_endpoint(
         "quotes/self",

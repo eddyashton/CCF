@@ -1,12 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
+
+// Local
+#include "apps/utils/metrics_tracker.h"
+
+// CCF
+#include "apps/utils/user_frontend.h"
 #include "crypto/entropy.h"
 #include "crypto/key_wrap.h"
 #include "enclave/app_interface.h"
 #include "kv/untyped_map.h"
 #include "named_auth_policies.h"
-#include "node/rpc/metrics_tracker.h"
-#include "node/rpc/user_frontend.h"
 
 #include <memory>
 #include <quickjs/quickjs-exports.h>
@@ -773,7 +777,7 @@ namespace ccfapp
 
     JSClassDef body_class_def = {};
 
-    metrics::Tracker metrics_tracker;
+    ccf::metrics::Tracker metrics_tracker;
 
     static JSValue create_ccf_obj(EndpointContext& args, JSContext* ctx)
     {
@@ -1484,9 +1488,7 @@ namespace ccfapp
       });
     }
 
-    void tick(
-      std::chrono::milliseconds elapsed,
-      size_t tx_count) override
+    void tick(std::chrono::milliseconds elapsed, size_t tx_count) override
     {
       metrics_tracker.tick(elapsed, tx_count);
 
@@ -1496,19 +1498,19 @@ namespace ccfapp
 
 #pragma clang diagnostic pop
 
-  class JS : public ccf::UserRpcFrontend
+  class JS : public ccf::RpcFrontend
   {
   private:
     JSHandlers js_handlers;
 
   public:
     JS(NetworkTables& network, ccfapp::AbstractNodeContext& node_context) :
-      ccf::UserRpcFrontend(*network.tables, js_handlers),
+      ccf::RpcFrontend(*network.tables, js_handlers),
       js_handlers(network, node_context.get_node_state())
     {}
   };
 
-  std::shared_ptr<ccf::UserRpcFrontend> get_rpc_handler(
+  std::shared_ptr<ccf::RpcFrontend> get_rpc_handler(
     NetworkTables& network, ccfapp::AbstractNodeContext& node_context)
   {
     return make_shared<JS>(network, node_context);
