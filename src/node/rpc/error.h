@@ -59,6 +59,7 @@ namespace ccf
     ERROR(NodeAlreadyRecovering)
     ERROR(ProposalNotOpen)
     ERROR(ProposalNotFound)
+    ERROR(ProposalFailedToValidate)
     ERROR(ServiceNotWaitingForRecoveryShares)
     ERROR(StateDigestMismatch)
     ERROR(TransactionNotFound)
@@ -73,6 +74,7 @@ namespace ccf
     ERROR(InvalidQuote)
     ERROR(InvalidNodeState)
     ERROR(NodeAlreadyExists)
+    ERROR(StartupSnapshotIsOld)
 
 #undef ERROR
   }

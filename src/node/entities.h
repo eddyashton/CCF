@@ -2,29 +2,19 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "ccf/entity_id.h"
+
 #include <limits>
 #include <map>
 #include <stdint.h>
+#include <string>
 #include <vector>
 
 namespace ccf
 {
-  using ObjectId = uint64_t;
-
-  constexpr ObjectId INVALID_ID = (std::numeric_limits<ObjectId>::max)();
-
-  using NodeId = uint64_t;
-  using Index = int64_t;
   using Node2NodeMsg = uint64_t;
 
-  using MemberId = ObjectId;
-  using UserId = ObjectId;
-  using CallerId = ObjectId;
   using Cert = std::vector<uint8_t>;
-
-  // SGX MRENCLAVE is SHA256 digest
-  static constexpr size_t CODE_DIGEST_BYTES = 256 / 8;
-  using CodeDigest = std::array<uint8_t, CODE_DIGEST_BYTES>;
 
   enum class ActorsType : uint64_t
   {
@@ -62,19 +52,16 @@ namespace ccf
   {
     // Service tables
 
-    // Member identities
-    static constexpr auto MEMBERS = "public:ccf.gov.members.info";
+    // Members
+    static constexpr auto MEMBER_CERTS = "public:ccf.gov.members.certs";
+    static constexpr auto MEMBER_ENCRYPTION_PUBLIC_KEYS =
+      "public:ccf.gov.members.encryption_public_keys";
+    static constexpr auto MEMBER_INFO = "public:ccf.gov.members.info";
     static constexpr auto MEMBER_ACKS = "public:ccf.gov.members.acks";
-    static constexpr auto MEMBER_CERT_DERS =
-      "public:ccf.internal.members.certs_der";
-    static constexpr auto MEMBER_DIGESTS =
-      "public:ccf.internal.members.digests";
 
-    // User identities
-    static constexpr auto USERS = "public:ccf.gov.users.info";
-    static constexpr auto USER_CERT_DERS =
-      "public:ccf.internal.users.certs_der";
-    static constexpr auto USER_DIGESTS = "public:ccf.internal.users.digests";
+    // Users
+    static constexpr auto USER_CERTS = "public:ccf.gov.users.certs";
+    static constexpr auto USER_INFO = "public:ccf.gov.users.info";
 
     // Nodes identities and allowed code ids
     static constexpr auto NODES = "public:ccf.gov.nodes.info";
@@ -84,20 +71,15 @@ namespace ccf
     static constexpr auto SERVICE = "public:ccf.gov.service.info";
     static constexpr auto CONFIGURATION = "public:ccf.gov.service.config";
 
-    // Governance
-    static constexpr auto PROPOSALS = "public:ccf.gov.proposals";
-    static constexpr auto GOV_SCRIPTS = "public:ccf.gov.scripts";
-    static constexpr auto GOV_HISTORY = "public:ccf.gov.history";
-    static constexpr auto WHITELISTS = "public:ccf.gov.whitelists";
-
     // JS applications, not service specific but writable by governance only
-    static constexpr auto APP_SCRIPTS = "public:gov.scripts";
-    static constexpr auto MODULES = "public:gov.modules";
-    static constexpr auto ENDPOINTS = "public:gov.endpoints";
-    static constexpr auto SERVICE_PRINCIPALS = "public:gov.service_principals";
+    static constexpr auto MODULES = "public:ccf.gov.modules";
+    static constexpr auto ENDPOINTS = "public:ccf.gov.endpoints";
+
+    // TLS
+    static constexpr auto CA_CERT_BUNDLE_PEMS =
+      "public:ccf.gov.tls.ca_cert_bundles";
 
     // JWT issuers
-    static constexpr auto CA_CERT_DERS = "public:ccf.gov.jwt.ca_certs_der";
     static constexpr auto JWT_ISSUERS = "public:ccf.gov.jwt.issuers";
     static constexpr auto JWT_PUBLIC_SIGNING_KEYS =
       "public:ccf.gov.jwt.public_signing_keys";
@@ -115,15 +97,21 @@ namespace ccf
     static constexpr auto SNAPSHOT_EVIDENCE =
       "public:ccf.internal.snapshot_evidence";
     static constexpr auto SIGNATURES = "public:ccf.internal.signatures";
+    static constexpr auto SERIALISED_MERKLE_TREE = "public:ccf.internal.tree";
     static constexpr auto VALUES = "public:ccf.internal.values";
 
     // Consensus
-    static constexpr auto AFT_REQUESTS =
-      "public:ccf.internal.consensus.requests";
+    static constexpr auto AFT_REQUESTS = "ccf.internal.consensus.requests";
     static constexpr auto NEW_VIEWS = "public:ccf.internal.consensus.new_views";
     static constexpr auto BACKUP_SIGNATURES =
       "public:ccf.internal.consensus.backup_signatures";
     static constexpr auto NONCES = "public:ccf.internal.consensus.nonces";
+
+    // Governance
+    static constexpr auto GOV_HISTORY = "public:ccf.gov.history";
+    static constexpr auto CONSTITUTION = "public:ccf.gov.constitution";
+    static constexpr auto PROPOSALS = "public:ccf.gov.proposals";
+    static constexpr auto PROPOSALS_INFO = "public:ccf.gov.proposals_info";
   };
 
 }

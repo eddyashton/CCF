@@ -6,11 +6,11 @@ Trusting a New Node
 
 As opposed to an opening network in which nodes are trusted automatically, new nodes added to an open network must become trusted through a governance proposal and vote before becoming part of the network.
 
-When an operator starts a new node with the ``join`` option (see :ref:`operations/start_network:Adding a New Node to the Network`), the joining node is assigned a unique node id and is recorded in state `PENDING`. Then, members can vote to accept the new node, using the unique assigned node id (see :ref:`governance/proposals:Proposing and Voting for a Proposal` for more detail).
+When an operator starts a new node with the ``join`` option (see :ref:`operations/start_network:Adding a New Node to the Network`), the node is recorded in state ``PENDING``. Then, members can vote to accept the new node, using the unique node id (hex-encoded string of the SHA-256 digest of the node's identity public key). See :ref:`governance/proposals:Proposing and Voting for a Proposal` for more detail.
 
 Once the proposal successfully completes, the new node automatically becomes part of the network.
 
-.. note:: Once trusted, it may take some time for the new node to update its ledger and replay the transactions run on the network before it joined.
+.. note:: Once trusted, it may take some time for the new node to update its ledger and replay the transactions run on the network before it joined (from the beginning of time, or from the snapshot it started from).
 
 Updating Code Version
 ---------------------
@@ -52,32 +52,38 @@ To limit the scope of key compromise, members of the consortium can refresh the 
 
 .. code-block:: bash
 
-    $ cat rekey_ledger.json
+    $ cat trigger_ledger_rekey.json
     {
-        "script": {
-            "text": "return Calls:call(\"rekey_ledger\")"
-        }
+        "actions": [
+            {
+                "name": "trigger_ledger_rekey",
+                "args": null
+            }
+        ]
     }
 
-    $ scurl.sh https://<ccf-node-address>/gov/proposals --cacert network_cert --key member1_privk --cert member1_cert --data-binary @rekey_ledger.json -H "content-type: application/json"
+    $ scurl.sh https://<ccf-node-address>/gov/proposals --cacert network_cert --key member1_privk --cert member1_cert --data-binary @trigger_ledger_rekey.json -H "content-type: application/json"
     {
+        "ballot_count": 0,
         "proposal_id": "2f739d154b8cddacd7fc6d03cc8d4d20626e477ec4b1af10a74c670bb38bed5e",
-        "proposer_id": 1,
-        "state": "OPEN"
+        "proposer_id": "2af6cb6c0af07818186f7ef7151061174c3cb74b4a4c30a04a434f0c2b00a8c0",
+        "state": "Open"
     }
 
     $ scurl.sh https://<ccf-node-address>/gov/proposals/2f739d154b8cddacd7fc6d03cc8d4d20626e477ec4b1af10a74c670bb38bed5e/votes --cacert network_cert --key member2_privk --cert member2_cert --data-binary @vote_accept_1.json -H "content-type: application/json"
     {
+        "ballot_count": 1,
         "proposal_id": "2f739d154b8cddacd7fc6d03cc8d4d20626e477ec4b1af10a74c670bb38bed5e",
-        "proposer_id": 1,
-        "state": "OPEN"
+        "proposer_id": "2af6cb6c0af07818186f7ef7151061174c3cb74b4a4c30a04a434f0c2b00a8c0",
+        "state": "Open"
     }
 
     $ scurl.sh https://<ccf-node-address>/gov/proposals/2f739d154b8cddacd7fc6d03cc8d4d20626e477ec4b1af10a74c670bb38bed5e/votes --cacert network_cert --key member3_privk --cert member3_cert --data-binary @vote_accept_1.json -H "content-type: application/json"
     {
+        "ballot_count": 2,
         "proposal_id": "2f739d154b8cddacd7fc6d03cc8d4d20626e477ec4b1af10a74c670bb38bed5e",
-        "proposer_id": 1,
-        "state": "ACCEPTED"
+        "proposer_id": "2af6cb6c0af07818186f7ef7151061174c3cb74b4a4c30a04a434f0c2b00a8c0",
+        "state": "Accepted"
     }
 
 Once the proposal is accepted (``"state": "ACCEPTED"``) it is immediately enacted. All subsequent transactions will be encrypted with a fresh new ledger encryption key.
@@ -95,31 +101,39 @@ The number of member shares required to restore the private ledger (``recovery_t
 
     $ cat set_recovery_threshold.json
     {
-        "parameter": <new_recovery_threshold>,
-        "script": {
-            "text": "return Calls:call(\"set_recovery_threshold\")"
-        }
+        "actions": [
+            {
+                "name": "set_recovery_threshold",
+                "args": {
+                    "recovery_threshold": 2
+                }
+            }
+        ]
     }
 
     $ scurl.sh https://<ccf-node-address>/gov/proposals --cacert network_cert --key member1_privk --cert member1_cert --data-binary @set_recovery_threshold.json -H "content-type: application/json"
     {
+        "ballot_count": 0,
         "proposal_id": "b9c08b3861395eca904d913427dcb436136e277cf4712eb14e9e9cddf9d231a8",
-        "proposer_id": 1,
-        "state": "OPEN"
+        "proposer_id": "2af6cb6c0af07818186f7ef7151061174c3cb74b4a4c30a04a434f0c2b00a8c0",
+        "state": "Open"
     }
 
     $ scurl.sh https://<ccf-node-address>/gov/proposals/b9c08b3861395eca904d913427dcb436136e277cf4712eb14e9e9cddf9d231a8/votes --cacert network_cert --key member2_privk --cert member2_cert --data-binary @vote_accept_1.json -H "content-type: application/json"
     {
+        "ballot_count": 1,
         "proposal_id": "b9c08b3861395eca904d913427dcb436136e277cf4712eb14e9e9cddf9d231a8",
-        "proposer_id": 1,
-        "state": "OPEN"
+        "proposer_id": "2af6cb6c0af07818186f7ef7151061174c3cb74b4a4c30a04a434f0c2b00a8c0",
+        "state": "Open"
+    }
     }
 
     $ scurl.sh https://<ccf-node-address>/gov/proposals/b9c08b3861395eca904d913427dcb436136e277cf4712eb14e9e9cddf9d231a8/votes --cacert network_cert --key member3_privk --cert member3_cert --data-binary @vote_accept_1.json -H "content-type: application/json"
     {
+        "ballot_count": 2,
         "proposal_id": "b9c08b3861395eca904d913427dcb436136e277cf4712eb14e9e9cddf9d231a8",
-        "proposer_id": 1,
-        "state": "ACCEPTED"
+        "proposer_id": "2af6cb6c0af07818186f7ef7151061174c3cb74b4a4c30a04a434f0c2b00a8c0",
+        "state": "Accepted"
     }
 
-.. note:: The new recovery threshold has to be in the range between 1 and the current number of active members.
+.. note:: The new recovery threshold has to be in the range between 1 and the current number of active recovery members.

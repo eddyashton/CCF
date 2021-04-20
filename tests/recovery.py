@@ -2,6 +2,7 @@
 # Licensed under the Apache 2.0 License.
 import infra.e2e_args
 import infra.network
+import infra.node
 import infra.logging_app as app
 import infra.checker
 import suite.test_requirements as reqs
@@ -60,7 +61,7 @@ def test_share_resilience(network, args, from_snapshot=False):
         snapshot_dir=snapshot_dir,
     )
     primary, _ = recovered_network.find_primary()
-    recovered_network.consortium.accept_recovery(primary)
+    recovered_network.consortium.transition_service_to_open(primary)
 
     # Submit all required recovery shares minus one. Last recovery share is
     # submitted after a new primary is found.
@@ -91,7 +92,9 @@ def test_share_resilience(network, args, from_snapshot=False):
 
     for node in recovered_network.get_joined_nodes():
         recovered_network.wait_for_state(
-            node, "partOfNetwork", timeout=args.ledger_recovery_timeout
+            node,
+            infra.node.State.PART_OF_NETWORK.value,
+            timeout=args.ledger_recovery_timeout,
         )
 
     recovered_network.consortium.check_for_service(

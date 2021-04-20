@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 #pragma once
-#include "app_interface.h"
+#include "ccf/app_interface.h"
 #include "crypto/hash.h"
 #include "ds/logger.h"
 #include "ds/oversized.h"
@@ -13,6 +13,7 @@
 #include "node/node_state.h"
 #include "node/node_types.h"
 #include "node/rpc/forwarder.h"
+#include "node/rpc/member_frontend.h"
 #include "node/rpc/node_frontend.h"
 #include "rpc_map.h"
 #include "rpc_sessions.h"
@@ -42,23 +43,24 @@ namespace enclave
 
     struct NodeContext : public ccfapp::AbstractNodeContext
     {
-      ccf::historical::StateCache historical_state_cache;
+      std::unique_ptr<ccf::historical::StateCache> historical_state_cache =
+        nullptr;
       ccf::AbstractNodeState* node_state = nullptr;
 
-      NodeContext(ccf::historical::StateCache&& hsc) :
-        historical_state_cache(std::move(hsc))
-      {}
+      NodeContext() {}
 
       ccf::historical::AbstractStateCache& get_historical_state() override
       {
-        return historical_state_cache;
+        return *historical_state_cache;
       }
 
       ccf::AbstractNodeState& get_node_state() override
       {
         return *node_state;
       }
-    } context;
+    };
+
+    std::unique_ptr<NodeContext> context = nullptr;
 
   public:
     Enclave(
@@ -82,9 +84,7 @@ namespace enclave
       rpc_map(std::make_shared<RPCMap>()),
       rpcsessions(std::make_shared<RPCSessions>(writer_factory, rpc_map)),
       cmd_forwarder(std::make_shared<ccf::Forwarder<ccf::NodeToNode>>(
-        rpcsessions, n2n_channels, rpc_map, consensus_type_)),
-      context(ccf::historical::StateCache(
-        network, writer_factory.create_writer_to_outside()))
+        rpcsessions, n2n_channels, rpc_map, consensus_type_))
     {
       logger::config::msg() = AdminMessage::log_msg;
       logger::config::writer() = writer_factory.create_writer_to_outside();
@@ -104,19 +104,28 @@ namespace enclave
 
       to_host = writer_factory.create_writer_to_outside();
 
+      network.ledger_secrets = std::make_shared<ccf::LedgerSecrets>();
+
       node = std::make_unique<ccf::NodeState>(
         writer_factory, network, rpcsessions, share_manager, curve_id);
-      context.node_state = node.get();
+
+      context = std::make_unique<NodeContext>();
+      context->historical_state_cache =
+        std::make_unique<ccf::historical::StateCache>(
+          *network.tables,
+          network.ledger_secrets,
+          writer_factory.create_writer_to_outside());
+      context->node_state = node.get();
 
       rpc_map->register_frontend<ccf::ActorsType::members>(
         std::make_unique<ccf::MemberRpcFrontend>(
-          network, *node, share_manager));
+          network, *context, share_manager));
 
       rpc_map->register_frontend<ccf::ActorsType::users>(
-        ccfapp::get_rpc_handler(network, context));
+        ccfapp::get_rpc_handler(network, *context));
 
       rpc_map->register_frontend<ccf::ActorsType::nodes>(
-        std::make_unique<ccf::NodeRpcFrontend>(network, *node));
+        std::make_unique<ccf::NodeRpcFrontend>(network, *context));
 
       for (auto& [actor, fe] : rpc_map->frontends())
       {
@@ -159,6 +168,8 @@ namespace enclave
       // <= node_cert_size is checked by the EDL-generated wrapper
 
       start_type = start_type_;
+
+      rpcsessions->set_max_open_sessions(ccf_config_.max_open_sessions);
 
       ccf::NodeCreateInfo r;
       try
@@ -243,6 +254,7 @@ namespace enclave
               last_tick_time = time_now;
 
               node->tick(elapsed_ms);
+              context->historical_state_cache->tick(elapsed_ms);
               threading::ThreadMessaging::thread_messaging.tick(elapsed_ms);
               // When recovering, no signature should be emitted while the
               // public ledger is being read
@@ -290,16 +302,25 @@ namespace enclave
                 if (
                   node->is_reading_public_ledger() ||
                   node->is_verifying_snapshot())
+                {
                   node->recover_public_ledger_entry(body);
+                }
                 else if (node->is_reading_private_ledger())
+                {
                   node->recover_private_ledger_entry(body);
+                }
                 else
-                  LOG_FAIL_FMT("Cannot recover ledger entry: Unexpected state");
+                {
+                  auto [s, _, __] = node->state();
+                  LOG_FAIL_FMT(
+                    "Cannot recover ledger entry: Unexpected node state {}", s);
+                }
                 break;
               }
               case consensus::LedgerRequestPurpose::HistoricalQuery:
               {
-                context.historical_state_cache.handle_ledger_entry(index, body);
+                context->historical_state_cache->handle_ledger_entry(
+                  index, body);
                 break;
               }
               default:
@@ -331,7 +352,7 @@ namespace enclave
               }
               case consensus::LedgerRequestPurpose::HistoricalQuery:
               {
-                context.historical_state_cache.handle_no_entry(index);
+                context->historical_state_cache->handle_no_entry(index);
                 break;
               }
               default:
@@ -419,6 +440,9 @@ namespace enclave
 #ifndef VIRTUAL_ENCLAVE
       catch (const std::exception& e)
       {
+        // It is expected that all enclave modules consuming ring buffer
+        // messages catch any thrown exception they can recover from. Uncaught
+        // exceptions bubble up to here and cause the node to shutdown.
         RINGBUFFER_WRITE_MESSAGE(
           AdminMessage::fatal_error_msg, to_host, std::string(e.what()));
         return false;

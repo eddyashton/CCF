@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 #pragma once
-#include "common_endpoint_registry.h"
+
+#include "ccf/endpoint_registry.h"
 #include "consensus/aft/request.h"
 #include "crypto/verifier.h"
 #include "ds/buffer.h"
@@ -9,6 +10,7 @@
 #include "enclave/rpc_handler.h"
 #include "forwarder.h"
 #include "http/http_jwt.h"
+#include "kv/store.h"
 #include "node/client_signatures.h"
 #include "node/jwt.h"
 #include "node/nodes.h"
@@ -27,7 +29,7 @@ namespace ccf
   {
   protected:
     kv::Store& tables;
-    EndpointRegistry& endpoints;
+    endpoints::EndpointRegistry& endpoints;
 
   private:
     SpinLock open_lock;
@@ -38,12 +40,13 @@ namespace ccf
     kv::TxHistory* history;
 
     size_t sig_tx_interval = 5000;
-    std::atomic<size_t> tx_count = 0;
+    std::atomic<size_t> tx_count_since_tick = 0;
     std::chrono::milliseconds sig_ms_interval = std::chrono::milliseconds(1000);
     std::chrono::milliseconds ms_to_sig = std::chrono::milliseconds(1000);
     crypto::Pem* service_identity = nullptr;
 
-    using PreExec = std::function<void(kv::Tx& tx, enclave::RpcContext& ctx)>;
+    using PreExec =
+      std::function<void(kv::CommittableTx& tx, enclave::RpcContext& ctx)>;
 
     void update_consensus()
     {
@@ -63,27 +66,25 @@ namespace ccf
     }
 
     void update_metrics(
-      const std::shared_ptr<enclave::RpcContext> ctx,
-      EndpointRegistry::Metrics& m)
+      const std::shared_ptr<enclave::RpcContext>& ctx,
+      const endpoints::EndpointDefinitionPtr& endpoint)
     {
       int cat = ctx->get_response_status() / 100;
       switch (cat)
       {
         case 4:
-          m.errors++;
+          endpoints.increment_metrics_errors(endpoint);
           return;
         case 5:
-          m.failures++;
+          endpoints.increment_metrics_failures(endpoint);
           return;
       }
     }
 
     std::optional<std::vector<uint8_t>> forward_or_redirect_json(
       std::shared_ptr<enclave::RpcContext> ctx,
-      const EndpointDefinitionPtr& endpoint)
+      const endpoints::EndpointDefinitionPtr& endpoint)
     {
-      auto& metrics = endpoints.get_metrics(endpoint);
-
       if (cmd_forwarder && !ctx->session->is_forwarded)
       {
         if (consensus != nullptr)
@@ -91,18 +92,18 @@ namespace ccf
           auto primary_id = consensus->primary();
 
           if (
-            primary_id != NoNode &&
+            primary_id.has_value() &&
             cmd_forwarder->forward_command(
               ctx,
-              primary_id,
+              primary_id.value(),
               endpoint->properties.execute_outside_consensus ==
-                  ExecuteOutsideConsensus::Never ?
+                  endpoints::ExecuteOutsideConsensus::Never ?
                 consensus->active_nodes() :
                 std::set<NodeId>(),
               ctx->session->caller_cert))
           {
             // Indicate that the RPC has been forwarded to primary
-            LOG_TRACE_FMT("RPC forwarded to primary {}", primary_id);
+            LOG_TRACE_FMT("RPC forwarded to primary {}", primary_id.value());
             return std::nullopt;
           }
         }
@@ -110,7 +111,7 @@ namespace ccf
           HTTP_STATUS_INTERNAL_SERVER_ERROR,
           ccf::errors::InternalError,
           "RPC could not be forwarded to unknown primary.");
-        update_metrics(ctx, metrics);
+        update_metrics(ctx, endpoint);
         return ctx->serialise_response();
       }
       else
@@ -120,10 +121,18 @@ namespace ccf
         ctx->set_response_status(HTTP_STATUS_TEMPORARY_REDIRECT);
         if (consensus != nullptr)
         {
-          NodeId primary_id = consensus->primary();
+          auto primary_id = consensus->primary();
+          if (!primary_id.has_value())
+          {
+            ctx->set_error(
+              HTTP_STATUS_INTERNAL_SERVER_ERROR,
+              ccf::errors::InternalError,
+              "RPC could not be redirected to unknown primary.");
+          }
+
           auto tx = tables.create_tx();
           auto nodes = tx.ro<Nodes>(Tables::NODES);
-          auto info = nodes->get(primary_id);
+          auto info = nodes->get(primary_id.value());
 
           if (info)
           {
@@ -133,15 +142,17 @@ namespace ccf
           }
         }
 
-        update_metrics(ctx, metrics);
+        update_metrics(ctx, endpoint);
         return ctx->serialise_response();
       }
     }
 
     std::optional<std::vector<uint8_t>> process_command(
       std::shared_ptr<enclave::RpcContext> ctx,
-      kv::Tx& tx,
-      const PreExec& pre_exec = {})
+      kv::CommittableTx& tx,
+      const PreExec& pre_exec = {},
+      kv::Version prescribed_commit_version = kv::NoVersion,
+      ccf::SeqNo max_conflict_version = kv::NoVersion)
     {
       const auto endpoint = endpoints.find_endpoint(tx, *ctx);
       if (endpoint == nullptr)
@@ -181,8 +192,7 @@ namespace ccf
 
       // Note: calls that could not be dispatched (cases handled above)
       // are not counted against any particular endpoint.
-      auto& metrics = endpoints.get_metrics(endpoint);
-      metrics.calls++;
+      endpoints.increment_metrics_calls(endpoint);
 
       std::unique_ptr<AuthnIdentity> identity = nullptr;
 
@@ -204,7 +214,7 @@ namespace ccf
           // If none were accepted, let the last set an error
           endpoint->authn_policies.back()->set_unauthenticated_error(
             ctx, std::move(auth_error_reason));
-          update_metrics(ctx, metrics);
+          update_metrics(ctx, endpoint);
           return ctx->serialise_response();
         }
       }
@@ -221,12 +231,12 @@ namespace ccf
       {
         switch (endpoint->properties.forwarding_required)
         {
-          case ForwardingRequired::Never:
+          case endpoints::ForwardingRequired::Never:
           {
             break;
           }
 
-          case ForwardingRequired::Sometimes:
+          case endpoints::ForwardingRequired::Sometimes:
           {
             if (
               (ctx->session->is_forwarding &&
@@ -236,7 +246,7 @@ namespace ccf
                (endpoint == nullptr ||
                 (endpoint != nullptr &&
                  endpoint->properties.execute_outside_consensus !=
-                   ExecuteOutsideConsensus::Locally))))
+                   endpoints::ExecuteOutsideConsensus::Locally))))
             {
               ctx->session->is_forwarding = true;
               return forward_or_redirect_json(ctx, endpoint);
@@ -244,7 +254,7 @@ namespace ccf
             break;
           }
 
-          case ForwardingRequired::Always:
+          case endpoints::ForwardingRequired::Always:
           {
             ctx->session->is_forwarding = true;
             return forward_or_redirect_json(ctx, endpoint);
@@ -252,9 +262,9 @@ namespace ccf
         }
       }
 
-      auto args = EndpointContext(ctx, std::move(identity), tx);
+      auto args = endpoints::EndpointContext(ctx, std::move(identity), tx);
 
-      tx_count++;
+      tx_count_since_tick++;
 
       size_t attempts = 0;
       constexpr auto max_attempts = 30;
@@ -264,7 +274,7 @@ namespace ccf
         if (attempts > 0)
         {
           set_root_on_proposals(*ctx, tx);
-          metrics.retries++;
+          endpoints.increment_metrics_retries(endpoint);
         }
 
         ++attempts;
@@ -280,11 +290,30 @@ namespace ccf
 
           if (!ctx->should_apply_writes())
           {
-            update_metrics(ctx, metrics);
+            update_metrics(ctx, endpoint);
             return ctx->serialise_response();
           }
 
-          switch (tx.commit())
+          kv::CommitResult result;
+          bool track_read_versions =
+            (consensus != nullptr && consensus->type() == ConsensusType::BFT);
+          if (prescribed_commit_version != kv::NoVersion)
+          {
+            CCF_ASSERT(
+              consensus->type() == ConsensusType::BFT, "Wrong consensus type");
+            auto version_resolver = [&](bool) {
+              tables.next_version();
+              return std::make_tuple(prescribed_commit_version, kv::NoVersion);
+            };
+            result = tx.commit(
+              track_read_versions, version_resolver, max_conflict_version);
+          }
+          else
+          {
+            result = tx.commit(track_read_versions);
+          }
+
+          switch (result)
           {
             case kv::CommitResult::SUCCESS:
             {
@@ -295,8 +324,10 @@ namespace ccf
               {
                 if (cv != kv::NoVersion)
                 {
-                  ctx->set_seqno(cv);
-                  ctx->set_view(tx.commit_term());
+                  ccf::TxID tx_id;
+                  tx_id.view = tx.commit_term();
+                  tx_id.seqno = cv;
+                  ctx->set_tx_id(tx_id);
                 }
 
                 if (history != nullptr && consensus->is_primary())
@@ -305,12 +336,13 @@ namespace ccf
                 }
               }
 
-              update_metrics(ctx, metrics);
+              update_metrics(ctx, endpoint);
               return ctx->serialise_response();
             }
 
             case kv::CommitResult::FAIL_CONFLICT:
             {
+              tx = tables.create_tx();
               break;
             }
 
@@ -320,7 +352,7 @@ namespace ccf
                 HTTP_STATUS_SERVICE_UNAVAILABLE,
                 ccf::errors::TransactionReplicationFailed,
                 "Transaction failed to replicate.");
-              update_metrics(ctx, metrics);
+              update_metrics(ctx, endpoint);
               return ctx->serialise_response();
             }
           }
@@ -331,13 +363,13 @@ namespace ccf
           // compaction. Reset and retry
           LOG_DEBUG_FMT(
             "Transaction execution conflicted with compaction: {}", e.what());
-          tx.reset();
+          tx = tables.create_tx();
           continue;
         }
         catch (RpcException& e)
         {
           ctx->set_error(std::move(e.error));
-          update_metrics(ctx, metrics);
+          update_metrics(ctx, endpoint);
           return ctx->serialise_response();
         }
         catch (JsonParseError& e)
@@ -346,23 +378,14 @@ namespace ccf
             HTTP_STATUS_BAD_REQUEST,
             ccf::errors::InvalidInput,
             fmt::format("At {}: {}", e.pointer(), e.what()));
-          update_metrics(ctx, metrics);
+          update_metrics(ctx, endpoint);
           return ctx->serialise_response();
         }
         catch (const nlohmann::json::exception& e)
         {
           ctx->set_error(
             HTTP_STATUS_BAD_REQUEST, ccf::errors::InvalidInput, e.what());
-          update_metrics(ctx, metrics);
-          return ctx->serialise_response();
-        }
-        catch (const UrlQueryParseError& e)
-        {
-          ctx->set_error(
-            HTTP_STATUS_BAD_REQUEST,
-            ccf::errors::InvalidQueryParameterValue,
-            e.what());
-          update_metrics(ctx, metrics);
+          update_metrics(ctx, endpoint);
           return ctx->serialise_response();
         }
         catch (const kv::KvSerialiserException& e)
@@ -380,7 +403,7 @@ namespace ccf
             HTTP_STATUS_INTERNAL_SERVER_ERROR,
             ccf::errors::InternalError,
             e.what());
-          update_metrics(ctx, metrics);
+          update_metrics(ctx, endpoint);
           return ctx->serialise_response();
         }
       }
@@ -397,7 +420,7 @@ namespace ccf
     }
 
   public:
-    RpcFrontend(kv::Store& tables_, EndpointRegistry& handlers_) :
+    RpcFrontend(kv::Store& tables_, endpoints::EndpointRegistry& handlers_) :
       tables(tables_),
       endpoints(handlers_),
       consensus(nullptr),
@@ -459,7 +482,8 @@ namespace ccf
       return is_open_;
     }
 
-    void set_root_on_proposals(const enclave::RpcContext& ctx, kv::Tx& tx)
+    void set_root_on_proposals(
+      const enclave::RpcContext& ctx, kv::CommittableTx& tx)
     {
       if (ctx.get_request_path() == "/gov/proposals")
       {
@@ -557,18 +581,27 @@ namespace ccf
     }
 
     ProcessBftResp process_bft(
-      std::shared_ptr<enclave::RpcContext> ctx) override
+      std::shared_ptr<enclave::RpcContext> ctx,
+      ccf::SeqNo prescribed_commit_version,
+      ccf::SeqNo max_conflict_version) override
     {
       auto tx = tables.create_tx();
-      return process_bft(ctx, tx);
+      return process_bft(
+        ctx, tx, prescribed_commit_version, max_conflict_version);
     }
 
     /** Process a serialised command with the associated RPC context via BFT
      *
      * @param ctx Context for this RPC
+     * @param tx Transaction
+     * @param prescribed_commit_version Prescribed commit version
+     * @param max_conflict_version Maximum conflict version
      */
     ProcessBftResp process_bft(
-      std::shared_ptr<enclave::RpcContext> ctx, kv::Tx& tx) override
+      std::shared_ptr<enclave::RpcContext> ctx,
+      kv::CommittableTx& tx,
+      ccf::SeqNo prescribed_commit_version = kv::NoVersion,
+      ccf::SeqNo max_conflict_version = kv::NoVersion) override
     {
       // Note: this can only happen if the primary is malicious,
       // and has executed a user transaction when the service wasn't
@@ -582,7 +615,7 @@ namespace ccf
 
       update_consensus();
 
-      PreExec fn = [](kv::Tx& tx, enclave::RpcContext& ctx) {
+      PreExec fn = [](kv::CommittableTx& tx, enclave::RpcContext& ctx) {
         auto aft_requests = tx.rw<aft::RequestsMap>(ccf::Tables::AFT_REQUESTS);
         aft_requests->put(
           0,
@@ -592,7 +625,8 @@ namespace ccf
            ctx.frame_format()});
       };
 
-      auto rep = process_command(ctx, tx, fn);
+      auto rep = process_command(
+        ctx, tx, fn, prescribed_commit_version, max_conflict_version);
 
       version = tx.get_version();
       return {std::move(rep.value()), version};
@@ -615,13 +649,14 @@ namespace ccf
 
       update_consensus();
       auto tx = tables.create_tx();
+      set_root_on_proposals(*ctx, tx);
 
       const auto endpoint = endpoints.find_endpoint(tx, *ctx);
       if (
         consensus->type() == ConsensusType::CFT ||
         (endpoint != nullptr &&
          endpoint->properties.execute_outside_consensus ==
-           ExecuteOutsideConsensus::Primary &&
+           endpoints::ExecuteOutsideConsensus::Primary &&
          (consensus != nullptr && consensus->is_primary())))
       {
         auto rep = process_command(ctx, tx);
@@ -645,18 +680,11 @@ namespace ccf
     {
       update_consensus();
 
-      kv::Consensus::Statistics stats;
+      // reset tx_count_since_tick for next tick interval, but pass current
+      // value for stats
+      size_t tx_count = tx_count_since_tick.exchange(0u);
 
-      if (consensus != nullptr)
-      {
-        stats = consensus->get_statistics();
-      }
-      stats.tx_count = tx_count;
-
-      endpoints.tick(elapsed, stats);
-
-      // reset tx_counter for next tick interval
-      tx_count = 0;
+      endpoints.tick(elapsed, tx_count);
     }
   };
 }

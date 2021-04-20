@@ -5,9 +5,8 @@
         "js_module": "limits.js",
         "js_function": "recursive",
         "forwarding_required": "never",
-        "execute_outside_consensus": "never",
         "authn_policies": ["user_cert"],
-        "readonly": true,
+        "mode": "readonly",
         "openapi": {}
       }
     },
@@ -16,9 +15,8 @@
         "js_module": "limits.js",
         "js_function": "alloc",
         "forwarding_required": "never",
-        "execute_outside_consensus": "never",
         "authn_policies": ["user_cert"],
-        "readonly": true,
+        "mode": "readonly",
         "openapi": {}
       }
     }

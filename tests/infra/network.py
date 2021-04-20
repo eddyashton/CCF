@@ -4,14 +4,17 @@ import os
 import time
 import logging
 from contextlib import contextmanager
-from enum import Enum, IntEnum
+from enum import Enum, IntEnum, auto
 from ccf.clients import CCFConnectionException, flush_info
 import infra.path
 import infra.proc
 import infra.node
 import infra.consortium
+from ccf.ledger import NodeStatus
 from ccf.tx_status import TxStatus
+from ccf.tx_id import TxID
 import random
+from dataclasses import dataclass
 from math import ceil
 import http
 
@@ -25,10 +28,16 @@ JOIN_TIMEOUT = 40
 COMMON_FOLDER = "common"
 
 
+class NodeRole(Enum):
+    ANY = auto()
+    PRIMARY = auto()
+    BACKUP = auto()
+
+
 class ServiceStatus(Enum):
-    OPENING = 1
-    OPEN = 2
-    CLOSED = 3
+    OPENING = "Opening"
+    OPEN = "Open"
+    CLOSED = "Closed"
 
 
 class ParticipantsCurve(IntEnum):
@@ -47,12 +56,22 @@ class CodeIdNotFound(Exception):
     pass
 
 
+class StartupSnapshotIsOld(Exception):
+    pass
+
+
 class NodeShutdownError(Exception):
     pass
 
 
 def get_common_folder_name(workspace, label):
     return os.path.join(workspace, f"{label}_{COMMON_FOLDER}")
+
+
+@dataclass
+class UserInfo:
+    local_id: int
+    service_id: str
 
 
 class Network:
@@ -68,12 +87,14 @@ class Network:
         "consensus",
         "memory_reserve_startup",
         "log_format_json",
-        "gov_script",
+        "constitution",
         "join_timer",
         "worker_threads",
         "ledger_chunk_bytes",
         "domain",
+        "san",
         "snapshot_tx_interval",
+        "max_open_sessions",
         "jwt_key_refresh_interval_s",
         "common_read_only_ledger_dir",
     ]
@@ -91,25 +112,25 @@ class Network:
         txs=None,
         library_dir=".",
     ):
-        self.existing_network = existing_network
-        if self.existing_network is None:
+        if existing_network is None:
             self.consortium = None
+            self.users = []
             self.node_offset = 0
             self.txs = txs
         else:
-            self.consortium = self.existing_network.consortium
+            self.consortium = existing_network.consortium
+            self.users = existing_network.users
             # When creating a new network from an existing one (e.g. for recovery),
             # the node id of the nodes of the new network should start from the node
             # id of the existing network, so that new nodes id match the ones in the
             # nodes KV table
             self.node_offset = (
-                len(self.existing_network.nodes) + self.existing_network.node_offset
+                len(existing_network.nodes) + existing_network.node_offset
             )
-            self.txs = self.existing_network.txs
+            self.txs = existing_network.txs
 
         self.ignoring_shutdown_errors = False
         self.nodes = []
-        self.user_ids = []
         self.hosts = hosts
         self.status = ServiceStatus.CLOSED
         self.binary_dir = binary_dir
@@ -135,22 +156,8 @@ class Network:
 
     def _get_next_local_node_id(self):
         if len(self.nodes):
-            return self.nodes[-1].node_id + 1
+            return self.nodes[-1].local_node_id + 1
         return self.node_offset
-
-    def _adjust_local_node_ids(self, primary):
-        assert (
-            self.existing_network is None
-        ), "Cannot adjust local node IDs if the network was started from an existing network"
-
-        with primary.client() as nc:
-            r = nc.get("/node/network/nodes/primary")
-            first_node_id = r.body.json()["node_id"]
-            assert (r.body.json()["host"] == primary.pubhost) and (
-                int(r.body.json()["port"]) == primary.pubport
-            ), "Primary is not the node that just started"
-            for n in self.nodes:
-                n.node_id = n.node_id + first_node_id
 
     def create_node(self, host):
         node_id = self._get_next_local_node_id()
@@ -174,7 +181,7 @@ class Network:
         target_node=None,
         recovery=False,
         ledger_dir=None,
-        copy_ledger_read_only=False,
+        copy_ledger_read_only=True,
         read_only_ledger_dir=None,
         from_snapshot=True,
         snapshot_dir=None,
@@ -284,17 +291,11 @@ class Network:
                             snapshot_dir=snapshot_dir,
                             **forwarded_args,
                         )
-                        # When a recovery network in started without an existing network,
-                        # it is not possible to know the local node IDs before the first
-                        # node is started and has recovered the ledger. The local node IDs
-                        # are adjusted accordingly then.
-                        if self.existing_network is None:
-                            self.wait_for_state(
-                                node,
-                                "partOfPublicNetwork",
-                                timeout=args.ledger_recovery_timeout,
-                            )
-                            self._adjust_local_node_ids(node)
+                        self.wait_for_state(
+                            node,
+                            infra.node.State.PART_OF_PUBLIC_NETWORK.value,
+                            timeout=args.ledger_recovery_timeout,
+                        )
                 else:
                     # When a new service is started, initial nodes join without a snapshot
                     self._add_node(
@@ -326,7 +327,7 @@ class Network:
         )
         return primary
 
-    def _setup_common_folder(self, gov_script):
+    def _setup_common_folder(self, constitution):
         LOG.info(f"Creating common folder: {self.common_dir}")
         cmd = ["rm", "-rf", self.common_dir]
         assert (
@@ -336,10 +337,11 @@ class Network:
         assert (
             infra.proc.ccall(*cmd).returncode == 0
         ), f"Could not create {self.common_dir} directory"
-        cmd = ["cp", gov_script, self.common_dir]
-        assert (
-            infra.proc.ccall(*cmd).returncode == 0
-        ), f"Could not copy governance {gov_script} to {self.common_dir}"
+        for fragment in constitution:
+            cmd = ["cp", fragment, self.common_dir]
+            assert (
+                infra.proc.ccall(*cmd).returncode == 0
+            ), f"Could not copy governance {fragment} to {self.common_dir}"
         # It is more convenient to create a symlink in the common directory than generate
         # certs and keys in the top directory and move them across
         cmd = ["ln", "-s", os.path.join(os.getcwd(), self.KEY_GEN), self.common_dir]
@@ -355,10 +357,10 @@ class Network:
         self.common_dir = get_common_folder_name(args.workspace, args.label)
 
         assert (
-            args.gov_script is not None
-        ), "--gov-script argument must be provided to start a network"
+            args.constitution
+        ), "--constitution argument must be provided to start a network"
 
-        self._setup_common_folder(args.gov_script)
+        self._setup_common_folder(args.constitution)
 
         mc = max(1, args.initial_member_count)
         initial_members_info = []
@@ -381,38 +383,31 @@ class Network:
             args.participants_curve,
             authenticate_session=not args.disable_member_session_auth,
         )
-        initial_users = list(range(max(0, args.initial_user_count)))
+        initial_users = [
+            f"user{user_id}" for user_id in list(range(max(0, args.initial_user_count)))
+        ]
         self.create_users(initial_users, args.participants_curve)
 
         primary = self._start_all_nodes(args)
         self.wait_for_all_nodes_to_catch_up(primary)
         LOG.success("All nodes joined network")
 
-        self.consortium.activate(primary)
-
-        if args.js_app_script:
-            LOG.error(
-                "--js-app-script is deprecated - update to --js-app-bundle instead"
-            )
-            infra.proc.ccall(
-                "cp", args.js_app_script, args.binary_dir
-            ).check_returncode()
-            self.consortium.set_js_app(
-                remote_node=primary, app_script_path=args.js_app_script
-            )
+        self.consortium.activate(self.find_random_node())
 
         if args.js_app_bundle:
-            self.consortium.deploy_js_app(
-                remote_node=primary, app_bundle_path=args.js_app_bundle
+            self.consortium.set_js_app(
+                remote_node=self.find_random_node(), app_bundle_path=args.js_app_bundle
             )
 
         for path in args.jwt_issuer:
-            self.consortium.set_jwt_issuer(remote_node=primary, json_path=path)
+            self.consortium.set_jwt_issuer(
+                remote_node=self.find_random_node(), json_path=path
+            )
 
-        self.consortium.add_users(primary, initial_users)
+        self.consortium.add_users(self.find_random_node(), initial_users)
         LOG.info(f"Initial set of users added: {len(initial_users)}")
 
-        self.consortium.open_network(remote_node=primary)
+        self.consortium.transition_service_to_open(remote_node=self.find_random_node())
         self.status = ServiceStatus.OPEN
         LOG.success("***** Network is now open *****")
 
@@ -451,7 +446,9 @@ class Network:
 
         for node in self.get_joined_nodes():
             self.wait_for_state(
-                node, "partOfPublicNetwork", timeout=args.ledger_recovery_timeout
+                node,
+                infra.node.State.PART_OF_PUBLIC_NETWORK.value,
+                timeout=args.ledger_recovery_timeout,
             )
         self.wait_for_all_nodes_to_catch_up(primary)
         LOG.success("All nodes joined public network")
@@ -461,83 +458,94 @@ class Network:
         Recovers a CCF network previously started in recovery mode.
         :param args: command line arguments to configure the CCF nodes.
         """
-        primary, _ = self.find_primary()
-        self.consortium.check_for_service(primary, status=ServiceStatus.OPENING)
-        self.consortium.wait_for_all_nodes_to_be_trusted(primary, self.nodes)
-        self.consortium.accept_recovery(primary)
-        self.consortium.recover_with_shares(primary)
+        self.consortium.check_for_service(
+            self.find_random_node(), status=ServiceStatus.OPENING
+        )
+        self.consortium.wait_for_all_nodes_to_be_trusted(
+            self.find_random_node(), self.nodes
+        )
+        self.consortium.transition_service_to_open(self.find_random_node())
+        self.consortium.recover_with_shares(self.find_random_node())
 
         for node in self.get_joined_nodes():
             self.wait_for_state(
-                node, "partOfNetwork", timeout=args.ledger_recovery_timeout
+                node,
+                infra.node.State.PART_OF_NETWORK.value,
+                timeout=args.ledger_recovery_timeout,
             )
             self._wait_for_app_open(node)
 
-        self.consortium.check_for_service(primary, ServiceStatus.OPEN)
+        self.consortium.check_for_service(self.find_random_node(), ServiceStatus.OPEN)
         LOG.success("***** Recovered network is now open *****")
 
     def ignore_errors_on_shutdown(self):
         self.ignoring_shutdown_errors = True
 
-    def stop_all_nodes(self):
-        # Verify that all txs committed on the service can be read
-        if self.txs is not None:
-            self.txs.verify(self)
+    def stop_all_nodes(self, skip_verification=False):
+        if not skip_verification:
+            # Verify that all txs committed on the service can be read
+            if self.txs is not None:
+                self.txs.verify(self)
 
         fatal_error_found = False
-        longest_ledger_seqno = 0
-        most_up_to_date_node = None
-        committed_ledger_dirs = {}
 
         for node in self.nodes:
             _, fatal_errors = node.stop()
             if fatal_errors:
                 fatal_error_found = True
 
-            # Find stopped node with longest ledger
-            _, committed_ledger_dir = node.get_ledger(include_read_only_dirs=True)
-            ledger_end_seqno = 0
-            for ledger_file in os.listdir(committed_ledger_dir):
-                end_seqno = infra.node.get_committed_ledger_end_seqno(ledger_file)
-                if end_seqno > ledger_end_seqno:
-                    ledger_end_seqno = end_seqno
-
-            if ledger_end_seqno > longest_ledger_seqno:
-                longest_ledger_seqno = ledger_end_seqno
-                most_up_to_date_node = node
-            committed_ledger_dirs[node.node_id] = [
-                committed_ledger_dir,
-                ledger_end_seqno,
-            ]
-
         LOG.info("All nodes stopped")
 
-        # Verify that all ledger files on stopped nodes exist on most up-to-date node
-        # and are identical
-        if most_up_to_date_node:
-            longest_ledger_dir, _ = committed_ledger_dirs[most_up_to_date_node.node_id]
-            for node_id, (committed_ledger_dir, _) in (
-                l
-                for l in committed_ledger_dirs.items()
-                if not l[0] == most_up_to_date_node.node_id
-            ):
-                for ledger_file in os.listdir(committed_ledger_dir):
-                    if ledger_file not in os.listdir(longest_ledger_dir):
-                        raise Exception(
-                            f"Ledger file on node {node_id} does not exist on most up-to-date node {most_up_to_date_node.node_id}: {ledger_file}"
-                        )
-                    if infra.path.compute_file_checksum(
-                        os.path.join(longest_ledger_dir, ledger_file)
-                    ) != infra.path.compute_file_checksum(
-                        os.path.join(committed_ledger_dir, ledger_file)
-                    ):
-                        raise Exception(
-                            f"Ledger file checksums between node {node_id} and most up-to-date node {most_up_to_date_node.node_id} did not match: {ledger_file}"
-                        )
+        if not skip_verification:
+            longest_ledger_seqno = 0
+            most_up_to_date_node = None
+            committed_ledger_dirs = {}
 
-            LOG.success(
-                f"Verified ledger files consistency on all {len(self.nodes)} stopped nodes"
-            )
+            for node in self.nodes:
+                # Find stopped node with longest ledger
+                _, committed_ledger_dir = node.get_ledger(include_read_only_dirs=True)
+                ledger_end_seqno = 0
+                for ledger_file in os.listdir(committed_ledger_dir):
+                    end_seqno = infra.node.get_committed_ledger_end_seqno(ledger_file)
+                    if end_seqno > ledger_end_seqno:
+                        ledger_end_seqno = end_seqno
+
+                if ledger_end_seqno > longest_ledger_seqno:
+                    longest_ledger_seqno = ledger_end_seqno
+                    most_up_to_date_node = node
+                committed_ledger_dirs[node.node_id] = [
+                    committed_ledger_dir,
+                    ledger_end_seqno,
+                ]
+
+            # Verify that all ledger files on stopped nodes exist on most up-to-date node
+            # and are identical
+            if most_up_to_date_node:
+                longest_ledger_dir, _ = committed_ledger_dirs[
+                    most_up_to_date_node.node_id
+                ]
+                for node_id, (committed_ledger_dir, _) in (
+                    l
+                    for l in committed_ledger_dirs.items()
+                    if not l[0] == most_up_to_date_node.node_id
+                ):
+                    for ledger_file in os.listdir(committed_ledger_dir):
+                        if ledger_file not in os.listdir(longest_ledger_dir):
+                            raise Exception(
+                                f"Ledger file on node {node_id} does not exist on most up-to-date node {most_up_to_date_node.node_id}: {ledger_file}"
+                            )
+                        if infra.path.compute_file_checksum(
+                            os.path.join(longest_ledger_dir, ledger_file)
+                        ) != infra.path.compute_file_checksum(
+                            os.path.join(committed_ledger_dir, ledger_file)
+                        ):
+                            raise Exception(
+                                f"Ledger file checksums between node {node_id} and most up-to-date node {most_up_to_date_node.node_id} did not match: {ledger_file}"
+                            )
+
+                LOG.success(
+                    f"Verified ledger files consistency on all {len(self.nodes)} stopped nodes"
+                )
 
         if fatal_error_found:
             if self.ignoring_shutdown_errors:
@@ -574,14 +582,12 @@ class Network:
                 new_node.node_id,
                 timeout=timeout,
                 node_status=(
-                    infra.node.NodeStatus.PENDING
+                    NodeStatus.PENDING
                     if self.status == ServiceStatus.OPEN
-                    else infra.node.NodeStatus.TRUSTED
+                    else NodeStatus.TRUSTED
                 ),
             )
         except TimeoutError as e:
-            # The node can be safely discarded since it has not been
-            # attributed a unique node_id by CCF
             LOG.error(f"New pending node {new_node.node_id} failed to join the network")
             errors, _ = new_node.stop()
             self.nodes.remove(new_node)
@@ -590,6 +596,8 @@ class Network:
                 for error in errors:
                     if "Quote does not contain known enclave measurement" in error:
                         raise CodeIdNotFound from e
+                    if "StartupSnapshotIsOld" in error:
+                        raise StartupSnapshotIsOld from e
             raise
 
         return new_node
@@ -618,7 +626,9 @@ class Network:
         try:
             if self.status is ServiceStatus.OPEN:
                 self.consortium.trust_node(
-                    primary, new_node.node_id, timeout=ceil(args.join_timer * 2 / 1000)
+                    primary,
+                    new_node.node_id,
+                    timeout=ceil(args.join_timer * 2 / 1000),
                 )
             # Here, quote verification has already been run when the node
             # was added as pending. Only wait for the join timer for the
@@ -634,22 +644,31 @@ class Network:
 
         return new_node
 
-    def create_user(self, user_id, curve, record=True):
+    def create_user(self, local_user_id, curve, record=True):
         infra.proc.ccall(
             self.key_generator,
             "--name",
-            f"user{user_id}",
+            local_user_id,
             "--curve",
             f"{curve.name}",
             path=self.common_dir,
             log_output=False,
         ).check_returncode()
-        if record:
-            self.user_ids.append(user_id)
 
-    def create_users(self, user_ids, curve):
-        for user_id in user_ids:
-            self.create_user(user_id, curve)
+        with open(os.path.join(self.common_dir, f"{local_user_id}_cert.pem")) as c:
+            service_user_id = infra.crypto.compute_cert_der_hash_hex_from_pem(c.read())
+        new_user = UserInfo(
+            local_user_id,
+            service_user_id,
+        )
+        if record:
+            self.users.append(new_user)
+
+        return new_user
+
+    def create_users(self, local_user_ids, curve):
+        for local_user_id in local_user_ids:
+            self.create_user(local_user_id, curve)
 
     def get_members(self):
         return self.consortium.members
@@ -672,7 +691,7 @@ class Network:
             raise TimeoutError(
                 f"Timed out waiting for state {state} on node {node.node_id}"
             )
-        if state == "partOfNetwork":
+        if state == infra.node.State.PART_OF_NETWORK.value:
             self.status = ServiceStatus.OPEN
 
     def _wait_for_app_open(self, node, timeout=3):
@@ -687,7 +706,7 @@ class Network:
                 time.sleep(0.1)
         raise TimeoutError(f"Application frontend was not open after {timeout}s")
 
-    def _get_node_by_id(self, node_id):
+    def _get_node_by_service_id(self, node_id):
         return next((node for node in self.nodes if node.node_id == node_id), None)
 
     def find_primary(self, timeout=3, log_capture=None):
@@ -707,11 +726,11 @@ class Network:
                     try:
                         logs = []
                         res = c.get("/node/network", log_capture=logs)
-                        assert res.status_code == 200, res
+                        assert res.status_code == http.HTTPStatus.OK.value, res
+
                         body = res.body.json()
-                        primary_id = body["primary_id"]
                         view = body["current_view"]
-                        view_change_in_progress = body["view_change_in_progress"]
+                        primary_id = body["primary_id"]
                         if primary_id is not None:
                             break
 
@@ -719,16 +738,18 @@ class Network:
                         LOG.warning(
                             f"Could not successfully connect to node {node.node_id}. Retrying..."
                         )
+
             if primary_id is not None:
                 break
             time.sleep(0.1)
 
-        if primary_id is None or view_change_in_progress:
+        if primary_id is None:
             flush_info(logs, log_capture, 0)
             raise PrimaryNotFound
 
         flush_info(logs, log_capture, 0)
-        return (self._get_node_by_id(primary_id), view)
+
+        return (self._get_node_by_service_id(primary_id), view)
 
     def find_backups(self, primary=None, timeout=3):
         if primary is None:
@@ -737,6 +758,18 @@ class Network:
 
     def find_any_backup(self, primary=None, timeout=3):
         return random.choice(self.find_backups(primary=primary, timeout=timeout))
+
+    def find_node_by_role(self, role=NodeRole.ANY):
+        role_ = (
+            random.choice([NodeRole.PRIMARY, NodeRole.BACKUP]) if NodeRole.ANY else role
+        )
+        if role_ == NodeRole.PRIMARY:
+            return self.find_primary()[0]
+        else:
+            return self.find_any_backup()
+
+    def find_random_node(self):
+        return random.choice(self.get_joined_nodes())
 
     def find_nodes(self, timeout=3):
         primary, _ = self.find_primary(timeout=timeout)
@@ -759,22 +792,20 @@ class Network:
             with primary.client() as c:
                 resp = c.get("/node/commit")
                 body = resp.body.json()
-                seqno = body["seqno"]
-                view = body["view"]
-                if seqno != 0:
+                tx_id = TxID.from_str(body["transaction_id"])
+                if tx_id.valid():
                     break
             time.sleep(0.1)
         assert (
-            seqno != 0
-        ), f"Primary {primary.node_id} has not made any progress yet (view: {view}, seqno: {seqno})"
+            tx_id.valid()
+        ), f"Primary {primary.node_id} has not made any progress yet ({tx_id})"
 
         caught_up_nodes = []
         while time.time() < end_time:
             caught_up_nodes = []
             for node in self.get_joined_nodes():
                 with node.client() as c:
-                    c.get("/node/commit")
-                    resp = c.get(f"/node/local_tx?view={view}&seqno={seqno}")
+                    resp = c.get(f"/node/local_tx?transaction_id={tx_id}")
                     if resp.status_code != 200:
                         # Node may not have joined the network yet, try again
                         break
@@ -783,7 +814,7 @@ class Network:
                         caught_up_nodes.append(node)
                     elif status == TxStatus.Invalid:
                         raise RuntimeError(
-                            f"Node {node.node_id} reports transaction ID {view}.{seqno} is invalid and will never be committed"
+                            f"Node {node.node_id} reports transaction ID {tx_id} is invalid and will never be committed"
                         )
                     else:
                         pass
@@ -808,7 +839,7 @@ class Network:
                     r = c.get("/node/commit")
                     assert r.status_code == http.HTTPStatus.OK.value
                     body = r.body.json()
-                    commits.append(f"{body['view']}.{body['seqno']}")
+                    commits.append(body["transaction_id"])
             if [commits[0]] * len(commits) == commits:
                 break
             time.sleep(0.1)
@@ -848,10 +879,10 @@ class Network:
         while time.time() < end_time:
             with node.client() as c:
                 r = c.get("/node/commit")
-                current_commit_seqno = r.body.json()["seqno"]
-                if current_commit_seqno >= seqno:
+                current_tx = TxID.from_str(r.body.json()["transaction_id"])
+                if current_tx.seqno >= seqno:
                     with node.client(
-                        f"member{self.consortium.get_any_active_member().member_id}"
+                        self.consortium.get_any_active_member().local_id
                     ) as nc:
                         # Using update_state_digest here as a convenient write tx
                         # that is app agnostic
@@ -945,6 +976,9 @@ def network(
     try:
         yield net
     except Exception:
+        # Don't try to verify txs on Exception path
+        net.txs = None
+
         if pdb:
             import pdb
 
@@ -952,4 +986,4 @@ def network(
         else:
             raise
     finally:
-        net.stop_all_nodes()
+        net.stop_all_nodes(skip_verification=True)

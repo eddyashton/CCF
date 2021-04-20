@@ -8,7 +8,6 @@
 #include <cstring>
 #include <exception>
 #include <memory>
-#include <msgpack/msgpack.hpp>
 #include <vector>
 
 namespace crypto
@@ -94,8 +93,6 @@ namespace crypto
     {
       return {data(), data() + s.size()};
     }
-
-    MSGPACK_DEFINE(s);
   };
 
   inline void to_json(nlohmann::json& j, const Pem& p)
@@ -118,6 +115,16 @@ namespace crypto
       throw std::runtime_error(
         fmt::format("Unable to parse pem from this JSON: {}", j.dump()));
     }
+  }
+
+  inline std::string schema_name(const Pem&)
+  {
+    return "Pem";
+  }
+
+  inline void fill_json_schema(nlohmann::json& schema, const Pem&)
+  {
+    schema["type"] = "string";
   }
 }
 

@@ -7,6 +7,7 @@
 
 // CCF
 #include "clients/rpc_tls_client.h"
+#include "crypto/verifier.h"
 #include "ds/cli_helper.h"
 #include "ds/files.h"
 #include "ds/logger.h"
@@ -222,7 +223,10 @@ namespace client
         }
       }
 
-      if (response_times.is_timing_active() && reply.status == HTTP_STATUS_OK)
+      if (
+        response_times.is_timing_active() &&
+        (reply.status == HTTP_STATUS_OK ||
+         reply.status == HTTP_STATUS_NO_CONTENT))
       {
         const auto tx_id = timing::extract_transaction_id(reply);
 
@@ -285,7 +289,7 @@ namespace client
     PreparedTxs prepared_txs;
 
     timing::ResponseTimes response_times;
-    timing::TransactionID last_response_tx_id = {0, 0};
+    ccf::TxID last_response_tx_id = {0, 0};
 
     std::chrono::high_resolution_clock::time_point last_write_time;
     std::chrono::nanoseconds write_delay_ns = std::chrono::nanoseconds::zero();
@@ -304,8 +308,8 @@ namespace client
 
         key = crypto::Pem(raw_key);
 
-        crypto::Sha256Hash hash({raw_cert.data(), raw_cert.size()});
-        key_id = fmt::format("{:02x}", fmt::join(hash.h, ""));
+        auto cert_der = crypto::cert_pem_to_der(raw_cert);
+        key_id = crypto::Sha256Hash(cert_der).hex_str();
 
         tls_cert = std::make_shared<tls::Cert>(
           std::make_shared<tls::CA>(ca), raw_cert, key);
@@ -552,8 +556,7 @@ namespace client
       size_t seqno)
     {
       nlohmann::json p;
-      p["seqno"] = seqno;
-      p["view"] = view;
+      p["transaction_id"] = fmt::format("{}.{}", view, seqno);
       return connection->get("tx", p);
     }
 
@@ -711,7 +714,7 @@ namespace client
       }
     }
 
-    void wait_for_global_commit(const timing::TransactionID& target)
+    void wait_for_global_commit(const ccf::TxID& target)
     {
       response_times.wait_for_global_commit(target);
     }

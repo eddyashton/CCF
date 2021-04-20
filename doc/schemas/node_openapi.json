@@ -1,20 +1,9 @@
 {
   "components": {
     "schemas": {
-      "CallerInfo": {
-        "properties": {
-          "caller_id": {
-            "$ref": "#/components/schemas/uint64"
-          }
-        },
-        "required": [
-          "caller_id"
-        ],
-        "type": "object"
-      },
       "CodeStatus": {
         "enum": [
-          "ALLOWED_TO_JOIN"
+          "AllowedToJoin"
         ],
         "type": "string"
       },
@@ -66,6 +55,11 @@
         ],
         "type": "object"
       },
+      "EntityId": {
+        "format": "hex",
+        "pattern": "^[a-f0-9]{64}$",
+        "type": "string"
+      },
       "GetCode__Out": {
         "properties": {
           "versions": {
@@ -100,39 +94,35 @@
       },
       "GetCommit__Out": {
         "properties": {
-          "seqno": {
-            "$ref": "#/components/schemas/int64"
-          },
-          "view": {
-            "$ref": "#/components/schemas/int64"
+          "transaction_id": {
+            "$ref": "#/components/schemas/TransactionId"
           }
         },
         "required": [
-          "view",
-          "seqno"
+          "transaction_id"
         ],
         "type": "object"
       },
       "GetNetworkInfo__Out": {
         "properties": {
           "current_view": {
-            "$ref": "#/components/schemas/int64"
+            "$ref": "#/components/schemas/uint64"
           },
           "primary_id": {
-            "$ref": "#/components/schemas/uint64"
+            "$ref": "#/components/schemas/EntityId"
+          },
+          "service_certificate": {
+            "$ref": "#/components/schemas/Pem"
           },
           "service_status": {
             "$ref": "#/components/schemas/ServiceStatus"
-          },
-          "view_change_in_progress": {
-            "$ref": "#/components/schemas/boolean"
           }
         },
         "required": [
           "service_status",
+          "service_certificate",
           "current_view",
-          "primary_id",
-          "view_change_in_progress"
+          "primary_id"
         ],
         "type": "object"
       },
@@ -148,7 +138,7 @@
             "$ref": "#/components/schemas/string"
           },
           "node_id": {
-            "$ref": "#/components/schemas/uint64"
+            "$ref": "#/components/schemas/EntityId"
           },
           "port": {
             "$ref": "#/components/schemas/string"
@@ -199,30 +189,22 @@
         ],
         "type": "object"
       },
-      "GetReceipt__Out": {
-        "properties": {
-          "receipt": {
-            "$ref": "#/components/schemas/uint8_array"
-          }
-        },
-        "required": [
-          "receipt"
-        ],
-        "type": "object"
-      },
       "GetState__Out": {
         "properties": {
           "last_recovered_seqno": {
-            "$ref": "#/components/schemas/int64"
-          },
-          "last_signed_seqno": {
-            "$ref": "#/components/schemas/int64"
-          },
-          "node_id": {
             "$ref": "#/components/schemas/uint64"
           },
+          "last_signed_seqno": {
+            "$ref": "#/components/schemas/uint64"
+          },
+          "node_id": {
+            "$ref": "#/components/schemas/EntityId"
+          },
           "recovery_target_seqno": {
-            "$ref": "#/components/schemas/int64"
+            "$ref": "#/components/schemas/uint64"
+          },
+          "startup_seqno": {
+            "$ref": "#/components/schemas/uint64"
           },
           "state": {
             "$ref": "#/components/schemas/ccf__State"
@@ -231,7 +213,8 @@
         "required": [
           "node_id",
           "state",
-          "last_signed_seqno"
+          "last_signed_seqno",
+          "startup_seqno"
         ],
         "type": "object"
       },
@@ -239,9 +222,13 @@
         "properties": {
           "status": {
             "$ref": "#/components/schemas/TxStatus"
+          },
+          "transaction_id": {
+            "$ref": "#/components/schemas/TransactionId"
           }
         },
         "required": [
+          "transaction_id",
           "status"
         ],
         "type": "object"
@@ -267,16 +254,19 @@
       },
       "NodeStatus": {
         "enum": [
-          "PENDING",
-          "TRUSTED",
-          "RETIRED"
+          "Pending",
+          "Trusted",
+          "Retired"
         ],
+        "type": "string"
+      },
+      "Pem": {
         "type": "string"
       },
       "Quote": {
         "properties": {
           "endorsements": {
-            "$ref": "#/components/schemas/string"
+            "$ref": "#/components/schemas/base64string"
           },
           "format": {
             "$ref": "#/components/schemas/QuoteFormat"
@@ -285,10 +275,10 @@
             "$ref": "#/components/schemas/string"
           },
           "node_id": {
-            "$ref": "#/components/schemas/uint64"
+            "$ref": "#/components/schemas/EntityId"
           },
           "raw": {
-            "$ref": "#/components/schemas/string"
+            "$ref": "#/components/schemas/base64string"
           }
         },
         "required": [
@@ -311,66 +301,91 @@
         },
         "type": "array"
       },
+      "Receipt": {
+        "properties": {
+          "leaf": {
+            "$ref": "#/components/schemas/string"
+          },
+          "node_id": {
+            "$ref": "#/components/schemas/EntityId"
+          },
+          "proof": {
+            "$ref": "#/components/schemas/Receipt__Element_array"
+          },
+          "root": {
+            "$ref": "#/components/schemas/string"
+          },
+          "signature": {
+            "$ref": "#/components/schemas/string"
+          }
+        },
+        "required": [
+          "signature",
+          "root",
+          "proof",
+          "leaf",
+          "node_id"
+        ],
+        "type": "object"
+      },
+      "Receipt__Element": {
+        "properties": {
+          "left": {
+            "$ref": "#/components/schemas/string"
+          },
+          "right": {
+            "$ref": "#/components/schemas/string"
+          }
+        },
+        "type": "object"
+      },
+      "Receipt__Element_array": {
+        "items": {
+          "$ref": "#/components/schemas/Receipt__Element"
+        },
+        "type": "array"
+      },
       "ServiceStatus": {
         "enum": [
-          "OPENING",
-          "OPEN",
-          "WAITING_FOR_RECOVERY_SHARES",
-          "CLOSED"
+          "Opening",
+          "Open",
+          "WaitingForRecoveryShares",
+          "Closed"
         ],
+        "type": "string"
+      },
+      "TransactionId": {
+        "pattern": "^[0-9]+\\.[0-9]+$",
         "type": "string"
       },
       "TxStatus": {
         "enum": [
-          "UNKNOWN",
-          "PENDING",
-          "COMMITTED",
-          "INVALID"
+          "Unknown",
+          "Pending",
+          "Committed",
+          "Invalid"
         ],
         "type": "string"
       },
-      "VerifyReceipt__In": {
-        "properties": {
-          "receipt": {
-            "$ref": "#/components/schemas/uint8_array"
-          }
-        },
-        "required": [
-          "receipt"
-        ],
-        "type": "object"
-      },
-      "VerifyReceipt__Out": {
-        "properties": {
-          "valid": {
-            "$ref": "#/components/schemas/boolean"
-          }
-        },
-        "required": [
-          "valid"
-        ],
-        "type": "object"
+      "base64string": {
+        "format": "base64",
+        "type": "string"
       },
       "boolean": {
         "type": "boolean"
       },
       "ccf__State": {
         "enum": [
-          "uninitialized",
-          "initialized",
-          "pending",
-          "partOfPublicNetwork",
-          "partOfNetwork",
-          "readingPublicLedger",
-          "readingPrivateLedger",
-          "verifyingSnapshot"
+          "Uninitialized",
+          "Initialized",
+          "Pending",
+          "PartOfPublicNetwork",
+          "PartOfNetwork",
+          "ReadingPublicLedger",
+          "ReadingPrivateLedger",
+          "VerifyingSnapshot"
         ],
         "type": "string"
-      },
-      "int64": {
-        "maximum": 9223372036854775807,
-        "minimum": -9223372036854775808,
-        "type": "integer"
       },
       "json": {},
       "string": {
@@ -380,29 +395,6 @@
         "maximum": 18446744073709551615,
         "minimum": 0,
         "type": "integer"
-      },
-      "uint8": {
-        "maximum": 255,
-        "minimum": 0,
-        "type": "integer"
-      },
-      "uint8_array": {
-        "items": {
-          "$ref": "#/components/schemas/uint8"
-        },
-        "type": "array"
-      }
-    },
-    "securitySchemes": {
-      "member_signature": {
-        "description": "Request must be signed according to the HTTP Signature scheme. The signer must be a member identity registered with this service.",
-        "scheme": "signature",
-        "type": "http"
-      },
-      "user_signature": {
-        "description": "Request must be signed according to the HTTP Signature scheme. The signer must be a user identity registered with this service.",
-        "scheme": "signature",
-        "type": "http"
       }
     }
   },
@@ -443,40 +435,6 @@
             "description": "Default response description"
           }
         }
-      }
-    },
-    "/caller_id": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "cert",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CallerInfo"
-                }
-              }
-            },
-            "description": "Default response description"
-          }
-        },
-        "security": [
-          {
-            "user_signature": []
-          },
-          {
-            "member_signature": []
-          }
-        ]
       }
     },
     "/code": {
@@ -525,22 +483,10 @@
         "parameters": [
           {
             "in": "query",
-            "name": "seqno",
-            "required": false,
+            "name": "transaction_id",
+            "required": true,
             "schema": {
-              "maximum": 9223372036854775807,
-              "minimum": -9223372036854775808,
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "view",
-            "required": false,
-            "schema": {
-              "maximum": 9223372036854775807,
-              "minimum": -9223372036854775808,
-              "type": "integer"
+              "$ref": "#/components/schemas/TransactionId"
             }
           }
         ],
@@ -598,7 +544,7 @@
             "name": "host",
             "required": false,
             "schema": {
-              "type": "string"
+              "$ref": "#/components/schemas/string"
             }
           },
           {
@@ -606,7 +552,7 @@
             "name": "port",
             "required": false,
             "schema": {
-              "type": "string"
+              "$ref": "#/components/schemas/string"
             }
           },
           {
@@ -614,12 +560,7 @@
             "name": "status",
             "required": false,
             "schema": {
-              "enum": [
-                "PENDING",
-                "TRUSTED",
-                "RETIRED"
-              ],
-              "type": "string"
+              "$ref": "#/components/schemas/string"
             }
           }
         ],
@@ -727,12 +668,10 @@
         "parameters": [
           {
             "in": "query",
-            "name": "commit",
-            "required": false,
+            "name": "transaction_id",
+            "required": true,
             "schema": {
-              "maximum": 9223372036854775807,
-              "minimum": -9223372036854775808,
-              "type": "integer"
+              "$ref": "#/components/schemas/TransactionId"
             }
           }
         ],
@@ -741,33 +680,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GetReceipt__Out"
-                }
-              }
-            },
-            "description": "Default response description"
-          }
-        }
-      }
-    },
-    "/receipt/verify": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VerifyReceipt__In"
-              }
-            }
-          },
-          "description": "Auto-generated request body schema"
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VerifyReceipt__Out"
+                  "$ref": "#/components/schemas/Receipt"
                 }
               }
             },
@@ -797,22 +710,10 @@
         "parameters": [
           {
             "in": "query",
-            "name": "seqno",
-            "required": false,
+            "name": "transaction_id",
+            "required": true,
             "schema": {
-              "maximum": 9223372036854775807,
-              "minimum": -9223372036854775808,
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "view",
-            "required": false,
-            "schema": {
-              "maximum": 9223372036854775807,
-              "minimum": -9223372036854775808,
-              "type": "integer"
+              "$ref": "#/components/schemas/TransactionId"
             }
           }
         ],

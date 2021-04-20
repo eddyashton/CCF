@@ -3,10 +3,11 @@
 #define DOCTEST_CONFIG_IMPLEMENT
 #define DOCTEST_CONFIG_NO_SHORT_MACRO_NAMES
 #define DOCTEST_CONFIG_NO_EXCEPTIONS_BUT_WITH_ALL_ASSERTS
+#include "ccf/app_interface.h"
+#include "ccf/user_frontend.h"
 #include "crypto/rsa_key_pair.h"
 #include "ds/files.h"
 #include "ds/logger.h"
-#include "enclave/app_interface.h"
 #include "kv/test/null_encryptor.h"
 #include "kv/test/stub_consensus.h"
 #include "node/client_signatures.h"
@@ -14,9 +15,7 @@
 #include "node/history.h"
 #include "node/rpc/member_frontend.h"
 #include "node/rpc/serdes.h"
-#include "node/rpc/user_frontend.h"
 #include "node_stub.h"
-#include "runtime_config/default_whitelists.h"
 
 #include <doctest/doctest.h>
 #include <iostream>
@@ -50,11 +49,6 @@ string get_script_path(string name)
   ss << (dir ? dir : default_dir) << "/" << name;
   return ss.str();
 }
-const auto gov_script_file = files::slurp_string(get_script_path("gov.lua"));
-const auto gov_veto_script_file =
-  files::slurp_string(get_script_path("gov_veto.lua"));
-const auto operator_gov_script_file =
-  files::slurp_string(get_script_path("operator_gov.lua"));
 
 template <typename T>
 T parse_response_body(const TResponse& r)
@@ -83,19 +77,6 @@ void check_error(const TResponse& r, http_status expected)
   DOCTEST_CHECK(r.status == expected);
 }
 
-void check_result_state(const TResponse& r, ProposalState expected)
-{
-  DOCTEST_CHECK(r.status == HTTP_STATUS_OK);
-  const auto result = parse_response_body<ProposalInfo>(r);
-  DOCTEST_CHECK(result.state == expected);
-}
-
-void set_whitelists(GenesisGenerator& gen)
-{
-  for (const auto& wl : default_whitelists)
-    gen.set_whitelist(wl.first, wl.second);
-}
-
 std::vector<uint8_t> create_request(
   const json& params, const string& method_name, llhttp_method verb = HTTP_POST)
 {
@@ -120,32 +101,12 @@ std::vector<uint8_t> create_signed_request(
   r.set_body(&body);
 
   const auto contents = caller.contents();
-  crypto::Sha256Hash hash({contents.data(), contents.size()});
-  const std::string key_id = fmt::format("{:02x}", fmt::join(hash.h, ""));
+  auto caller_der = crypto::cert_pem_to_der(caller);
+  const auto key_id = crypto::Sha256Hash(caller_der).hex_str();
 
   http::sign_request(r, kp_, key_id);
 
   return r.build_request();
-}
-
-template <typename T>
-auto query_params(T script, bool compile)
-{
-  json params;
-  if (compile)
-    params["bytecode"] = lua::compile(script);
-  else
-    params["text"] = script;
-  return params;
-}
-
-template <typename T>
-auto read_params(const T& key, const string& table_name)
-{
-  json params;
-  params["key"] = key;
-  params["table"] = table_name;
-  return params;
 }
 
 auto frontend_process(
@@ -170,22 +131,10 @@ auto frontend_process(
   return processor.received.front();
 }
 
-auto get_proposal(
-  MemberRpcFrontend& frontend,
-  const ProposalId& proposal_id,
-  const crypto::Pem& caller)
-{
-  const auto getter =
-    create_request(nullptr, fmt::format("proposals/{}", proposal_id), HTTP_GET);
-
-  return parse_response_body<Proposal>(
-    frontend_process(frontend, getter, caller));
-}
-
 auto get_vote(
   MemberRpcFrontend& frontend,
   ProposalId proposal_id,
-  MemberId voter,
+  const MemberId& voter,
   const crypto::Pem& caller)
 {
   const auto getter = create_request(
@@ -221,7 +170,7 @@ auto get_cert(uint64_t member_id, crypto::KeyPairPtr& kp_mem)
 auto init_frontend(
   NetworkState& network,
   GenesisGenerator& gen,
-  StubNodeState& node,
+  StubNodeContext& context,
   ShareManager& share_manager,
   const int n_members,
   std::vector<crypto::Pem>& member_certs)
@@ -233,18 +182,15 @@ auto init_frontend(
     gen.activate_member(gen.add_member(member_certs.back()));
   }
 
-  set_whitelists(gen);
-  gen.set_gov_scripts(lua::Interpreter().invoke<json>(gov_script_file));
-  gen.finalize();
-
-  return MemberRpcFrontend(network, node, share_manager);
+  return MemberRpcFrontend(network, context, share_manager);
 }
 
 void init_network(NetworkState& network)
 {
   network.tables->set_encryptor(encryptor);
-  auto history = std::make_shared<ccf::NullTxHistory>(*network.tables, 0, *kp);
+  auto history = std::make_shared<ccf::NullTxHistory>(
+    *network.tables, kv::test::PrimaryNodeId, *kp);
   network.tables->set_history(history);
-  auto consensus = std::make_shared<kv::PrimaryStubConsensus>();
+  auto consensus = std::make_shared<kv::test::PrimaryStubConsensus>();
   network.tables->set_consensus(consensus);
 }

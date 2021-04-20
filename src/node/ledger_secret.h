@@ -5,7 +5,6 @@
 #include "crypto/entropy.h"
 #include "crypto/symmetric_key.h"
 #include "kv/kv_types.h"
-#include "kv/tx.h"
 #include "secrets.h"
 #include "shares.h"
 
@@ -31,7 +30,7 @@ namespace ccf
     // key.
     LedgerSecret(const LedgerSecret& other) :
       raw_key(other.raw_key),
-      key(std::make_shared<crypto::KeyAesGcm>(other.raw_key)),
+      key(crypto::make_key_aes_gcm(other.raw_key)),
       previous_secret_stored_version(other.previous_secret_stored_version)
     {}
 
@@ -40,7 +39,7 @@ namespace ccf
       std::optional<kv::Version> previous_secret_stored_version_ =
         std::nullopt) :
       raw_key(raw_key_),
-      key(std::make_shared<crypto::KeyAesGcm>(std::move(raw_key_))),
+      key(crypto::make_key_aes_gcm(std::move(raw_key_))),
       previous_secret_stored_version(previous_secret_stored_version_)
     {}
   };

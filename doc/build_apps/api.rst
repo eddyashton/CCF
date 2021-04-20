@@ -4,14 +4,10 @@ Developer API
 A CCF application is composed of the following:
 
 - The :ref:`Application Entry Point <build_apps/api:Application Entry Point>` which registers the application in CCF.
-- A collection of :cpp:class:`endpoints <ccf::EndpointRegistry::Endpoint>` handling HTTP requests and grouped in a single :cpp:class:`ccf::EndpointRegistry`. An :cpp:class:`endpoint <ccf::EndpointRegistry::Endpoint>` reads and writes to the key-value store via the :ref:`Key-Value Store API <build_apps/kv/api:Key-Value Store API>`.
+- A collection of :cpp:class:`endpoints <ccf::endpoints::Endpoint>` handling HTTP requests and grouped in a single :cpp:class:`registry <ccf::endpoints::EndpointRegistry>`. An :cpp:class:`endpoint <ccf::endpoints::Endpoint>` reads and writes to the key-value store via the :ref:`Key-Value Store API <build_apps/kv/api:Key-Value Store API>`.
 
 Application Entry Point
 -----------------------
-
-.. doxygenclass:: ccf::UserRpcFrontend
-   :project: CCF
-   :members:
 
 .. doxygenfunction:: ccfapp::get_rpc_handler
    :project: CCF
@@ -20,29 +16,42 @@ Application Entry Point
 Application Endpoint Registration
 ---------------------------------
 
-Endpoint Registry
-~~~~~~~~~~~~~~~~~
-
-.. doxygenclass:: ccf::EndpointRegistry
+.. doxygenstruct:: ccf::endpoints::Endpoint
    :project: CCF
-   :members: install, set_default, empty_auth_policy, user_cert_auth_policy, user_signature_auth_policy, jwt_auth_policy
+   :members:
 
-Base Endpoint Registry
-~~~~~~~~~~~~~~~~~~~~~~
+.. doxygenclass:: ccf::endpoints::EndpointRegistry
+   :project: CCF
+   :members: install, set_default
+
+.. doxygenclass:: ccf::CommonEndpointRegistry
+   :project: CCF
+   :members:
 
 .. doxygenclass:: ccf::BaseEndpointRegistry
    :project: CCF
    :members:
 
-Endpoint
+Authentication
+--------------
+
+Policies
 ~~~~~~~~
 
-.. doxygenstruct:: ccf::EndpointRegistry::Endpoint
+.. doxygenvariable:: ccf::empty_auth_policy
    :project: CCF
-   :members:
 
-Authentication Identities
-~~~~~~~~~~~~~~~~~~~~~~~~~
+.. doxygenvariable:: ccf::user_cert_auth_policy
+   :project: CCF
+
+.. doxygenvariable:: ccf::user_signature_auth_policy
+   :project: CCF
+
+.. doxygenvariable:: ccf::jwt_auth_policy
+   :project: CCF
+
+Identities
+~~~~~~~~~~
 
 .. doxygenstruct:: ccf::UserCertAuthnIdentity
    :project: CCF
@@ -57,11 +66,33 @@ Authentication Identities
    :members:
 
 Supporting Types
-~~~~~~~~~~~~~~~~
+----------------
 
 .. doxygenenum:: ccf::TxStatus
    :project: CCF
 
+.. doxygentypedef:: ccf::View
+   :project: CCF
+   
+.. doxygentypedef:: ccf::SeqNo
+   :project: CCF
+   
+.. doxygenstruct:: ccf::TxID
+   :project: CCF
+   
 .. doxygenenum:: ccf::ApiResult
    :project: CCF
 
+Historical Queries
+------------------
+
+.. doxygenfunction:: ccf::historical::adapter
+   :project: CCF
+
+.. doxygenclass:: ccf::historical::AbstractStateCache
+   :project: CCF
+   :members: set_default_expiry_duration, get_state_at, get_store_at, get_store_range, drop_request
+
+.. doxygenstruct:: ccf::historical::State
+   :project: CCF
+   :members:

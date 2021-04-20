@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "../crypto/mbedtls_wrappers.h"
+#include "../crypto/mbedtls/mbedtls_wrappers.h"
 #include "../crypto/pem.h"
 #include "../ds/buffer.h"
 
@@ -13,31 +13,33 @@ namespace tls
   class CA
   {
   private:
-    mbedtls::X509Crt ca = nullptr;
-    mbedtls::X509Crl crl = nullptr;
+    crypto::mbedtls::X509Crt ca = nullptr;
+    crypto::mbedtls::X509Crl crl = nullptr;
 
   public:
     CA(CBuffer ca_ = nullb, CBuffer crl_ = nullb)
     {
-      auto tmp_ca = mbedtls::make_unique<mbedtls::X509Crt>();
-      auto tmp_crl = mbedtls::make_unique<mbedtls::X509Crl>();
+      auto tmp_ca = crypto::mbedtls::make_unique<crypto::mbedtls::X509Crt>();
+      auto tmp_crl = crypto::mbedtls::make_unique<crypto::mbedtls::X509Crl>();
 
       if (ca_.n > 0)
       {
         crypto::Pem pem_ca(ca_);
-        if (
-          mbedtls_x509_crt_parse(tmp_ca.get(), pem_ca.data(), pem_ca.size()) !=
-          0)
-          throw std::logic_error("Could not parse CA");
+        auto ret =
+          mbedtls_x509_crt_parse(tmp_ca.get(), pem_ca.data(), pem_ca.size());
+        if (ret != 0)
+          throw std::logic_error(
+            "Could not parse CA: " + tls::error_string(ret));
       }
 
       if (crl_.n > 0)
       {
         crypto::Pem pem_crl(crl_);
-        if (
-          mbedtls_x509_crl_parse(
-            tmp_crl.get(), pem_crl.data(), pem_crl.size()) != 0)
-          throw std::logic_error("Could not parse CRL");
+        auto ret =
+          mbedtls_x509_crl_parse(tmp_crl.get(), pem_crl.data(), pem_crl.size());
+        if (ret != 0)
+          throw std::logic_error(
+            "Could not parse CRL: " + tls::error_string(ret));
       }
 
       ca = std::move(tmp_ca);

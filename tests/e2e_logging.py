@@ -16,7 +16,14 @@ import time
 import tempfile
 import base64
 import json
+import hashlib
 import ccf.clients
+from ccf.log_capture import flush_info
+import ccf.receipt
+from ccf.tx_id import TxID
+from cryptography.x509 import load_pem_x509_certificate
+from cryptography.hazmat.backends import default_backend
+from cryptography.exceptions import InvalidSignature
 
 from loguru import logger as LOG
 
@@ -155,13 +162,13 @@ def test_cert_prefix(network, args):
     if args.package == "liblogging":
         primary, _ = network.find_primary()
 
-        for user_id in network.user_ids:
-            with primary.client(f"user{user_id}") as c:
+        for user in network.users:
+            with primary.client(user.local_id) as c:
                 log_id = 101
                 msg = "This message will be prefixed"
                 c.post("/app/log/private/prefix_cert", {"id": log_id, "msg": msg})
                 r = c.get(f"/app/log/private?id={log_id}")
-                assert f"CN=user{user_id}" in r.body.json()["msg"], r
+                assert f"CN={user.local_id}" in r.body.json()["msg"], r
 
     else:
         LOG.warning(
@@ -178,7 +185,7 @@ def test_anonymous_caller(network, args):
         primary, _ = network.find_primary()
 
         # Create a new user but do not record its identity
-        network.create_user(5, args.participants_curve, record=False)
+        network.create_user("user5", args.participants_curve, record=False)
 
         log_id = 101
         msg = "This message is anonymous"
@@ -204,7 +211,10 @@ def test_anonymous_caller(network, args):
 @reqs.supports_methods("multi_auth")
 def test_multi_auth(network, args):
     primary, _ = network.find_primary()
-    with primary.client("user0") as c:
+    user = network.users[0]
+    member = network.consortium.members[0]
+
+    with primary.client(user.local_id) as c:
         response = c.get("/app/api")
         supported_methods = response.body.json()["paths"]
         if "/multi_auth" in supported_methods.keys():
@@ -222,15 +232,15 @@ def test_multi_auth(network, args):
                 require_new_response(r)
 
             LOG.info("Authenticate as a user, via TLS cert")
-            with primary.client("user0") as c:
+            with primary.client(user.local_id) as c:
                 r = c.get("/app/multi_auth")
                 require_new_response(r)
 
             LOG.info("Authenticate as same user, now with user data")
             network.consortium.set_user_data(
-                primary, 0, {"some": ["interesting", "data", 42]}
+                primary, user.service_id, {"some": ["interesting", "data", 42]}
             )
-            with primary.client("user0") as c:
+            with primary.client(user.local_id) as c:
                 r = c.get("/app/multi_auth")
                 require_new_response(r)
 
@@ -240,15 +250,15 @@ def test_multi_auth(network, args):
                 require_new_response(r)
 
             LOG.info("Authenticate as a member, via TLS cert")
-            with primary.client("member0") as c:
+            with primary.client(member.local_id) as c:
                 r = c.get("/app/multi_auth")
                 require_new_response(r)
 
             LOG.info("Authenticate as same member, now with user data")
             network.consortium.set_member_data(
-                primary, 0, {"distinct": {"arbitrary": ["data"]}}
+                primary, member.service_id, {"distinct": {"arbitrary": ["data"]}}
             )
-            with primary.client("member0") as c:
+            with primary.client(member.local_id) as c:
                 r = c.get("/app/multi_auth")
                 require_new_response(r)
 
@@ -258,12 +268,12 @@ def test_multi_auth(network, args):
                 require_new_response(r)
 
             LOG.info("Authenticate as a user, via HTTP signature")
-            with primary.client(None, "user0") as c:
+            with primary.client(None, user.local_id) as c:
                 r = c.get("/app/multi_auth")
                 require_new_response(r)
 
             LOG.info("Authenticate as a member, via HTTP signature")
-            with primary.client(None, "member0") as c:
+            with primary.client(None, member.local_id) as c:
                 r = c.get("/app/multi_auth")
                 require_new_response(r)
 
@@ -272,7 +282,7 @@ def test_multi_auth(network, args):
                 r = c.get("/app/multi_auth")
                 require_new_response(r)
 
-            network.create_user(5, args.participants_curve, record=False)
+            network.create_user("user5", args.participants_curve, record=False)
 
             LOG.info("Authenticate as invalid user5 but sign as valid user3")
             with primary.client("user5", "user3") as c:
@@ -315,38 +325,70 @@ def test_multi_auth(network, args):
 @reqs.supports_methods("custom_auth")
 def test_custom_auth(network, args):
     if args.package == "liblogging":
-        primary, _ = network.find_primary()
+        primary, other = network.find_primary_and_any_backup()
 
-        with primary.client("user0") as c:
-            LOG.info("Request without custom headers is refused")
-            r = c.get("/app/custom_auth")
-            assert r.status_code == http.HTTPStatus.UNAUTHORIZED.value, r.status_code
+        for node in (primary, other):
+            with node.client() as c:
+                LOG.info("Request without custom headers is refused")
+                r = c.get("/app/custom_auth")
+                assert (
+                    r.status_code == http.HTTPStatus.UNAUTHORIZED.value
+                ), r.status_code
 
-            name_header = "x-custom-auth-name"
-            age_header = "x-custom-auth-age"
+                name_header = "x-custom-auth-name"
+                age_header = "x-custom-auth-age"
 
-            LOG.info("Requests with partial headers are refused")
-            r = c.get("/app/custom_auth", headers={name_header: "Bob"})
-            assert r.status_code == http.HTTPStatus.UNAUTHORIZED.value, r.status_code
-            r = c.get("/app/custom_auth", headers={age_header: "42"})
-            assert r.status_code == http.HTTPStatus.UNAUTHORIZED.value, r.status_code
+                LOG.info("Requests with partial headers are refused")
+                r = c.get("/app/custom_auth", headers={name_header: "Bob"})
+                assert (
+                    r.status_code == http.HTTPStatus.UNAUTHORIZED.value
+                ), r.status_code
+                r = c.get("/app/custom_auth", headers={age_header: "42"})
+                assert (
+                    r.status_code == http.HTTPStatus.UNAUTHORIZED.value
+                ), r.status_code
 
-            LOG.info("Requests with unacceptable header contents are refused")
-            r = c.get("/app/custom_auth", headers={name_header: "", age_header: "42"})
-            assert r.status_code == http.HTTPStatus.UNAUTHORIZED.value, r.status_code
-            r = c.get(
-                "/app/custom_auth", headers={name_header: "Bob", age_header: "12"}
-            )
-            assert r.status_code == http.HTTPStatus.UNAUTHORIZED.value, r.status_code
+                LOG.info("Requests with unacceptable header contents are refused")
+                r = c.get(
+                    "/app/custom_auth", headers={name_header: "", age_header: "42"}
+                )
+                assert (
+                    r.status_code == http.HTTPStatus.UNAUTHORIZED.value
+                ), r.status_code
+                r = c.get(
+                    "/app/custom_auth", headers={name_header: "Bob", age_header: "12"}
+                )
+                assert (
+                    r.status_code == http.HTTPStatus.UNAUTHORIZED.value
+                ), r.status_code
 
-            LOG.info("Request which meets all requirements is accepted")
-            r = c.get(
-                "/app/custom_auth", headers={name_header: "Alice", age_header: "42"}
-            )
-            assert r.status_code == http.HTTPStatus.OK.value, r.status_code
-            response = r.body.json()
-            assert response["name"] == "Alice", response
-            assert response["age"] == 42, response
+                LOG.info("Request which meets all requirements is accepted")
+                r = c.get(
+                    "/app/custom_auth", headers={name_header: "Alice", age_header: "42"}
+                )
+                assert r.status_code == http.HTTPStatus.OK.value, r.status_code
+                response = r.body.json()
+                assert response["name"] == "Alice", response
+                assert response["age"] == 42, response
+
+    return network
+
+
+@reqs.description("Call an endpoint with a custom auth policy which throws")
+@reqs.supports_methods("custom_auth")
+def test_custom_auth_safety(network, args):
+    if args.package == "liblogging":
+        primary, other = network.find_primary_and_any_backup()
+
+        for node in (primary, other):
+            with node.client() as c:
+                r = c.get(
+                    "/app/custom_auth",
+                    headers={"x-custom-auth-explode": "Boom goes the dynamite"},
+                )
+                assert (
+                    r.status_code == http.HTTPStatus.INTERNAL_SERVER_ERROR.value
+                ), r.status_code
 
     return network
 
@@ -421,14 +463,149 @@ def test_historical_query(network, args):
         LOG.warning("Skipping historical queries in BFT")
         return network
 
-    if args.package == "liblogging":
-        network.txs.issue(network, number_txs=2)
-        network.txs.issue(network, number_txs=2, repeat=True)
-        network.txs.verify()
-    else:
+    network.txs.issue(network, number_txs=2)
+    network.txs.issue(network, number_txs=2, repeat=True)
+    network.txs.verify()
+
+    return network
+
+
+@reqs.description("Read historical receipts")
+@reqs.supports_methods("log/private", "log/private/historical_receipt")
+def test_historical_receipts(network, args):
+    if args.consensus == "bft":
+        LOG.warning("Skipping historical queries in BFT")
+        return network
+
+    primary, backups = network.find_nodes()
+    cert_path = os.path.join(primary.common_dir, f"{primary.local_node_id}.pem")
+    with open(cert_path) as c:
+        primary_cert = load_pem_x509_certificate(
+            c.read().encode("ascii"), default_backend()
+        )
+
+    TXS_COUNT = 5
+    network.txs.issue(network, number_txs=5)
+    for idx in range(1, TXS_COUNT + 1):
+        for node in [primary, backups[0]]:
+            first_msg = network.txs.priv[idx][0]
+            first_receipt = network.txs.get_receipt(
+                node, idx, first_msg["seqno"], first_msg["view"]
+            )
+            r = first_receipt.json()["receipt"]
+            assert r["root"] == ccf.receipt.root(r["leaf"], r["proof"])
+            ccf.receipt.verify(r["root"], r["signature"], primary_cert)
+
+    # receipt.verify() raises if it fails, but does not return anything
+    verified = True
+    try:
+        ccf.receipt.verify(
+            hashlib.sha256(b"").hexdigest(), r["signature"], primary_cert
+        )
+    except InvalidSignature:
+        verified = False
+    assert not verified
+
+    return network
+
+
+@reqs.description("Read range of historical state")
+@reqs.supports_methods("log/private", "log/private/historical/range")
+def test_historical_query_range(network, args):
+    if args.consensus == "bft":
+        LOG.warning("Skipping historical queries in BFT")
+        return network
+
+    if args.package != "liblogging":
         LOG.warning(
             f"Skipping {inspect.currentframe().f_code.co_name} as application is not C++"
         )
+        return network
+
+    primary, _ = network.find_primary()
+
+    id_a = 100
+    id_b = 101
+
+    first_seqno = None
+    last_seqno = None
+
+    def get_all_entries(target_id):
+        LOG.info(
+            f"Getting historical entries from {first_seqno} to {last_seqno} for id {target_id}"
+        )
+        logs = []
+        with primary.client("user0") as c:
+            timeout = 5
+            end_time = time.time() + timeout
+            entries = []
+            path = f"/app/log/private/historical/range?from_seqno={first_seqno}&to_seqno={last_seqno}&id={target_id}"
+            while time.time() < end_time:
+                r = c.get(path, log_capture=logs)
+                if r.status_code == http.HTTPStatus.OK:
+                    j_body = r.body.json()
+                    entries += j_body["entries"]
+                    if "@nextLink" in j_body:
+                        path = j_body["@nextLink"]
+                        continue
+                    else:
+                        # No @nextLink means we've reached end of range
+                        return entries
+                elif r.status_code == http.HTTPStatus.ACCEPTED:
+                    # Ignore retry-after header, retry soon
+                    time.sleep(0.1)
+                    continue
+                else:
+                    LOG.error("Printing historical/range logs on unexpected status")
+                    flush_info(logs, None)
+                    raise ValueError(
+                        f"Unexpected status code from historical range query: {r.status_code}"
+                    )
+
+        LOG.error("Printing historical/range logs on timeout")
+        flush_info(logs, None)
+        raise TimeoutError(f"Historical range not available after {timeout}s")
+
+    with primary.client("user0") as c:
+        # Submit many transactions, overwriting the same IDs
+        # Need to submit through network.txs so these can be verified at shutdown, but also need to submit one at a
+        # time to retrieve the submitted transactions
+        msgs = dict()
+        n_entries = 100
+        for i in range(n_entries):
+            idx = id_b if i % 3 == 0 else id_a
+            network.txs.issue(network, repeat=True, idx=idx, wait_for_sync=False)
+            _, tx = network.txs.get_last_tx(idx=idx)
+            msg = tx["msg"]
+            seqno = tx["seqno"]
+            view = tx["view"]
+            msgs[seqno] = msg
+
+            if first_seqno is None:
+                first_seqno = seqno
+
+            last_seqno = seqno
+
+        ccf.commit.wait_for_commit(c, seqno=last_seqno, view=view, timeout=3)
+
+        entries_a = get_all_entries(id_a)
+        entries_b = get_all_entries(id_b)
+        actual_len = len(entries_a) + len(entries_b)
+        assert (
+            n_entries == actual_len
+        ), f"Expected {n_entries} total entries, got {actual_len}"
+
+        # Iterate through both lists, by i, checking retrieved entries match expectations
+        for i in range(n_entries):
+            entries = entries_b if i % 3 == 0 else entries_a
+            expected_id = id_b if i % 3 == 0 else id_a
+            entry = entries.pop(0)
+            assert entry["id"] == expected_id
+            assert entry["msg"] == msgs[entry["seqno"]]
+
+        # Make sure this has checked every entry
+        assert len(entries_a) == 0
+        assert len(entries_b) == 0
 
     return network
 
@@ -464,32 +641,25 @@ def test_user_data_ACL(network, args):
     if args.package == "liblogging":
         primary, _ = network.find_primary()
 
-        proposing_member = network.consortium.get_any_active_member()
-        user_id = 0
+        user = network.users[0]
 
         # Give isAdmin permissions to a single user
-        proposal_body, careful_vote = ccf.proposal_generator.set_user_data(
-            user_id,
-            {"isAdmin": True},
+        network.consortium.set_user_data(
+            primary, user.service_id, user_data={"isAdmin": True}
         )
-        proposal = proposing_member.propose(primary, proposal_body)
-        network.consortium.vote_using_majority(primary, proposal, careful_vote)
 
         # Confirm that user can now use this endpoint
-        with primary.client(f"user{user_id}") as c:
+        with primary.client(user.local_id) as c:
             r = c.post("/app/log/private/admin_only", {"id": 42, "msg": "hello world"})
             assert r.status_code == http.HTTPStatus.OK.value, r.status_code
 
         # Remove permission
-        proposal_body, careful_vote = ccf.proposal_generator.set_user_data(
-            user_id,
-            {"isAdmin": False},
+        network.consortium.set_user_data(
+            primary, user.service_id, user_data={"isAdmin": False}
         )
-        proposal = proposing_member.propose(primary, proposal_body)
-        network.consortium.vote_using_majority(primary, proposal, careful_vote)
 
         # Confirm that user is now forbidden on this endpoint
-        with primary.client(f"user{user_id}") as c:
+        with primary.client(user.local_id) as c:
             r = c.post("/app/log/private/admin_only", {"id": 42, "msg": "hello world"})
             assert r.status_code == http.HTTPStatus.FORBIDDEN.value, r.status_code
 
@@ -522,15 +692,14 @@ def test_view_history(network, args):
             r = c.get("/node/commit")
             check(c)
 
-            commit_view = r.body.json()["view"]
-            commit_seqno = r.body.json()["seqno"]
+            commit_tx_id = TxID.from_str(r.body.json()["transaction_id"])
 
             # Retrieve status for all possible Tx IDs
             seqno_to_views = {}
-            for seqno in range(1, commit_seqno + 1):
+            for seqno in range(1, commit_tx_id.seqno + 1):
                 views = []
-                for view in range(1, commit_view + 1):
-                    r = c.get(f"/node/tx?view={view}&seqno={seqno}", log_capture=[])
+                for view in range(1, commit_tx_id.view + 1):
+                    r = c.get(f"/node/tx?transaction_id={view}.{seqno}", log_capture=[])
                     check(r)
                     status = TxStatus(r.body.json()["status"])
                     if status == TxStatus.Committed:
@@ -632,7 +801,7 @@ def test_tx_statuses(network, args):
         target_seqno = r.seqno
         SentTxs.update_status(target_view, target_seqno)
         SentTxs.update_status(target_view, target_seqno + 1)
-        SentTxs.update_status(target_view - 1, target_seqno, TxStatus.Invalid)
+        SentTxs.update_status(target_view - 1, target_seqno)
 
         end_time = time.time() + 10
         while True:
@@ -643,7 +812,7 @@ def test_tx_statuses(network, args):
 
             done = False
             for view, seqno in SentTxs.get_all_tx_ids():
-                r = c.get(f"/node/tx?view={view}&seqno={seqno}")
+                r = c.get(f"/node/tx?transaction_id={view}.{seqno}")
                 check(r)
                 status = TxStatus(r.body.json()["status"])
                 SentTxs.update_status(view, seqno, status)
@@ -817,46 +986,47 @@ def test_ws(network, args):
 
 
 @reqs.description("Running transactions against logging app")
-@reqs.supports_methods("receipt", "receipt/verify", "log/private")
+@reqs.supports_methods("receipt", "log/private")
 @reqs.at_least_n_nodes(2)
 def test_receipts(network, args):
     primary, _ = network.find_primary_and_any_backup()
+    cert_path = os.path.join(primary.common_dir, f"{primary.local_node_id}.pem")
+    with open(cert_path) as c:
+        node_cert = load_pem_x509_certificate(
+            c.read().encode("ascii"), default_backend()
+        )
 
     with primary.client() as mc:
         check_commit = infra.checker.Checker(mc)
-        check = infra.checker.Checker()
-
         msg = "Hello world"
 
         LOG.info("Write/Read on primary")
         with primary.client("user0") as c:
-            r = c.post("/app/log/private", {"id": 10000, "msg": msg})
-            check_commit(r, result=True)
-            check(c.get("/app/log/private?id=10000"), result={"msg": msg})
-            for _ in range(10):
-                c.post(
-                    "/app/log/private",
-                    {"id": 10001, "msg": "Additional messages"},
-                )
-            check_commit(
-                c.post("/app/log/private", {"id": 10001, "msg": "A final message"}),
-                result=True,
-            )
-            r = c.get(f"/app/receipt?commit={r.seqno}")
-
-            rv = c.post("/app/receipt/verify", {"receipt": r.body.json()["receipt"]})
-            assert rv.body.json() == {"valid": True}
-
-            invalid = r.body.json()["receipt"]
-            invalid[-3] += 1
-
-            rv = c.post("/app/receipt/verify", {"receipt": invalid})
-            assert rv.body.json() == {"valid": False}
+            for j in range(10):
+                idx = j + 10000
+                r = c.post("/app/log/private", {"id": idx, "msg": msg})
+                check_commit(r, result=True)
+                start_time = time.time()
+                while time.time() < (start_time + 3.0):
+                    rc = c.get(f"/app/receipt?transaction_id={r.view}.{r.seqno}")
+                    if rc.status_code == http.HTTPStatus.OK:
+                        receipt = rc.body.json()
+                        assert receipt["root"] == ccf.receipt.root(
+                            receipt["leaf"], receipt["proof"]
+                        )
+                        ccf.receipt.verify(
+                            receipt["root"], receipt["signature"], node_cert
+                        )
+                        break
+                    elif rc.status_code == http.HTTPStatus.ACCEPTED:
+                        time.sleep(0.5)
+                    else:
+                        assert False, rc
 
     return network
 
 
-@reqs.description("TTest basic app liveness")
+@reqs.description("Test basic app liveness")
 @reqs.at_least_n_nodes(1)
 def test_liveness(network, args):
     txs = app.LoggingTxs()
@@ -872,7 +1042,7 @@ def test_liveness(network, args):
 @reqs.at_least_n_nodes(1)
 def test_rekey(network, args):
     primary, _ = network.find_primary()
-    network.consortium.rekey_ledger(primary)
+    network.consortium.trigger_ledger_rekey(primary)
     return network
 
 
@@ -902,8 +1072,10 @@ def run(args):
         network = test_anonymous_caller(network, args)
         network = test_multi_auth(network, args)
         network = test_custom_auth(network, args)
+        network = test_custom_auth_safety(network, args)
         network = test_raw_text(network, args)
         network = test_historical_query(network, args)
+        network = test_historical_query_range(network, args)
         network = test_view_history(network, args)
         network = test_primary(network, args)
         network = test_network_node_info(network, args)
@@ -917,6 +1089,7 @@ def run(args):
         if args.package == "liblogging":
             network = test_ws(network, args)
             network = test_receipts(network, args)
+        network = test_historical_receipts(network, args)
 
 
 if __name__ == "__main__":

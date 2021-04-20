@@ -103,12 +103,11 @@ def cli_args(add=lambda x: None, parser=None, accept_unknown=False):
         help="The enclave package to load (e.g., liblogging)",
     )
     parser.add_argument(
-        "-g",
-        "--gov-script",
-        help="Path to governance script",
-        type=absolute_path_to_existing_file,
+        "--constitution",
+        help="One or more paths to constitution script fragments",
+        action="append",
+        default=[],
     )
-    parser.add_argument("-j", "--js-app-script", help="Path to js app script")
     parser.add_argument("--js-app-bundle", help="Path to js app bundle")
     parser.add_argument(
         "--jwt-issuer",
@@ -250,6 +249,11 @@ def cli_args(add=lambda x: None, parser=None, accept_unknown=False):
         default=10,
     )
     parser.add_argument(
+        "--max-open-sessions",
+        help="Max open TLS sessions on each node",
+        default=None,
+    )
+    parser.add_argument(
         "--jwt-key-refresh-interval-s",
         help="JWT key refresh interval in seconds",
         default=None,
@@ -281,8 +285,7 @@ def cli_args(add=lambda x: None, parser=None, accept_unknown=False):
         else:
             args.library_dir = args.binary_dir
 
-    # js_app_script is deprecated
-    if not args.package and (args.js_app_script or args.js_app_bundle):
+    if not args.package and args.js_app_bundle:
         args.package = "libjs_generic"
 
     if accept_unknown:

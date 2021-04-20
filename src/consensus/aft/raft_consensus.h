@@ -44,28 +44,28 @@ namespace aft
     }
 
     void force_become_primary(
-      SeqNo seqno,
-      View view,
+      ccf::SeqNo seqno,
+      ccf::View view,
       const std::vector<kv::Version>& terms,
-      SeqNo commit_seqno) override
+      ccf::SeqNo commit_seqno) override
     {
       aft->force_become_leader(seqno, view, terms, commit_seqno);
     }
 
     void init_as_backup(
-      SeqNo seqno,
-      View view,
+      ccf::SeqNo seqno,
+      ccf::View view,
       const std::vector<kv::Version>& view_history) override
     {
       aft->init_as_follower(seqno, view, view_history);
     }
 
-    bool replicate(const kv::BatchVector& entries, View view) override
+    bool replicate(const kv::BatchVector& entries, ccf::View view) override
     {
       return aft->replicate(entries, view);
     }
 
-    std::pair<View, SeqNo> get_committed_txid() override
+    std::pair<ccf::View, ccf::SeqNo> get_committed_txid() override
     {
       return aft->get_commit_term_and_idx();
     }
@@ -75,33 +75,33 @@ namespace aft
       return aft->get_signable_commit_term_and_idx();
     }
 
-    View get_view(SeqNo seqno) override
+    ccf::View get_view(ccf::SeqNo seqno) override
     {
       return aft->get_term(seqno);
     }
 
-    View get_view() override
+    ccf::View get_view() override
     {
       return aft->get_term();
     }
 
-    std::vector<SeqNo> get_view_history(SeqNo seqno) override
+    std::vector<ccf::SeqNo> get_view_history(ccf::SeqNo seqno) override
     {
       return aft->get_term_history(seqno);
     }
 
     void initialise_view_history(
-      const std::vector<SeqNo>& view_history) override
+      const std::vector<ccf::SeqNo>& view_history) override
     {
       aft->initialise_term_history(view_history);
     }
 
-    SeqNo get_committed_seqno() override
+    ccf::SeqNo get_committed_seqno() override
     {
       return aft->get_commit_idx();
     }
 
-    NodeId primary() override
+    std::optional<ccf::NodeId> primary() override
     {
       return aft->leader();
     }
@@ -111,25 +111,30 @@ namespace aft
       return aft->view_change_in_progress();
     }
 
-    std::set<NodeId> active_nodes() override
+    std::set<ccf::NodeId> active_nodes() override
     {
       return aft->active_nodes();
     }
 
-    void recv_message(OArray&& data) override
+    void recv_message(const ccf::NodeId& from, OArray&& data) override
     {
-      return aft->recv_message(std::move(data));
+      return aft->recv_message(from, std::move(data));
     }
 
     void add_configuration(
-      SeqNo seqno, const Configuration::Nodes& conf) override
+      ccf::SeqNo seqno, const Configuration::Nodes& conf) override
     {
       aft->add_configuration(seqno, conf);
     }
 
-    Configuration::Nodes get_latest_configuration() const override
+    Configuration::Nodes get_latest_configuration() override
     {
       return aft->get_latest_configuration();
+    }
+
+    Configuration::Nodes get_latest_configuration_unsafe() const override
+    {
+      return aft->get_latest_configuration_unsafe();
     }
 
     void periodic(std::chrono::milliseconds elapsed) override

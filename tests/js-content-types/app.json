@@ -5,9 +5,8 @@
         "js_module": "content_types.js",
         "js_function": "text",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["user_cert"],
-        "readonly": true,
+        "mode": "readonly",
         "openapi": {}
       }
     },
@@ -16,9 +15,8 @@
         "js_module": "content_types.js",
         "js_function": "json",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["user_cert"],
-        "readonly": true,
+        "mode": "readonly",
         "openapi": {}
       }
     },
@@ -27,9 +25,8 @@
         "js_module": "content_types.js",
         "js_function": "binary",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["user_cert"],
-        "readonly": true,
+        "mode": "readonly",
         "openapi": {}
       }
     },
@@ -38,9 +35,8 @@
         "js_module": "content_types.js",
         "js_function": "custom",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["user_cert"],
-        "readonly": true,
+        "mode": "readonly",
         "openapi": {}
       }
     }

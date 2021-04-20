@@ -5,11 +5,10 @@
 #include "kv/store.h"
 #include "kv/test/null_encryptor.h"
 #include "kv/test/stub_consensus.h"
-#include "kv/tx.h"
 
 #include <doctest/doctest.h>
-#undef FAIL
 #include <msgpack/msgpack.hpp>
+#undef FAIL
 #include <string>
 #include <vector>
 
@@ -27,7 +26,7 @@ TEST_CASE(
 {
   // No need for an encryptor here as all maps are public. Both serialisation
   // and deserialisation should succeed.
-  auto consensus = std::make_shared<kv::StubConsensus>();
+  auto consensus = std::make_shared<kv::test::StubConsensus>();
 
   kv::Store kv_store(consensus);
 
@@ -76,8 +75,9 @@ TEST_CASE(
   {
     INFO("Deserialise first transaction in target store");
     REQUIRE(
-      kv_store_target.apply(first_tx_serialised.value(), ConsensusType::CFT)
-        ->execute() == kv::ApplyResult::PASS);
+      kv_store_target
+        .deserialize(first_tx_serialised.value(), ConsensusType::CFT)
+        ->apply() == kv::ApplyResult::PASS);
 
     auto tx_target = kv_store_target.create_tx();
     auto handle_target = tx_target.ro(map);
@@ -101,8 +101,9 @@ TEST_CASE(
   {
     INFO("Deserialise second transaction in target store");
     REQUIRE(
-      kv_store_target.apply(second_tx_serialised.value(), ConsensusType::CFT)
-        ->execute() == kv::ApplyResult::PASS);
+      kv_store_target
+        .deserialize(second_tx_serialised.value(), ConsensusType::CFT)
+        ->apply() == kv::ApplyResult::PASS);
 
     auto tx_target = kv_store_target.create_tx();
     auto handle_target = tx_target.ro(map);
@@ -127,7 +128,7 @@ TEST_CASE(
   "Serialise/deserialise private map only" *
   doctest::test_suite("serialisation"))
 {
-  auto consensus = std::make_shared<kv::StubConsensus>();
+  auto consensus = std::make_shared<kv::test::StubConsensus>();
   auto encryptor = std::make_shared<kv::NullTxEncryptor>();
 
   kv::Store kv_store(consensus);
@@ -160,8 +161,8 @@ TEST_CASE(
       const auto latest_data = consensus->get_latest_data();
       REQUIRE(latest_data.has_value());
       REQUIRE(
-        kv_store_target.apply(latest_data.value(), ConsensusType::CFT)
-          ->execute() == kv::ApplyResult::PASS);
+        kv_store_target.deserialize(latest_data.value(), ConsensusType::CFT)
+          ->apply() == kv::ApplyResult::PASS);
 
       auto tx_target = kv_store_target.create_tx();
       auto handle_target = tx_target.rw<MapTypes::StringString>("priv_map");
@@ -174,7 +175,7 @@ TEST_CASE(
   "Serialise/deserialise private map and public maps" *
   doctest::test_suite("serialisation"))
 {
-  auto consensus = std::make_shared<kv::StubConsensus>();
+  auto consensus = std::make_shared<kv::test::StubConsensus>();
   auto encryptor = std::make_shared<kv::NullTxEncryptor>();
 
   kv::Store kv_store(consensus);
@@ -203,8 +204,8 @@ TEST_CASE(
     const auto latest_data = consensus->get_latest_data();
     REQUIRE(latest_data.has_value());
     REQUIRE(
-      kv_store_target.apply(latest_data.value(), ConsensusType::CFT)
-        ->execute() != kv::ApplyResult::FAIL);
+      kv_store_target.deserialize(latest_data.value(), ConsensusType::CFT)
+        ->apply() != kv::ApplyResult::FAIL);
 
     auto tx_target = kv_store_target.create_tx();
     auto handle_priv = tx_target.rw<MapTypes::StringString>(priv_map);
@@ -218,7 +219,7 @@ TEST_CASE(
 TEST_CASE(
   "Serialise/deserialise removed keys" * doctest::test_suite("serialisation"))
 {
-  auto consensus = std::make_shared<kv::StubConsensus>();
+  auto consensus = std::make_shared<kv::test::StubConsensus>();
   auto encryptor = std::make_shared<kv::NullTxEncryptor>();
 
   kv::Store kv_store(consensus);
@@ -240,8 +241,8 @@ TEST_CASE(
     const auto latest_data = consensus->get_latest_data();
     REQUIRE(latest_data.has_value());
     REQUIRE(
-      kv_store_target.apply(latest_data.value(), ConsensusType::CFT)
-        ->execute() != kv::ApplyResult::FAIL);
+      kv_store_target.deserialize(latest_data.value(), ConsensusType::CFT)
+        ->apply() != kv::ApplyResult::FAIL);
 
     auto tx_target = kv_store_target.create_tx();
     auto handle_target = tx_target.rw<MapTypes::StringString>("map");
@@ -289,8 +290,8 @@ TEST_CASE(
     const auto latest_data = consensus->get_latest_data();
     REQUIRE(latest_data.has_value());
     REQUIRE(
-      kv_store_target.apply(latest_data.value(), ConsensusType::CFT)
-        ->execute() != kv::ApplyResult::FAIL);
+      kv_store_target.deserialize(latest_data.value(), ConsensusType::CFT)
+        ->apply() != kv::ApplyResult::FAIL);
 
     auto tx_target = kv_store_target.create_tx();
     auto handle_target = tx_target.rw<MapTypes::StringString>("map");
@@ -308,14 +309,14 @@ struct CustomClass
   std::string s;
   size_t n;
 
-  // This macro allows the default msgpack serialiser to be used
+  // This macro allows custom msgpack serialisation (optional)
   MSGPACK_DEFINE(s, n);
 };
-// SNIPPET_END: CustomClass definition
 
 // These macros allow the default nlohmann JSON serialiser to be used
 DECLARE_JSON_TYPE(CustomClass);
 DECLARE_JSON_REQUIRED_FIELDS(CustomClass, s, n);
+// SNIPPET_END: CustomClass definition
 
 // Not really intended to be extended, but lets us use the BlitSerialiser for
 // this specific type
@@ -423,6 +424,37 @@ struct CustomJsonSerialiser
   }
 };
 
+struct CustomMsgPackSerialiser
+{
+  using Bytes = kv::serialisers::SerialisedEntry;
+
+  struct SerialisedEntryWriter
+  {
+    Bytes& b;
+
+    void write(const char* d, size_t n)
+    {
+      b.insert(b.end(), d, d + n);
+    }
+  };
+
+  static Bytes to_serialised(const CustomClass& c)
+  {
+    Bytes b;
+    SerialisedEntryWriter w{b};
+    msgpack::pack(w, c);
+    return b;
+  }
+
+  static CustomClass from_serialised(const Bytes& b)
+  {
+    msgpack::object_handle oh =
+      msgpack::unpack(reinterpret_cast<const char*>(b.data()), b.size());
+    auto object = oh.get();
+    return object.as<CustomClass>();
+  }
+};
+
 struct KPrefix
 {
   static constexpr auto prefix = "This is a key:";
@@ -468,13 +500,12 @@ struct CustomVerboseDumbSerialiser
   }
 };
 
-using DefaultSerialisedMap = kv::Map<CustomClass, CustomClass>;
 using JsonSerialisedMap = kv::JsonSerialisedMap<CustomClass, CustomClass>;
 using RawCopySerialisedMap = kv::RawCopySerialisedMap<CustomClass, CustomClass>;
 using MixSerialisedMapA = kv::TypedMap<
   CustomClass,
   CustomClass,
-  kv::serialisers::MsgPackSerialiser<CustomClass>,
+  CustomMsgPackSerialiser,
   kv::serialisers::JsonSerialiser<CustomClass>>;
 using MixSerialisedMapB = kv::TypedMap<
   CustomClass,
@@ -485,7 +516,7 @@ using MixSerialisedMapC = kv::TypedMap<
   CustomClass,
   CustomClass,
   kv::serialisers::BlitSerialiser<CustomClass>,
-  kv::serialisers::MsgPackSerialiser<CustomClass>>;
+  CustomMsgPackSerialiser>;
 
 // SNIPPET_START: CustomSerialisedMap definition
 using CustomSerialisedMap =
@@ -506,7 +537,6 @@ using VerboseSerialisedMap = kv::TypedMap<
 TEST_CASE_TEMPLATE(
   "Custom type serialisation test" * doctest::test_suite("serialisation"),
   MapType,
-  DefaultSerialisedMap,
   JsonSerialisedMap,
   RawCopySerialisedMap,
   MixSerialisedMapA,
@@ -536,12 +566,12 @@ TEST_CASE_TEMPLATE(
     handle->put(k1, v1);
     handle->put(k2, v2);
 
-    auto [success, reqid, data, hooks] = tx.commit_reserved();
+    auto [success, data, hooks] = tx.commit_reserved();
     REQUIRE(success == kv::CommitResult::SUCCESS);
     kv_store.compact(kv_store.current_version());
 
     REQUIRE(
-      kv_store2.apply(data, ConsensusType::CFT)->execute() ==
+      kv_store2.deserialize(data, ConsensusType::CFT)->apply() ==
       kv::ApplyResult::PASS);
     auto tx2 = kv_store2.create_tx();
     auto handle2 = tx2.rw(map2);
@@ -570,7 +600,7 @@ TEST_CASE("nlohmann (de)serialisation" * doctest::test_suite("serialisation"))
 
   SUBCASE("baseline")
   {
-    auto consensus = std::make_shared<kv::StubConsensus>();
+    auto consensus = std::make_shared<kv::test::StubConsensus>();
     using Table = kv::Map<std::vector<int>, std::string>;
     kv::Store s0(consensus), s1;
     Table t("public:t");
@@ -582,13 +612,13 @@ TEST_CASE("nlohmann (de)serialisation" * doctest::test_suite("serialisation"))
     const auto latest_data = consensus->get_latest_data();
     REQUIRE(latest_data.has_value());
     REQUIRE(
-      s1.apply(latest_data.value(), ConsensusType::CFT)->execute() !=
+      s1.deserialize(latest_data.value(), ConsensusType::CFT)->apply() !=
       kv::ApplyResult::FAIL);
   }
 
   SUBCASE("nlohmann")
   {
-    auto consensus = std::make_shared<kv::StubConsensus>();
+    auto consensus = std::make_shared<kv::test::StubConsensus>();
     using Table = kv::Map<nlohmann::json, nlohmann::json>;
     kv::Store s0(consensus), s1;
     Table t("public:t");
@@ -601,7 +631,7 @@ TEST_CASE("nlohmann (de)serialisation" * doctest::test_suite("serialisation"))
     const auto latest_data = consensus->get_latest_data();
     REQUIRE(latest_data.has_value());
     REQUIRE(
-      s1.apply(latest_data.value(), ConsensusType::CFT)->execute() !=
+      s1.deserialize(latest_data.value(), ConsensusType::CFT)->apply() !=
       kv::ApplyResult::FAIL);
   }
 }
@@ -638,16 +668,16 @@ TEST_CASE(
     data_handle_d->put(46, 46);
     data_handle_d_p->put(47, 47);
 
-    auto [success, reqid, data, hooks] = tx.commit_reserved();
+    auto [success, data, hooks] = tx.commit_reserved();
     REQUIRE(success == kv::CommitResult::SUCCESS);
     REQUIRE(
-      store.apply(data, ConsensusType::CFT)->execute() ==
+      store.deserialize(data, ConsensusType::CFT)->apply() ==
       kv::ApplyResult::PASS);
 
     INFO("check that second store derived data is not populated");
     {
       REQUIRE(
-        kv_store_target.apply(data, ConsensusType::CFT)->execute() ==
+        kv_store_target.deserialize(data, ConsensusType::CFT)->apply() ==
         kv::ApplyResult::PASS);
       auto tx = kv_store_target.create_tx();
       auto data_handle_r = tx.rw<T>(data_replicated);
@@ -691,7 +721,7 @@ struct NonSerialiser
 TEST_CASE("Exceptional serdes" * doctest::test_suite("serialisation"))
 {
   auto encryptor = std::make_shared<kv::NullTxEncryptor>();
-  auto consensus = std::make_shared<kv::StubConsensus>();
+  auto consensus = std::make_shared<kv::test::StubConsensus>();
 
   kv::Store store(consensus);
   store.set_encryptor(encryptor);
@@ -700,12 +730,12 @@ TEST_CASE("Exceptional serdes" * doctest::test_suite("serialisation"))
     NonSerialisable,
     size_t,
     NonSerialiser,
-    kv::serialisers::MsgPackSerialiser<size_t>>
+    kv::serialisers::JsonSerialiser<size_t>>
     bad_map_k("bad_map_k");
   kv::TypedMap<
     size_t,
     NonSerialisable,
-    kv::serialisers::MsgPackSerialiser<size_t>,
+    kv::serialisers::JsonSerialiser<size_t>,
     NonSerialiser>
     bad_map_v("bad_map_v");
 

@@ -2,6 +2,7 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "ccf/entity_id.h"
 #include "consensus/consensus_types.h"
 #include "crypto/hash.h"
 #include "ds/ring_buffer_types.h"
@@ -18,9 +19,8 @@
 
 namespace aft
 {
-  using Index = int64_t;
-  using Term = int64_t;
-  using NodeId = uint64_t;
+  using Index = uint64_t;
+  using Term = uint64_t;
   using Node2NodeMsg = uint64_t;
   using Nonce = crypto::Sha256Hash;
 
@@ -29,8 +29,6 @@ namespace aft
     kv::TxHistory::RequestID caller_rid,
     int status,
     std::vector<uint8_t>&& data)>;
-
-  static constexpr NodeId NoNode = std::numeric_limits<NodeId>::max();
 
   static constexpr size_t starting_view_change = 2;
 
@@ -46,7 +44,6 @@ namespace aft
       ConsensusType consensus_type,
       bool public_only = false) = 0;
     virtual std::shared_ptr<ccf::ProgressTracker> get_progress_tracker() = 0;
-    virtual kv::Tx create_tx() = 0;
   };
 
   template <typename T>
@@ -95,16 +92,6 @@ namespace aft
       return nullptr;
     }
 
-    kv::Tx create_tx() override
-    {
-      auto p = x.lock();
-      if (p)
-      {
-        return p->create_tx();
-      }
-      throw std::logic_error("Can't create a tx without a store");
-    }
-
     std::unique_ptr<kv::AbstractExecutionWrapper> apply(
       const std::vector<uint8_t> data,
       ConsensusType consensus_type,
@@ -113,7 +100,7 @@ namespace aft
       auto p = x.lock();
       if (p)
       {
-        return p->apply(data, consensus_type, public_only);
+        return p->deserialize(data, consensus_type, public_only);
       }
       return nullptr;
     }
@@ -138,11 +125,9 @@ namespace aft
   struct RaftHeader
   {
     RaftMsgType msg;
-    NodeId from_node;
   };
 
-  struct AppendEntries : consensus::ConsensusHeader<RaftMsgType>,
-                         consensus::AppendEntriesIndex
+  struct AppendEntries : RaftHeader, consensus::AppendEntriesIndex
   {
     Term term;
     Term prev_term;
@@ -189,13 +174,13 @@ namespace aft
 
   struct RequestViewChangeMsg : RaftHeader
   {
-    kv::Consensus::View view = 0;
-    kv::Consensus::SeqNo seqno = 0;
+    ccf::View view = 0;
+    ccf::SeqNo seqno = 0;
   };
 
   struct ViewChangeEvidenceMsg : RaftHeader
   {
-    kv::Consensus::View view = 0;
+    ccf::View view = 0;
   };
 
   struct RequestVote : RaftHeader

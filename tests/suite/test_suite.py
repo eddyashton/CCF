@@ -8,6 +8,7 @@ import recovery
 import election
 import code_update
 import membership
+import governance_history
 
 from inspect import signature, Parameter
 
@@ -31,7 +32,7 @@ suites["rekey_recovery"] = suite_rekey_recovery
 suite_membership_recovery = [
     membership.test_add_member,
     recovery.test,
-    membership.test_retire_member,
+    membership.test_remove_member,
     recovery.test,
     membership.test_set_recovery_threshold,
     recovery.test,
@@ -74,14 +75,12 @@ all_tests_suite = [
     # membership:
     membership.test_set_recovery_threshold,
     membership.test_add_member,
-    membership.test_retire_member,
-    membership.test_retire_member,
+    membership.test_remove_member,
+    membership.test_remove_member,
     membership.test_update_recovery_shares,
     # memberclient:
     memberclient.test_missing_signature_header,
     memberclient.test_corrupted_signature,
-    # receipts:
-    e2e_logging.test_receipts,
     # reconfiguration:
     reconfiguration.test_add_node,
     reconfiguration.test_add_node_from_backup,
@@ -97,6 +96,8 @@ all_tests_suite = [
     # code update:
     code_update.test_verify_quotes,
     code_update.test_add_node_with_bad_code,
+    governance_history.test_ledger_is_readable,
+    governance_history.test_tables_doc,
 ]
 suites["all"] = all_tests_suite
 

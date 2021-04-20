@@ -47,7 +47,7 @@ When establishing a TLS connection with a CCF service both the service and clien
 
 The service identity is created at startup. The initial node generates a fresh private key which exists solely within the service's enclaves. A certificate of the corresponding public key is emitted (``networkcert.pem``) and used by all subsequent connections to confirm they are communicating with the intended service.
 
-Each member and user is identified by the cert with which they were registered with the service, either at genesis or in a subsequent ``new_member`` or ``new_user`` governance proposal. Access to the corresponding private key allows a client to submit commands as this member or user. For this test network these are all freshly generated and stored in the same common workspace for easy access. In a real deployment only the certificates would be shared; the private keys would be distributed and remain confidential.
+Each member and user is identified by the cert with which they were registered with the service, either at genesis or in a subsequent ``set_member`` or ``set_user`` governance proposal. Access to the corresponding private key allows a client to submit commands as this member or user. For this test network these are all freshly generated and stored in the same common workspace for easy access. In a real deployment only the certificates would be shared; the private keys would be distributed and remain confidential.
 
 When using curl the server's identity is provided by ``--cacert`` and the client identity by ``--cert`` and ``--key``. Resources under the ``/gov`` path require member identities, while those under ``/app`` typically require user identities.
 
@@ -67,7 +67,7 @@ Now we can submit a first command, to find the current commit index of the test 
 .. code-block:: bash
 
     $ curl https://127.251.192.205:36981/app/commit -X GET --cacert networkcert.pem --cert user0_cert.pem --key user0_privk.pem
-    {"seqno":30,"view":2}
+    {"transaction_id": 2.30}
 
 This should look much like a standard HTTP server, with error codes for missing resources or resources the caller is not authorized to access:
 
@@ -88,7 +88,7 @@ The business transaction endpoints defined by our application are available unde
     :language: cpp
     :start-after: SNIPPET_START: install_record
     :end-before: SNIPPET_END: install_record
-    :dedent: 6
+    :dedent:
 
 This is available at the ``/app/log/private`` path:
 

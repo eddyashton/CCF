@@ -41,12 +41,13 @@ The sample app has the following folder layout:
     │   │   └── site.ts
     │   ├── models
     │   │   └── poll.ts
-    │   ├── types
-    │   │   └── ccf.ts
+    │   ├── services
+    │   │   ├── csv.ts
+    │   │   └── poll.ts
     │   ├── authentication.ts
+    │   ├── constants.ts
     │   └── error_handler.ts
     ├── tsoa-support
-    │   ├── entry.ts
     │   ├── postprocess.js
     │   └── routes.ts.tmpl
     ├── app.tmpl.json
@@ -58,10 +59,11 @@ The sample app has the following folder layout:
 It contains these files:
 
 - ``src/controllers/*.ts``: :ref:`build_apps/js_app_tsoa:Controllers`.
-- ``src/models/*.ts``: Data models shared between endpoint handlers.
-- ``src/types/ccf.ts``: :ref:`build_apps/js_app_tsoa:Type definitions` for CCF objects.
+- ``src/models/*.ts``: Data models shared between different app components.
+- ``src/services/*.ts``: Business logic, called by controllers.
 - ``src/authentication.ts``: `authentication module <https://tsoa-community.github.io/docs/authentication.html>`_. 
   See also :ref:`build_apps/auth/jwt_ms_example:JWT Authentication example using Microsoft Identity Platform`.
+- ``src/constants.ts``: app-wide constants.
 - ``src/error_handler.ts``: global error handler.
 - ``tsoa-support/*``: Supporting scripts used during :ref:`build_apps/js_app_tsoa:Conversion to an app bundle`.
 - ``app.tmpl.json``: :ref:`App metadata <build_apps/js_app_tsoa:Metadata>`.
@@ -78,6 +80,24 @@ It contains these files:
     allows for fine-grained control over which other modules are loaded, per endpoint.
     This in turn may improve load time and/or memory consumption, for example if not all endpoints
     share the same npm package dependencies.
+
+Dependencies
+------------
+
+The sample uses several runtime and development packages (see ``package.json``).
+One of them is the :typedoc:package:`ccf-app` package.
+This package is referenced locally using ``file:``.
+You should replace this with a reference to a published version (adjust the version number accordingly):
+
+.. code-block:: json
+
+    "@microsoft/ccf-app": "~0.19.4",
+
+Now you can continue with installing all dependencies:
+
+.. code-block:: bash
+
+    $ npm install
 
 Controllers
 -----------
@@ -103,25 +123,23 @@ see the `tsoa documentation <https://tsoa-community.github.io/docs/getting-start
    :ref:`Endpoint handler functions <build_apps/js_app_bundle:Endpoint handlers>`, as required by CCF's JavaScript app bundles,
    are auto-generated from controllers during the :ref:`conversion to an app bundle <build_apps/js_app_tsoa:Conversion to an app bundle>`.
 
-Type Definitions
-----------------
+.. tip::
+    See the :typedoc:package:`ccf-app` package API documentation for how to access the Key-Value Store and other CCF functionality.
+    Although not recommended, instead of using the :typedoc:package:`ccf-app` package, all native CCF functionality can also be directly accessed through the :typedoc:interface:`ccf <ccf-app/global/CCF>` global variable.
 
-CCF currently does not provide an npm package with TypeScript definitions
-for :ref:`CCF's JavaScript API <build_apps/js_app_bundle:JavaScript API>`.
+Request / Response objects
+--------------------------
 
-Instead, the definitions are part of the sample app in
-`src/types/ccf.ts <https://github.com/microsoft/CCF/tree/samples/apps/forum/src/types/ccf.ts>`_.
-
-Using CCF's ``Response`` object is not needed when using tsoa because the return value always has to be the body itself.
+Using CCF's :typedoc:interface:`Response <ccf-app/endpoints/Response>` object is not needed when using tsoa because the return value always has to be the body itself.
 Headers and the status code can be set using `Controller methods <https://tsoa-community.github.io/reference/classes/_tsoa_runtime.controller-1.html>`_.
 
-Sometimes though it is necessary to access CCF's ``Request`` object, for example when the request body is not JSON.
-In this case, instead of using ``@Body() body: MyType`` as function argument, ``@Request() request: ccf.Request`` can be used.
+Sometimes though it is necessary to access CCF's :typedoc:interface:`Request <ccf-app/endpoints/Request>` object, for example when the request body is not JSON.
+In this case, instead of using ``@Body() body: MyType`` as function argument, ``@Request() request: ccfapp.Request`` can be used.
 See `src/controllers/csv.ts <https://github.com/microsoft/CCF/tree/main/samples/apps/forum/src/controllers/csv.ts>`_
 for a concrete example.
 
 .. warning::
-    Requesting CCF's ``Request`` object via ``@Request()`` instead of using ``@Body()`` disables automatic schema validation.
+    Requesting CCF's :typedoc:interface:`Request <ccf-app/endpoints/Request>` object via ``@Request()`` instead of using ``@Body()`` disables automatic schema validation.
 
 Metadata
 --------

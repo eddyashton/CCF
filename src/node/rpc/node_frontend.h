@@ -2,6 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "ccf/common_auth_policies.h"
+#include "ccf/common_endpoint_registry.h"
+#include "ccf/http_query.h"
+#include "ccf/json_handler.h"
 #include "crypto/hash.h"
 #include "frontend.h"
 #include "node/entities.h"
@@ -14,8 +18,8 @@ namespace ccf
   struct Quote
   {
     NodeId node_id = {};
-    std::string raw = {}; // < Hex-encoded
-    std::string endorsements = {}; // < Hex-encoded
+    std::vector<uint8_t> raw;
+    std::vector<uint8_t> endorsements;
     QuoteFormat format;
 
     std::string mrenclave = {}; // < Hex-encoded
@@ -47,10 +51,12 @@ namespace ccf
 
     std::optional<ExistingNodeInfo> check_node_exists(
       kv::Tx& tx,
-      const crypto::Pem& node_pem,
+      const std::vector<uint8_t>& node_der,
       std::optional<NodeStatus> node_status = std::nullopt)
     {
       auto nodes = tx.rw(network.nodes);
+
+      auto node_pem = crypto::cert_der_to_pem(node_der);
 
       std::optional<ExistingNodeInfo> existing_node_info = std::nullopt;
       nodes->foreach([&existing_node_info, &node_pem, &node_status](
@@ -92,7 +98,7 @@ namespace ccf
 
     auto add_node(
       kv::Tx& tx,
-      const crypto::Pem& caller_pem,
+      const std::vector<uint8_t>& node_der,
       const JoinNetworkNodeToNode::In& in,
       NodeStatus node_status)
     {
@@ -113,11 +119,24 @@ namespace ccf
             conflicting_node_id.value()));
       }
 
-#ifdef GET_QUOTE
-      auto pk_pem = public_key_pem_from_cert(caller_pem);
+      auto pk_der = crypto::public_key_der_from_cert(node_der);
 
+      NodeId joining_node_id;
+      if (network.consensus_type == ConsensusType::CFT)
+      {
+        joining_node_id = crypto::Sha256Hash(pk_der).hex_str();
+      }
+      else
+      {
+        // Pad node id string to avoid memory alignment issues on
+        // node-to-node messages
+        joining_node_id = fmt::format(
+          "{:#08}", get_next_id(tx.rw(this->network.values), NEXT_NODE_ID));
+      }
+
+#ifdef GET_QUOTE
       QuoteVerificationResult verify_result =
-        this->node.verify_quote(tx, in.quote_info, pk_pem);
+        this->context.get_node_state().verify_quote(tx, in.quote_info, pk_der);
       if (verify_result != QuoteVerificationResult::Verified)
       {
         const auto [code, message] = quote_verification_error(verify_result);
@@ -126,9 +145,6 @@ namespace ccf
 #else
       LOG_INFO_FMT("Skipped joining node quote verification");
 #endif
-
-      NodeId joining_node_id =
-        get_next_id(tx.rw(this->network.values), NEXT_NODE_ID);
 
       std::optional<kv::Version> ledger_secret_seqno = std::nullopt;
       if (node_status == NodeStatus::TRUSTED)
@@ -140,7 +156,7 @@ namespace ccf
       nodes->put(
         joining_node_id,
         {in.node_info_network,
-         caller_pem,
+         crypto::cert_der_to_pem(node_der),
          in.quote_info,
          in.public_encryption_key,
          node_status,
@@ -155,8 +171,8 @@ namespace ccf
       if (node_status == NodeStatus::TRUSTED)
       {
         rep.network_info = JoinNetworkNodeToNode::Out::NetworkInfo{
-          node.is_part_of_public_network(),
-          node.get_last_recovered_signed_idx(),
+          context.get_node_state().is_part_of_public_network(),
+          context.get_node_state().get_last_recovered_signed_idx(),
           this->network.consensus_type,
           this->network.ledger_secrets->get(tx),
           *this->network.identity.get()};
@@ -165,8 +181,9 @@ namespace ccf
     }
 
   public:
-    NodeEndpoints(NetworkState& network, AbstractNodeState& node_state) :
-      CommonEndpointRegistry(get_actor_prefix(ActorsType::nodes), node_state),
+    NodeEndpoints(
+      NetworkState& network, ccfapp::AbstractNodeContext& context_) :
+      CommonEndpointRegistry(get_actor_prefix(ActorsType::nodes), context_),
       network(network)
     {
       openapi_info.title = "CCF Public Node API";
@@ -179,130 +196,156 @@ namespace ccf
     {
       CommonEndpointRegistry::init_handlers();
 
-      auto accept =
-        [this](EndpointContext& args, const nlohmann::json& params) {
-          const auto in = params.get<JoinNetworkNodeToNode::In>();
+      auto accept = [this](auto& args, const nlohmann::json& params) {
+        const auto in = params.get<JoinNetworkNodeToNode::In>();
 
-          if (
-            !this->node.is_part_of_network() &&
-            !this->node.is_part_of_public_network() &&
-            !this->node.is_reading_private_ledger())
-          {
-            return make_error(
-              HTTP_STATUS_INTERNAL_SERVER_ERROR,
-              ccf::errors::InternalError,
-              "Target node should be part of network to accept new nodes.");
-          }
+        if (
+          !this->context.get_node_state().is_part_of_network() &&
+          !this->context.get_node_state().is_part_of_public_network() &&
+          !this->context.get_node_state().is_reading_private_ledger())
+        {
+          return make_error(
+            HTTP_STATUS_INTERNAL_SERVER_ERROR,
+            ccf::errors::InternalError,
+            "Target node should be part of network to accept new nodes.");
+        }
 
-          if (this->network.consensus_type != in.consensus_type)
-          {
-            return make_error(
-              HTTP_STATUS_BAD_REQUEST,
-              ccf::errors::ConsensusTypeMismatch,
-              fmt::format(
-                "Node requested to join with consensus type {} but "
-                "current consensus type is {}.",
-                in.consensus_type,
-                this->network.consensus_type));
-          }
+        if (this->network.consensus_type != in.consensus_type)
+        {
+          return make_error(
+            HTTP_STATUS_BAD_REQUEST,
+            ccf::errors::ConsensusTypeMismatch,
+            fmt::format(
+              "Node requested to join with consensus type {} but "
+              "current consensus type is {}.",
+              in.consensus_type,
+              this->network.consensus_type));
+        }
 
-          auto nodes = args.tx.rw(this->network.nodes);
-          auto service = args.tx.rw(this->network.service);
+        // If the joiner and this node both started from a snapshot, make sure
+        // that the joiner's snapshot is more recent than this node's snapshot
+        auto this_startup_seqno =
+          this->context.get_node_state().get_startup_snapshot_seqno();
+        if (
+          this_startup_seqno.has_value() && in.startup_seqno.has_value() &&
+          this_startup_seqno.value() > in.startup_seqno.value())
+        {
+          return make_error(
+            HTTP_STATUS_BAD_REQUEST,
+            ccf::errors::StartupSnapshotIsOld,
+            fmt::format(
+              "Node requested to join from snapshot at seqno {} which is older "
+              "than this node startup seqno {}",
+              in.startup_seqno.value(),
+              this_startup_seqno.value()));
+        }
 
-          auto active_service = service->get(0);
-          if (!active_service.has_value())
-          {
-            return make_error(
-              HTTP_STATUS_INTERNAL_SERVER_ERROR,
-              ccf::errors::InternalError,
-              "No service is available to accept new node.");
-          }
+        auto nodes = args.tx.rw(this->network.nodes);
+        auto service = args.tx.rw(this->network.service);
 
-          // Convert caller cert from DER to PEM as PEM certificates
-          // are quoted
-          auto caller_pem =
-            crypto::cert_der_to_pem(args.rpc_ctx->session->caller_cert);
+        auto active_service = service->get(0);
+        if (!active_service.has_value())
+        {
+          return make_error(
+            HTTP_STATUS_INTERNAL_SERVER_ERROR,
+            ccf::errors::InternalError,
+            "No service is available to accept new node.");
+        }
 
-          if (active_service->status == ServiceStatus::OPENING)
-          {
-            // If the service is opening, new nodes are trusted straight away
-            NodeStatus joining_node_status = NodeStatus::TRUSTED;
+        if (active_service->status == ServiceStatus::OPENING)
+        {
+          // If the service is opening, new nodes are trusted straight away
+          NodeStatus joining_node_status = NodeStatus::TRUSTED;
 
-            // If the node is already trusted, return network secrets
-            auto existing_node_info =
-              check_node_exists(args.tx, caller_pem, joining_node_status);
-            if (existing_node_info.has_value())
-            {
-              JoinNetworkNodeToNode::Out rep;
-              rep.node_status = joining_node_status;
-              rep.node_id = existing_node_info->first;
-              rep.network_info = {node.is_part_of_public_network(),
-                                  node.get_last_recovered_signed_idx(),
-                                  this->network.consensus_type,
-                                  this->network.ledger_secrets->get(
-                                    args.tx, existing_node_info->second),
-                                  *this->network.identity.get()};
-              return make_success(rep);
-            }
-
-            return add_node(args.tx, caller_pem, in, joining_node_status);
-          }
-
-          // If the service is open, new nodes are first added as pending and
-          // then only trusted via member governance. It is expected that a new
-          // node polls the network to retrieve the network secrets until it is
-          // trusted
-
-          auto existing_node_info = check_node_exists(args.tx, caller_pem);
+          // If the node is already trusted, return network secrets
+          auto existing_node_info = check_node_exists(
+            args.tx, args.rpc_ctx->session->caller_cert, joining_node_status);
           if (existing_node_info.has_value())
           {
             JoinNetworkNodeToNode::Out rep;
+            rep.node_status = joining_node_status;
             rep.node_id = existing_node_info->first;
+            rep.network_info = {
+              context.get_node_state().is_part_of_public_network(),
+              context.get_node_state().get_last_recovered_signed_idx(),
+              this->network.consensus_type,
+              this->network.ledger_secrets->get(
+                args.tx, existing_node_info->second),
+              *this->network.identity.get()};
+            return make_success(rep);
+          }
 
-            // If the node already exists, return network secrets if is already
-            // trusted. Otherwise, only return its status
-            auto node_status = nodes->get(existing_node_info->first)->status;
-            rep.node_status = node_status;
-            if (node_status == NodeStatus::TRUSTED)
-            {
-              rep.network_info = {node.is_part_of_public_network(),
-                                  node.get_last_recovered_signed_idx(),
-                                  this->network.consensus_type,
-                                  this->network.ledger_secrets->get(
-                                    args.tx, existing_node_info->second),
-                                  *this->network.identity.get()};
-              return make_success(rep);
-            }
-            else if (node_status == NodeStatus::PENDING)
-            {
-              // Only return node status and ID
-              return make_success(rep);
-            }
-            else
-            {
-              return make_error(
-                HTTP_STATUS_BAD_REQUEST,
-                ccf::errors::InvalidNodeState,
-                "Joining node is not in expected state.");
-            }
+          return add_node(
+            args.tx,
+            args.rpc_ctx->session->caller_cert,
+            in,
+            joining_node_status);
+        }
+
+        // If the service is open, new nodes are first added as pending and
+        // then only trusted via member governance. It is expected that a new
+        // node polls the network to retrieve the network secrets until it is
+        // trusted
+
+        auto existing_node_info =
+          check_node_exists(args.tx, args.rpc_ctx->session->caller_cert);
+        if (existing_node_info.has_value())
+        {
+          JoinNetworkNodeToNode::Out rep;
+          rep.node_id = existing_node_info->first;
+
+          // If the node already exists, return network secrets if is already
+          // trusted. Otherwise, only return its status
+          auto node_status = nodes->get(existing_node_info->first)->status;
+          rep.node_status = node_status;
+          if (node_status == NodeStatus::TRUSTED)
+          {
+            rep.network_info = {
+              context.get_node_state().is_part_of_public_network(),
+              context.get_node_state().get_last_recovered_signed_idx(),
+              this->network.consensus_type,
+              this->network.ledger_secrets->get(
+                args.tx, existing_node_info->second),
+              *this->network.identity.get()};
+            return make_success(rep);
+          }
+          else if (node_status == NodeStatus::PENDING)
+          {
+            // Only return node status and ID
+            return make_success(rep);
           }
           else
           {
-            // If the node does not exist, add it to the KV in state pending
-            return add_node(args.tx, caller_pem, in, NodeStatus::PENDING);
+            return make_error(
+              HTTP_STATUS_BAD_REQUEST,
+              ccf::errors::InvalidNodeState,
+              "Joining node is not in expected state.");
           }
-        };
+        }
+        else
+        {
+          // If the node does not exist, add it to the KV in state pending
+          return add_node(
+            args.tx,
+            args.rpc_ctx->session->caller_cert,
+            in,
+            NodeStatus::PENDING);
+        }
+      };
       make_endpoint("join", HTTP_POST, json_adapter(accept), no_auth_required)
         .set_openapi_hidden(true)
         .install();
 
       auto get_state = [this](auto& args, nlohmann::json&&) {
         GetState::Out result;
-        auto [s, rts, lrs] = this->node.state();
-        result.node_id = this->node.get_node_id();
+        auto [s, rts, lrs] = this->context.get_node_state().state();
+        result.node_id = this->context.get_node_state().get_node_id();
         result.state = s;
         result.recovery_target_seqno = rts;
         result.last_recovered_seqno = lrs;
+        result.startup_seqno =
+          this->context.get_node_state().get_startup_snapshot_seqno().value_or(
+            0);
 
         auto signatures = args.tx.template ro<Signatures>(Tables::SIGNATURES);
         auto sig = signatures->get(0);
@@ -320,7 +363,7 @@ namespace ccf
       make_read_only_endpoint(
         "state", HTTP_GET, json_read_only_adapter(get_state), no_auth_required)
         .set_auto_schema<GetState>()
-        .set_forwarding_required(ForwardingRequired::Never)
+        .set_forwarding_required(endpoints::ForwardingRequired::Never)
         .install();
 
       auto get_quote = [this](auto& args, nlohmann::json&&) {
@@ -330,16 +373,15 @@ namespace ccf
         if (result == ApiResult::OK)
         {
           Quote q;
-          q.node_id = node.get_node_id();
-          q.raw = fmt::format("{:02x}", fmt::join(node_quote_info.quote, ""));
-          q.endorsements =
-            fmt::format("{:02x}", fmt::join(node_quote_info.endorsements, ""));
+          q.node_id = context.get_node_state().get_node_id();
+          q.raw = node_quote_info.quote;
+          q.endorsements = node_quote_info.endorsements;
           q.format = node_quote_info.format;
 
 #ifdef GET_QUOTE
           auto code_id =
             EnclaveAttestationProvider::get_code_id(node_quote_info);
-          q.mrenclave = fmt::format("{:02x}", fmt::join(code_id, ""));
+          q.mrenclave = ds::to_hex(code_id.data);
 #endif
 
           return make_success(q);
@@ -365,7 +407,7 @@ namespace ccf
         json_read_only_adapter(get_quote),
         no_auth_required)
         .set_auto_schema<void, Quote>()
-        .set_forwarding_required(ForwardingRequired::Never)
+        .set_forwarding_required(endpoints::ForwardingRequired::Never)
         .install();
 
       auto get_quotes = [this](auto& args, nlohmann::json&&) {
@@ -378,16 +420,14 @@ namespace ccf
           {
             Quote q;
             q.node_id = node_id;
-            q.raw =
-              fmt::format("{:02x}", fmt::join(node_info.quote_info.quote, ""));
-            q.endorsements = fmt::format(
-              "{:02x}", fmt::join(node_info.quote_info.endorsements, ""));
+            q.raw = node_info.quote_info.quote;
+            q.endorsements = node_info.quote_info.endorsements;
             q.format = QuoteFormat::oe_sgx_v1;
 
 #ifdef GET_QUOTE
             auto code_id =
               EnclaveAttestationProvider::get_code_id(node_info.quote_info);
-            q.mrenclave = fmt::format("{:02x}", fmt::join(code_id, ""));
+            q.mrenclave = ds::to_hex(code_id.data);
 #endif
             quotes.emplace_back(q);
           }
@@ -410,19 +450,16 @@ namespace ccf
         auto service_state = service->get(0);
         if (service_state.has_value())
         {
-          out.service_status = service_state.value().status;
+          const auto& service_value = service_state.value();
+          out.service_status = service_value.status;
+          out.service_certificate = service_value.cert;
           if (consensus != nullptr)
           {
             out.current_view = consensus->get_view();
-
             auto primary_id = consensus->primary();
-            auto view_change_in_progress = consensus->view_change_in_progress();
-            auto nodes = args.tx.ro(this->network.nodes);
-            auto info = nodes->get(primary_id);
-            if (info)
+            if (primary_id.has_value() && !consensus->view_change_in_progress())
             {
-              out.primary_id = primary_id;
-              out.view_change_in_progress = view_change_in_progress;
+              out.primary_id = primary_id.value();
             }
           }
           return make_success(out);
@@ -442,33 +479,64 @@ namespace ccf
         .set_auto_schema<void, GetNetworkInfo::Out>()
         .install();
 
-      auto get_nodes = [this](auto& args, nlohmann::json&& params) {
-        const auto in = params.get<GetNodes::In>();
+      auto get_nodes = [this](auto& args, nlohmann::json&&) {
+        const auto parsed_query =
+          http::parse_query(args.rpc_ctx->get_request_query());
+
+        std::string error_string; // Ignored - all params are optional
+        const auto host = http::get_query_value_opt<std::string>(
+          parsed_query, "host", error_string);
+        const auto port = http::get_query_value_opt<std::string>(
+          parsed_query, "port", error_string);
+        const auto status_str = http::get_query_value_opt<std::string>(
+          parsed_query, "status", error_string);
+
+        std::optional<NodeStatus> status;
+        if (status_str.has_value())
+        {
+          // Convert the query argument to a JSON string, try to parse it as a
+          // NodeStatus, return an error if this doesn't work
+          try
+          {
+            status = nlohmann::json(status_str.value()).get<NodeStatus>();
+          }
+          catch (const JsonParseError& e)
+          {
+            return ccf::make_error(
+              HTTP_STATUS_BAD_REQUEST,
+              ccf::errors::InvalidQueryParameterValue,
+              fmt::format(
+                "Query parameter '{}' is not a valid node status",
+                status_str.value()));
+          }
+        }
+
         GetNodes::Out out;
 
         auto nodes = args.tx.ro(this->network.nodes);
-        nodes->foreach(
-          [this, &in, &out](const NodeId& nid, const NodeInfo& ni) {
-            if (in.host.has_value() && in.host.value() != ni.pubhost)
-              return true;
-            if (in.port.has_value() && in.port.value() != ni.pubport)
-              return true;
-            if (in.status.has_value() && in.status.value() != ni.status)
-              return true;
-            bool is_primary = false;
-            if (consensus != nullptr)
-            {
-              is_primary = consensus->primary() == nid;
-            }
-            out.nodes.push_back({nid,
-                                 ni.status,
-                                 ni.pubhost,
-                                 ni.pubport,
-                                 ni.rpchost,
-                                 ni.rpcport,
-                                 is_primary});
+        nodes->foreach([this, host, port, status, &out](
+                         const NodeId& nid, const NodeInfo& ni) {
+          if (host.has_value() && host.value() != ni.pubhost)
             return true;
-          });
+          if (port.has_value() && port.value() != ni.pubport)
+            return true;
+          if (status.has_value() && status.value() != ni.status)
+            return true;
+
+          bool is_primary = false;
+          if (consensus != nullptr)
+          {
+            is_primary = consensus->primary() == nid;
+          }
+          out.nodes.push_back({nid,
+                               ni.status,
+                               ni.pubhost,
+                               ni.pubport,
+                               ni.rpchost,
+                               ni.rpcport,
+                               is_primary});
+          return true;
+        });
 
         return make_success(out);
       };
@@ -477,11 +545,19 @@ namespace ccf
         HTTP_GET,
         json_read_only_adapter(get_nodes),
         no_auth_required)
-        .set_auto_schema<GetNodes>()
+        .set_execute_outside_consensus(
+          ccf::endpoints::ExecuteOutsideConsensus::Primary)
+        .set_auto_schema<void, GetNodes::Out>()
+        .add_query_parameter<std::string>(
+          "host", ccf::endpoints::OptionalParameter)
+        .add_query_parameter<std::string>(
+          "port", ccf::endpoints::OptionalParameter)
+        .add_query_parameter<std::string>(
+          "status", ccf::endpoints::OptionalParameter)
         .install();
 
       auto get_node_info = [this](auto& args, nlohmann::json&&) {
-        NodeId node_id;
+        std::string node_id;
         std::string error;
         if (!get_path_param(
               args.rpc_ctx->get_request_path_params(),
@@ -507,7 +583,11 @@ namespace ccf
         bool is_primary = false;
         if (consensus != nullptr)
         {
-          is_primary = consensus->primary() == node_id;
+          auto primary = consensus->primary();
+          if (primary.has_value() && primary.value() == node_id)
+          {
+            is_primary = true;
+          }
         }
         auto ni = info.value();
         return make_success(GetNode::Out{node_id,
@@ -524,10 +604,12 @@ namespace ccf
         json_read_only_adapter(get_node_info),
         no_auth_required)
         .set_auto_schema<void, GetNode::Out>()
+        .set_execute_outside_consensus(
+          ccf::endpoints::ExecuteOutsideConsensus::Locally)
         .install();
 
-      auto get_self_node = [this](ReadOnlyEndpointContext& args) {
-        auto node_id = this->node.get_node_id();
+      auto get_self_node = [this](auto& args) {
+        auto node_id = this->context.get_node_state().get_node_id();
         auto nodes = args.tx.ro(this->network.nodes);
         auto info = nodes->get(node_id);
         if (info)
@@ -539,7 +621,7 @@ namespace ccf
               "https://{}:{}/node/network/nodes/{}",
               info->pubhost,
               info->pubport,
-              node_id));
+              node_id.value()));
           return;
         }
 
@@ -550,17 +632,27 @@ namespace ccf
       };
       make_read_only_endpoint(
         "network/nodes/self", HTTP_GET, get_self_node, no_auth_required)
-        .set_forwarding_required(ForwardingRequired::Never)
+        .set_forwarding_required(endpoints::ForwardingRequired::Never)
+        .set_execute_outside_consensus(
+          ccf::endpoints::ExecuteOutsideConsensus::Locally)
         .install();
 
-      auto get_primary_node = [this](ReadOnlyEndpointContext& args) {
+      auto get_primary_node = [this](auto& args) {
         if (consensus != nullptr)
         {
-          auto node_id = this->node.get_node_id();
+          auto node_id = this->context.get_node_state().get_node_id();
           auto primary_id = consensus->primary();
+          if (!primary_id.has_value())
+          {
+            args.rpc_ctx->set_error(
+              HTTP_STATUS_INTERNAL_SERVER_ERROR,
+              ccf::errors::InternalError,
+              "Primary unknown");
+          }
+
           auto nodes = args.tx.ro(this->network.nodes);
           auto info = nodes->get(node_id);
-          auto info_primary = nodes->get(primary_id);
+          auto info_primary = nodes->get(primary_id.value());
           if (info && info_primary)
           {
             args.rpc_ctx->set_response_status(HTTP_STATUS_PERMANENT_REDIRECT);
@@ -570,7 +662,7 @@ namespace ccf
                 "https://{}:{}/node/network/nodes/{}",
                 info->pubhost,
                 info->pubport,
-                primary_id));
+                primary_id->value()));
             return;
           }
         }
@@ -582,11 +674,13 @@ namespace ccf
       };
       make_read_only_endpoint(
         "network/nodes/primary", HTTP_GET, get_primary_node, no_auth_required)
-        .set_forwarding_required(ForwardingRequired::Never)
+        .set_forwarding_required(endpoints::ForwardingRequired::Never)
+        .set_execute_outside_consensus(
+          ccf::endpoints::ExecuteOutsideConsensus::Locally)
         .install();
 
-      auto is_primary = [this](ReadOnlyEndpointContext& args) {
-        if (this->node.is_primary())
+      auto is_primary = [this](auto& args) {
+        if (this->context.get_node_state().is_primary())
         {
           args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
         }
@@ -595,9 +689,17 @@ namespace ccf
           args.rpc_ctx->set_response_status(HTTP_STATUS_PERMANENT_REDIRECT);
           if (consensus != nullptr)
           {
-            NodeId primary_id = consensus->primary();
+            auto primary_id = consensus->primary();
+            if (!primary_id.has_value())
+            {
+              args.rpc_ctx->set_error(
+                HTTP_STATUS_INTERNAL_SERVER_ERROR,
+                ccf::errors::InternalError,
+                "Primary unknown");
+            }
+
             auto nodes = args.tx.ro(this->network.nodes);
-            auto info = nodes->get(primary_id);
+            auto info = nodes->get(primary_id.value());
             if (info)
             {
               args.rpc_ctx->set_response_header(
@@ -610,10 +712,12 @@ namespace ccf
       };
       make_read_only_endpoint(
         "primary", HTTP_HEAD, is_primary, no_auth_required)
-        .set_forwarding_required(ForwardingRequired::Never)
+        .set_forwarding_required(endpoints::ForwardingRequired::Never)
+        .set_execute_outside_consensus(
+          ccf::endpoints::ExecuteOutsideConsensus::Locally)
         .install();
 
-      auto consensus_config = [this](CommandEndpointContext& args) {
+      auto consensus_config = [this](auto& args) {
         // Query node for configurations, separate current from pending
         if (consensus != nullptr)
         {
@@ -623,7 +727,7 @@ namespace ccf
           {
             nlohmann::json n;
             n["address"] = fmt::format("{}:{}", ninfo.hostname, ninfo.port);
-            c[fmt::format("{}", nid)] = n;
+            c[nid.value()] = n;
           }
           args.rpc_ctx->set_response_body(c.dump());
         }
@@ -636,10 +740,12 @@ namespace ccf
 
       make_command_endpoint(
         "config", HTTP_GET, consensus_config, no_auth_required)
-        .set_forwarding_required(ForwardingRequired::Never)
+        .set_forwarding_required(endpoints::ForwardingRequired::Never)
+        .set_execute_outside_consensus(
+          ccf::endpoints::ExecuteOutsideConsensus::Locally)
         .install();
 
-      auto memory_usage = [](CommandEndpointContext& args) {
+      auto memory_usage = [](auto& args) {
 
 // Do not attempt to call oe_allocator_mallinfo when used from
 // unit tests such as the frontend_test
@@ -662,7 +768,9 @@ namespace ccf
       };
 
       make_command_endpoint("memory", HTTP_GET, memory_usage, no_auth_required)
-        .set_forwarding_required(ForwardingRequired::Never)
+        .set_forwarding_required(endpoints::ForwardingRequired::Never)
+        .set_execute_outside_consensus(
+          ccf::endpoints::ExecuteOutsideConsensus::Locally)
         .set_auto_schema<MemoryUsage>()
         .install();
     }
@@ -674,9 +782,10 @@ namespace ccf
     NodeEndpoints node_endpoints;
 
   public:
-    NodeRpcFrontend(NetworkState& network, AbstractNodeState& node) :
+    NodeRpcFrontend(
+      NetworkState& network, ccfapp::AbstractNodeContext& context) :
       RpcFrontend(*network.tables, node_endpoints),
-      node_endpoints(network, node)
+      node_endpoints(network, context)
     {}
   };
 }

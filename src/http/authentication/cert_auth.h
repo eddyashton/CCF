@@ -4,6 +4,8 @@
 
 #include "authentication_types.h"
 #include "crypto/pem.h"
+#include "crypto/verifier.h"
+#include "node/blit.h"
 #include "node/certs.h"
 #include "node/members.h"
 #include "node/nodes.h"
@@ -13,12 +15,8 @@ namespace ccf
 {
   struct UserCertAuthnIdentity : public AuthnIdentity
   {
-    /** CCF user ID, as defined in @c public:ccf.gov.users.info table */
+    /** CCF user ID */
     UserId user_id;
-    /** User certificate, as established by TLS */
-    crypto::Pem user_cert;
-    /** Additional user data, as defined in @c public:ccf.gov.users.info */
-    nlohmann::json user_data;
   };
 
   class UserCertAuthnPolicy : public AuthnPolicy
@@ -31,32 +29,18 @@ namespace ccf
       const std::shared_ptr<enclave::RpcContext>& ctx,
       std::string& error_reason) override
     {
-      const auto caller_cert = ctx->session->caller_cert;
+      const auto& caller_cert = ctx->session->caller_cert;
+      auto caller_id = crypto::Sha256Hash(caller_cert).hex_str();
 
-      auto users_by_cert = tx.ro<CertDERs>(Tables::USER_CERT_DERS);
-      const auto user_id = users_by_cert->get(caller_cert);
-
-      if (user_id.has_value())
+      auto user_certs = tx.ro<UserCerts>(Tables::USER_CERTS);
+      if (user_certs->has(caller_id))
       {
-        Users users_table(Tables::USERS);
-        auto users = tx.ro(users_table);
-        const auto user = users->get(user_id.value());
-        if (!user.has_value())
-        {
-          throw std::logic_error("Users and user certs tables do not match");
-        }
-
         auto identity = std::make_unique<UserCertAuthnIdentity>();
-        identity->user_id = user_id.value();
-        identity->user_cert = user->cert;
-        identity->user_data = user->user_data;
+        identity->user_id = caller_id;
         return identity;
       }
-      else
-      {
-        error_reason = "Could not find matching user certificate";
-      }
 
+      error_reason = "Could not find matching user certificate";
       return nullptr;
     }
 
@@ -72,9 +56,8 @@ namespace ccf
 
   struct MemberCertAuthnIdentity : public AuthnIdentity
   {
+    /** CCF member ID */
     MemberId member_id;
-    crypto::Pem member_cert;
-    nlohmann::json member_data;
   };
 
   class MemberCertAuthnPolicy : public AuthnPolicy
@@ -87,33 +70,18 @@ namespace ccf
       const std::shared_ptr<enclave::RpcContext>& ctx,
       std::string& error_reason) override
     {
-      const auto caller_cert = ctx->session->caller_cert;
+      const auto& caller_cert = ctx->session->caller_cert;
+      auto caller_id = crypto::Sha256Hash(caller_cert).hex_str();
 
-      auto members_by_cert = tx.ro<CertDERs>(Tables::MEMBER_CERT_DERS);
-      const auto member_id = members_by_cert->get(caller_cert);
-
-      if (member_id.has_value())
+      auto member_certs = tx.ro<MemberCerts>(Tables::MEMBER_CERTS);
+      if (member_certs->has(caller_id))
       {
-        Members members_table(Tables::MEMBERS);
-        auto members = tx.ro(members_table);
-        const auto member = members->get(member_id.value());
-        if (!member.has_value())
-        {
-          throw std::logic_error(
-            "Members and member certs tables do not match");
-        }
-
         auto identity = std::make_unique<MemberCertAuthnIdentity>();
-        identity->member_id = member_id.value();
-        identity->member_cert = member->cert;
-        identity->member_data = member->member_data;
+        identity->member_id = caller_id;
         return identity;
       }
-      else
-      {
-        error_reason = "Could not find matching member certificate";
-      }
 
+      error_reason = "Could not find matching member certificate";
       return nullptr;
     }
 
@@ -141,31 +109,23 @@ namespace ccf
       const std::shared_ptr<enclave::RpcContext>& ctx,
       std::string& error_reason) override
     {
-      const auto caller_cert_pem =
-        crypto::cert_der_to_pem(ctx->session->caller_cert);
-
-      std::unique_ptr<NodeCertAuthnIdentity> identity = nullptr;
+      auto caller_public_key_der =
+        crypto::make_unique_verifier(ctx->session->caller_cert)
+          ->public_key_der();
+      auto node_caller_id = crypto::Sha256Hash(caller_public_key_der).hex_str();
 
       auto nodes = tx.ro<ccf::Nodes>(Tables::NODES);
-      nodes->foreach(
-        [&caller_cert_pem, &identity](const auto& id, const auto& info) {
-          if (info.cert == caller_cert_pem)
-          {
-            identity = std::make_unique<NodeCertAuthnIdentity>();
-            identity->node_id = id;
-            identity->node_info = info;
-            return false;
-          }
-
-          return true;
-        });
-
-      if (identity == nullptr)
+      auto node = nodes->get(node_caller_id);
+      if (node.has_value())
       {
-        error_reason = "Caller cert does not match any known node cert";
+        auto identity = std::make_unique<NodeCertAuthnIdentity>();
+        identity->node_id = node_caller_id;
+        identity->node_info = node.value();
+        return identity;
       }
 
-      return identity;
+      error_reason = "Could not find matching node certificate";
+      return nullptr;
     }
 
     std::optional<OpenAPISecuritySchema> get_openapi_security_schema()

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 #pragma once
+#include "ccf/receipt.h"
 #include "ds/json.h"
 
 namespace loggingapp
@@ -19,11 +20,6 @@ namespace loggingapp
 
   struct LoggingGet
   {
-    struct In
-    {
-      size_t id;
-    };
-
     struct Out
     {
       std::string msg;
@@ -32,21 +28,60 @@ namespace loggingapp
 
   struct LoggingRemove
   {
-    using In = LoggingGet::In;
-
     using Out = bool;
+  };
+
+  struct LoggingGetReceipt
+  {
+    struct In
+    {
+      size_t id;
+    };
+
+    struct Out
+    {
+      std::string msg;
+      ccf::Receipt receipt;
+    };
   };
 
   DECLARE_JSON_TYPE(LoggingRecord::In);
   DECLARE_JSON_REQUIRED_FIELDS(LoggingRecord::In, id, msg);
 
-  DECLARE_JSON_TYPE(LoggingGet::In);
-  DECLARE_JSON_REQUIRED_FIELDS(LoggingGet::In, id);
   DECLARE_JSON_TYPE(LoggingGet::Out);
   DECLARE_JSON_REQUIRED_FIELDS(LoggingGet::Out, msg);
+
+  DECLARE_JSON_TYPE(LoggingGetReceipt::In);
+  DECLARE_JSON_REQUIRED_FIELDS(LoggingGetReceipt::In, id);
+  DECLARE_JSON_TYPE(LoggingGetReceipt::Out);
+  DECLARE_JSON_REQUIRED_FIELDS(LoggingGetReceipt::Out, msg, receipt);
   // SNIPPET_END: macro_validation_macros
 
   using LoggingGetHistorical = LoggingGet;
+
+  struct LoggingGetHistoricalRange
+  {
+    struct Entry
+    {
+      size_t seqno;
+      size_t id;
+      std::string msg;
+    };
+
+    struct Out
+    {
+      std::vector<Entry> entries;
+      std::optional<std::string> next_link;
+    };
+  };
+  DECLARE_JSON_TYPE(LoggingGetHistoricalRange::Entry);
+  DECLARE_JSON_REQUIRED_FIELDS(
+    LoggingGetHistoricalRange::Entry, seqno, id, msg);
+
+  DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(LoggingGetHistoricalRange::Out);
+  DECLARE_JSON_REQUIRED_FIELDS(LoggingGetHistoricalRange::Out, entries);
+  DECLARE_JSON_OPTIONAL_FIELDS_WITH_RENAMES(
+    LoggingGetHistoricalRange::Out, next_link, "@nextLink");
 
   // Public record/get
   // Manual schemas, verified then parsed in handler

@@ -4,12 +4,12 @@
 import io
 import struct
 import os
+from enum import Enum
 
-from typing import BinaryIO, NamedTuple, Optional, Set
-from enum import IntEnum
+from typing import BinaryIO, NamedTuple, Optional, Tuple, Dict, List
 
-# Default implementation has buggy interaction between read_bytes and tell, so use fallback
-import msgpack.fallback as msgpack  # type: ignore
+import json
+import base64
 
 from loguru import logger as LOG  # type: ignore
 from cryptography.x509 import load_pem_x509_certificate
@@ -19,6 +19,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import utils, ec
 
 from ccf.merkletree import MerkleTree
+from ccf.tx_id import TxID
 
 GCM_SIZE_TAG = 16
 GCM_SIZE_IV = 12
@@ -26,12 +27,19 @@ LEDGER_TRANSACTION_SIZE = 4
 LEDGER_DOMAIN_SIZE = 8
 LEDGER_HEADER_SIZE = 8
 
-UNPACK_ARGS = {"raw": True, "strict_map_key": False}
-
 # Public table names as defined in CCF
 # https://github.com/microsoft/CCF/blob/main/src/node/entities.h
 SIGNATURE_TX_TABLE_NAME = "public:ccf.internal.signatures"
 NODES_TABLE_NAME = "public:ccf.gov.nodes.info"
+
+# Key used by CCF to record single-key tables
+WELL_KNOWN_SINGLETON_TABLE_KEY = bytes(bytearray(8))
+
+
+class NodeStatus(Enum):
+    PENDING = "Pending"
+    TRUSTED = "Trusted"
+    RETIRED = "Retired"
 
 
 def to_uint_32(buffer):
@@ -44,6 +52,14 @@ def to_uint_64(buffer):
 
 def is_ledger_chunk_committed(file_name):
     return file_name.endswith(".committed")
+
+
+def unpack(stream, fmt):
+    size = struct.calcsize(fmt)
+    buf = stream.read(size)
+    if not buf:
+        raise EOFError  # Reached end of stream
+    return struct.unpack(fmt, buf)[0]
 
 
 class GcmHeader:
@@ -68,78 +84,67 @@ class PublicDomain:
 
     _buffer: io.BytesIO
     _buffer_size: int
-    _unpacker: msgpack.Unpacker
     _is_snapshot: bool
     _version: int
     _max_conflict_version: int
     _tables: dict
-    _msgpacked_tables: Set[str]
 
     def __init__(self, buffer: io.BytesIO):
         self._buffer = buffer
-        self._buffer_size = buffer.getbuffer().nbytes
-        self._unpacker = msgpack.Unpacker(self._buffer, **UNPACK_ARGS)
-        self._is_snapshot = self._read_next()
-        self._version = self._read_next()
-        self._max_conflict_version = self._read_next()
+        self._buffer_size = self._buffer.getbuffer().nbytes
+        self._is_snapshot = self._read_is_snapshot()
+        self._version = self._read_version()
+        self._max_conflict_version = self._read_version()
         self._tables = {}
-        # Keys and Values may have custom serialisers.
-        # Store most as raw bytes, only decode a few which we know are msgpack and are required for ledger verification.
-        self._msgpacked_tables = {
-            SIGNATURE_TX_TABLE_NAME,
-            NODES_TABLE_NAME,
-        }
         self._read()
 
-    def _read_next(self):
-        return self._unpacker.unpack()
+    def _read_is_snapshot(self):
+        return unpack(self._buffer, "<?")
 
-    def _read_next_string(self):
-        return self._unpacker.unpack().decode()
+    def _read_version(self):
+        return unpack(self._buffer, "<q")
+
+    def _read_size(self):
+        return unpack(self._buffer, "<q")
+
+    def _read_string(self):
+        size = self._read_size()
+        return self._buffer.read(size).decode()
 
     def _read_next_entry(self):
-        size_bytes = self._unpacker.read_bytes(8)
-        (size,) = struct.unpack("<Q", size_bytes)
-        entry_bytes = bytes(self._unpacker.read_bytes(size))
-        return entry_bytes
+        size = self._read_size()
+        return self._buffer.read(size)
 
     def _read(self):
-        while self._buffer_size > self._unpacker.tell():
-            # map_start_indicator
-            self._read_next()
-            map_name = self._read_next_string()
-            LOG.trace(f"Reading map {map_name}")
+        while True:
+            try:
+                map_name = self._read_string()
+            except EOFError:
+                break
+
             records = {}
             self._tables[map_name] = records
 
             # read_version
-            self._read_next()
+            self._read_version()
 
             # read_count
-            read_count = self._read_next()
+            # Note: Read keys are not currently included in ledger transactions
+            read_count = self._read_size()
             assert read_count == 0, f"Unexpected read count: {read_count}"
 
-            write_count = self._read_next()
+            write_count = self._read_size()
             if write_count:
                 for _ in range(write_count):
                     k = self._read_next_entry()
                     val = self._read_next_entry()
-                    if map_name in self._msgpacked_tables:
-                        k = msgpack.unpackb(k, **UNPACK_ARGS)
-                        val = msgpack.unpackb(val, **UNPACK_ARGS)
                     records[k] = val
 
-            remove_count = self._read_next()
+            remove_count = self._read_size()
             if remove_count:
                 for _ in range(remove_count):
                     k = self._read_next_entry()
-                    if map_name in self._msgpacked_tables:
-                        k = msgpack.unpackb(k, **UNPACK_ARGS)
                     records[k] = None
-
-            LOG.trace(
-                f"Found {read_count} reads, {write_count} writes, and {remove_count} removes"
-            )
 
     def get_tables(self) -> dict:
         """
@@ -148,6 +153,12 @@ class PublicDomain:
         :return: Dictionary of public tables with their content.
         """
         return self._tables
+
+    def get_seqno(self) -> int:
+        """
+        Returns the sequence number at which the transaction was recorded in the ledger.
+        """
+        return self._version
 
 
 def _byte_read_safe(file, num_of_bytes):
@@ -160,14 +171,6 @@ def _byte_read_safe(file, num_of_bytes):
     return ret
 
 
-class NodeStatus(IntEnum):
-    """These are the corresponding status meanings from the ccf.nodes table"""
-
-    PENDING = 0
-    TRUSTED = 1
-    RETIRED = 2
-
-
 class TxBundleInfo(NamedTuple):
     """Bundle for transaction information required for validation """
 
@@ -176,7 +179,7 @@ class TxBundleInfo(NamedTuple):
     node_cert: bytes
     signature: bytes
     node_activity: dict
-    signing_node: bytes
+    signing_node: str
 
 
 class LedgerValidator:
@@ -185,27 +188,11 @@ class LedgerValidator:
     It has the ability to take transactions and it maintains a MerkleTree data structure similar to CCF.
 
     Ledger is valid and hasn't been tampered with if following conditions are met:
-        1) The merkle proof is signed by a TRUSTED node in the given network
+        1) The merkle proof is signed by a Trusted node in the given network
         2) The merkle root and signature are verified with the node cert
         3) The merkle proof is correct for each set of transactions
     """
 
-    # The node that is expected to sign the signature transaction
-    # The certificate used to sign the signature transaction
-    # https://github.com/microsoft/CCF/blob/main/src/node/nodes.h
-    EXPECTED_NODE_CERT_INDEX = 1
-    # The current network trust status of the Node at the time of the current transaction
-    EXPECTED_NODE_STATUS_INDEX = 4
-
-    # Signature table contains PrimarySignature which extends NodeSignature. NodeId should be at index 1 in the serialized Node
-    # https://github.com/microsoft/CCF/blob/main/src/node/signatures.h
-    EXPECTED_NODE_SIGNATURE_INDEX = 0
-    EXPECTED_NODE_SEQNO_INDEX = 1
-    EXPECTED_NODE_VIEW_INDEX = 2
-    EXPECTED_ROOT_INDEX = 5
-    # https://github.com/microsoft/CCF/blob/main/src/node/node_signature.h
-    EXPECTED_SIGNING_NODE_ID_INDEX = 1
-    EXPECTED_SIGNATURE_INDEX = 0
     # Constant for the size of a hashed transaction
     SHA_256_HASH_SIZE = 32
 
@@ -238,12 +225,17 @@ class LedgerValidator:
         # Add contributing nodes certs and update nodes network trust status for verification
         if NODES_TABLE_NAME in tables:
             node_table = tables[NODES_TABLE_NAME]
-            for nodeid, values in node_table.items():
-                # Add the nodes certificate
-                self.node_certificates[nodeid] = values[self.EXPECTED_NODE_CERT_INDEX]
+            for node_id, node_info in node_table.items():
+                node_id = node_id.decode()
+                node_info = json.loads(node_info)
+                # Add the node certificate
+                self.node_certificates[node_id] = node_info["cert"].encode()
                 # Update node trust status
-                self.node_activity_status[nodeid] = NodeStatus(
-                    values[self.EXPECTED_NODE_STATUS_INDEX]
+                # Also record the seqno at which the node status changed to
+                # track when a primary node should stop issuing signatures
+                self.node_activity_status[node_id] = (
+                    node_info["status"],
+                    transaction_public_domain.get_seqno(),
                 )
 
         # This is a merkle root/signature tx if the table exists
@@ -251,25 +243,22 @@ class LedgerValidator:
             self.signature_count += 1
             signature_table = tables[SIGNATURE_TX_TABLE_NAME]
 
-            for nodeid, values in signature_table.items():
-                current_seqno = values[self.EXPECTED_NODE_SEQNO_INDEX]
-                current_view = values[self.EXPECTED_NODE_VIEW_INDEX]
-                signing_node = values[self.EXPECTED_NODE_SIGNATURE_INDEX][
-                    self.EXPECTED_SIGNING_NODE_ID_INDEX
-                ]
+            for _, signature in signature_table.items():
+                signature = json.loads(signature)
+                current_seqno = signature["seqno"]
+                current_view = signature["view"]
+                signing_node = signature["node"]
 
                 # Get binary representations for the cert, existing root, and signature
-                cert = b"".join(self.node_certificates[signing_node])
-                existing_root = b"".join(values[self.EXPECTED_ROOT_INDEX])
-                signature = values[self.EXPECTED_NODE_SIGNATURE_INDEX][
-                    self.EXPECTED_SIGNATURE_INDEX
-                ]
+                cert = self.node_certificates[signing_node]
+                existing_root = bytes.fromhex(signature["root"])
+                sig = base64.b64decode(signature["sig"])
 
                 tx_info = TxBundleInfo(
                     self.merkle,
                     existing_root,
                     cert,
-                    signature,
+                    sig,
                     self.node_activity_status,
                     signing_node,
                 )
@@ -278,11 +267,16 @@ class LedgerValidator:
                 # throws if ledger validation failed.
                 self._verify_tx_set(tx_info)
 
+                # Forget about nodes whose retirement has been committed
+                for node_id, (status, seqno) in list(self.node_activity_status.items()):
+                    if (
+                        status == NodeStatus.RETIRED.value
+                        and signature["commit_seqno"] >= seqno
+                    ):
+                        self.node_activity_status.pop(node_id)
+
                 self.last_verified_seqno = current_seqno
                 self.last_verified_view = current_view
-                LOG.debug(
-                    f"Ledger verified till seqno: {current_seqno} and view: {current_view}"
-                )
 
         # Checks complete, add this transaction to tree
         self.merkle.add_leaf(transaction.get_raw_tx())
@@ -291,7 +285,7 @@ class LedgerValidator:
         """
         Verify items 1, 2, and 3 for all the transactions up until a signature.
         """
-        # 1) The merkle root is signed by a TRUSTED node in the given network, else throws
+        # 1) The merkle root is signed by a Trusted node in the given network, else throws
         self._verify_node_status(tx_info)
         # 2) The merkle root and signature are verified with the node cert, else throws
         self._verify_root_signature(tx_info)
@@ -300,8 +294,13 @@ class LedgerValidator:
 
     @staticmethod
     def _verify_node_status(tx_info: TxBundleInfo):
-        """Verify item 1, The merkle root is signed by a TRUSTED node in the given network"""
-        if tx_info.node_activity[tx_info.signing_node] != NodeStatus.TRUSTED:
+        """Verify item 1, The merkle root is signed by a valid node in the given network"""
+        # Note: A retired primary will still issue signature transactions until
+        # its retirement is committed
+        if tx_info.node_activity[tx_info.signing_node][0] not in (
+            NodeStatus.TRUSTED.value,
+            NodeStatus.RETIRED.value,
+        ):
             LOG.error(
                 f"The signing node {tx_info.signing_node!r} is not trusted by the network"
             )
@@ -406,6 +405,14 @@ class Transaction:
             self._public_domain = PublicDomain(buffer)
         return self._public_domain
 
+    def get_private_domain_size(self) -> int:
+        """
+        Retrieve the size of the private (i.e. encrypted) domain for that transaction.
+        """
+        return self._total_size - (
+            GcmHeader.size() + LEDGER_DOMAIN_SIZE + self._public_domain_size
+        )
+
     def get_raw_tx(self) -> bytes:
         """
         Returns raw transaction bytes.
@@ -432,18 +439,15 @@ class Transaction:
     def __next__(self):
         if self._next_offset == self._file_size:
             raise StopIteration()
-        try:
-            self._complete_read()
-            self._read_header()
 
-            # Adds every transaction to the ledger validator
-            # LedgerValidator does verification for every added transaction and throws when it finds any anomaly.
-            self._ledger_validator.add_transaction(self)
+        self._complete_read()
+        self._read_header()
 
-            return self
-        except Exception as exception:
-            LOG.exception(f"Encountered exception: {exception}")
-            raise
+        # Adds every transaction to the ledger validator
+        # LedgerValidator does verification for every added transaction and throws when it finds any anomaly.
+        self._ledger_validator.add_transaction(self)
+
+        return self
 
 
 class LedgerChunk:
@@ -463,14 +467,16 @@ class LedgerChunk:
         self._filename = name
 
     def __next__(self) -> Transaction:
-        try:
-            return next(self._current_tx)
-        except StopIteration:
-            LOG.info(f"Completed verifying ledger file '{self._filename}'")
-            raise
+        return next(self._current_tx)
 
     def __iter__(self):
         return self
+
+    def filename(self):
+        return self._filename
+
+    def is_committed(self):
+        return is_ledger_chunk_committed(self._filename)
 
 
 class Ledger:
@@ -485,33 +491,35 @@ class Ledger:
     _current_chunk: LedgerChunk
     _ledger_validator: LedgerValidator
 
-    def __init__(self, directory: str):
-
-        self._filenames = []
+    def _reset_iterators(self):
         self._fileindex = -1
-
-        ledgers = os.listdir(directory)
-        # Sorts the list based off the first number after ledger_ so that
-        # the ledger is verified in sequence
-        sorted_ledgers = sorted(
-            ledgers,
-            key=lambda x: int(
-                x.replace(".committed", "").replace("ledger_", "").split("-")[0]
-            ),
-        )
-
-        for chunk in sorted_ledgers:
-            if os.path.isfile(os.path.join(directory, chunk)):
-                if not is_ledger_chunk_committed(chunk):
-                    LOG.warning(f"Ledger file {chunk} is not committed")
-                self._filenames.append(os.path.join(directory, chunk))
-
         # Initialize LedgerValidator instance which will be passed to LedgerChunks.
         self._ledger_validator = LedgerValidator()
 
-        LOG.info(
-            f"Initialised CCF ledger from directory '{directory}' (found {len(sorted_ledgers)} files)"
+    def __init__(self, directories: List[str]):
+
+        self._filenames = []
+
+        ledger_files = []
+        for directory in directories:
+            for path in os.listdir(directory):
+                chunk = os.path.join(directory, path)
+                if os.path.isfile(chunk):
+                    ledger_files.append(chunk)
+
+        # Sorts the list based off the first number after ledger_ so that
+        # the ledger is verified in sequence
+        self._filenames = sorted(
+            ledger_files,
+            key=lambda x: int(
+                os.path.basename(x)
+                .replace(".committed", "")
+                .replace("ledger_", "")
+                .split("-")[0]
+            ),
         )
+
+        self._reset_iterators()
 
     def __next__(self) -> LedgerChunk:
         self._fileindex += 1
@@ -521,18 +529,86 @@ class Ledger:
             )
             return self._current_chunk
         else:
-            LOG.success(
-                f"Ledger verification complete (found {self._ledger_validator.signature_count} signatures)."
-                + f" Ledger verified till seqno {self._ledger_validator.last_verified_seqno} in view {self._ledger_validator.last_verified_view}"
-            )
             raise StopIteration
+
+    def __len__(self):
+        return len(self._filenames)
 
     def __iter__(self):
         return self
 
+    def signature_count(self):
+        return self._ledger_validator.signature_count
 
-def extract_msgpacked_data(data: bytes):
-    return msgpack.unpackb(data, **UNPACK_ARGS)
+    def last_verified_txid(self):
+        return TxID(
+            self._ledger_validator.last_verified_view,
+            self._ledger_validator.last_verified_seqno,
+        )
+
+    def get_transaction(self, seqno: int) -> Transaction:
+        """
+        Returns the :py:class:`ccf.Ledger.Transaction` recorded in the ledger at the given sequence number.
+
+        Note that the transaction returned may not yet be verified by a
+        signature transaction nor committed by the service.
+
+        :param int seqno: Sequence number of the transaction to fetch.
+
+        :return: :py:class:`ccf.Ledger.Transaction`
+        """
+        if seqno < 1:
+            raise ValueError("Ledger first seqno is 1")
+
+        self._reset_iterators()
+
+        transaction = None
+        try:
+            # Note: This is slower than it really needs to as this will walk through
+            # all transactions from the start of the ledger.
+            for chunk in self:
+                for tx in chunk:
+                    public_transaction = tx.get_public_domain()
+                    if public_transaction.get_seqno() == seqno:
+                        return tx
+        finally:
+            self._reset_iterators()
+
+        if transaction is None:
+            raise UnknownTransaction(
+                f"Transaction at seqno {seqno} does not exist in ledger"
+            )
+        return transaction
+
+    def get_latest_public_state(self) -> Tuple[dict, int]:
+        """
+        Returns the current public state of the service.
+
+        Note that the public state returned may not yet be verified by a
+        signature transaction nor committed by the service.
+
+        :return: Tuple[Dict, int]: Tuple containing a dictionary of public tables and their values and the seqno of the state read from the ledger.
+        """
+        self._reset_iterators()
+
+        public_tables: Dict[str, Dict] = {}
+        latest_seqno = 0
+        for chunk in self:
+            for tx in chunk:
+                latest_seqno = tx.get_public_domain().get_seqno()
+                for table_name, records in tx.get_public_domain().get_tables().items():
+                    if table_name in public_tables:
+                        public_tables[table_name].update(records)
+                        # Remove deleted keys
+                        public_tables[table_name] = {
+                            k: v
+                            for k, v in public_tables[table_name].items()
+                            if v is not None
+                        }
+                    else:
+                        public_tables[table_name] = records
+
+        return public_tables, latest_seqno
 
 
 class InvalidRootException(Exception):
@@ -549,3 +625,7 @@ class CommitIdRangeException(Exception):
 
 class UntrustedNodeException(Exception):
     """The signing node wasn't part of the network"""
+
+
+class UnknownTransaction(Exception):
+    """The transaction at seqno does not exist in ledger"""

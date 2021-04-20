@@ -5,7 +5,6 @@ import tempfile
 import json
 import time
 import base64
-import http
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from http import HTTPStatus
 import ssl
@@ -40,6 +39,7 @@ def test_jwt_without_key_policy(network, args):
     cert_pem = infra.crypto.generate_cert(key_priv_pem)
     kid = "my_kid"
     issuer = "my_issuer"
+    raw_kid = kid.encode()
 
     LOG.info("Try to add JWT signing key without matching issuer")
     with tempfile.NamedTemporaryFile(prefix="ccf", mode="w+") as jwks_fp:
@@ -68,7 +68,7 @@ def test_jwt_without_key_policy(network, args):
             network.consortium.set_jwt_public_signing_keys(
                 primary, issuer, jwks_fp.name
             )
-        except infra.proposal.ProposalNotAccepted:
+        except (infra.proposal.ProposalNotAccepted, infra.proposal.ProposalNotCreated):
             pass
         else:
             assert False, "Proposal should not have been created"
@@ -77,56 +77,43 @@ def test_jwt_without_key_policy(network, args):
     with tempfile.NamedTemporaryFile(prefix="ccf", mode="w+") as jwks_fp:
         json.dump(create_jwks(kid, cert_pem), jwks_fp)
         jwks_fp.flush()
-        network.consortium.set_jwt_public_signing_keys(primary, issuer, jwks_fp.name)
-
-    LOG.info("Check if JWT signing key was stored correctly")
-    with primary.client(
-        f"member{network.consortium.get_any_active_member().member_id}"
-    ) as c:
-        r = c.post(
-            "/gov/read", {"table": "public:ccf.gov.jwt.public_signing_keys", "key": kid}
+        set_jwt_proposal = network.consortium.set_jwt_public_signing_keys(
+            primary, issuer, jwks_fp.name
         )
-        assert r.status_code == http.HTTPStatus.OK.value, r.status_code
-        # Note that /gov/read returns all data as JSON.
-        # Here, the stored data is a uint8 array, therefore it
-        # is returned as an array of integers.
-        cert_kv_der = bytes(r.body.json())
-        cert_kv_pem = infra.crypto.cert_der_to_pem(cert_kv_der)
+
+        stored_jwt_signing_key = primary.get_ledger_public_state_at(
+            set_jwt_proposal.completed_seqno
+        )["public:ccf.gov.jwt.public_signing_keys"][raw_kid]
+
+        stored_cert = infra.crypto.cert_der_to_pem(stored_jwt_signing_key)
         assert infra.crypto.are_certs_equal(
-            cert_pem, cert_kv_pem
-        ), "stored cert not equal to input cert"
+            cert_pem, stored_cert
+        ), "input cert is not equal to stored cert"
 
     LOG.info("Remove JWT issuer")
-    network.consortium.remove_jwt_issuer(primary, issuer)
+    remove_jwt_proposal = network.consortium.remove_jwt_issuer(primary, issuer)
 
-    LOG.info("Check if JWT signing key was deleted")
-    with primary.client(
-        f"member{network.consortium.get_any_active_member().member_id}"
-    ) as c:
-        r = c.post(
-            "/gov/read", {"table": "public:ccf.gov.jwt.public_signing_keys", "key": kid}
-        )
-        assert r.status_code == http.HTTPStatus.NOT_FOUND.value, r.status_code
+    assert (
+        primary.get_ledger_public_state_at(remove_jwt_proposal.completed_seqno)[
+            "public:ccf.gov.jwt.public_signing_keys"
+        ][raw_kid]
+        is None
+    ), "JWT issuer was not removed"
 
     LOG.info("Add JWT issuer with initial keys")
     with tempfile.NamedTemporaryFile(prefix="ccf", mode="w+") as metadata_fp:
         json.dump({"issuer": issuer, "jwks": create_jwks(kid, cert_pem)}, metadata_fp)
         metadata_fp.flush()
-        network.consortium.set_jwt_issuer(primary, metadata_fp.name)
+        set_jwt_issuer = network.consortium.set_jwt_issuer(primary, metadata_fp.name)
 
-    LOG.info("Check if JWT signing key was stored correctly")
-    with primary.client(
-        f"member{network.consortium.get_any_active_member().member_id}"
-    ) as c:
-        r = c.post(
-            "/gov/read", {"table": "public:ccf.gov.jwt.public_signing_keys", "key": kid}
-        )
-        assert r.status_code == http.HTTPStatus.OK.value, r.status_code
-        cert_kv_der = bytes(r.body.json())
-        cert_kv_pem = infra.crypto.cert_der_to_pem(cert_kv_der)
+        stored_jwt_signing_key = primary.get_ledger_public_state_at(
+            set_jwt_issuer.completed_seqno
+        )["public:ccf.gov.jwt.public_signing_keys"][raw_kid]
+
+        stored_cert = infra.crypto.cert_der_to_pem(stored_jwt_signing_key)
         assert infra.crypto.are_certs_equal(
-            cert_pem, cert_kv_pem
-        ), "stored cert not equal to input cert"
+            cert_pem, stored_cert
+        ), "input cert is not equal to stored cert"
 
     return network
 
@@ -239,22 +226,16 @@ def test_jwt_with_sgx_key_filter(network, args):
         jwks = {"keys": non_oe_jwks["keys"] + oe_jwks["keys"]}
         json.dump(jwks, jwks_fp)
         jwks_fp.flush()
-        network.consortium.set_jwt_public_signing_keys(primary, issuer, jwks_fp.name)
+        set_jwt_proposal = network.consortium.set_jwt_public_signing_keys(
+            primary, issuer, jwks_fp.name
+        )
 
-    LOG.info("Check that only SGX cert was added")
-    with primary.client(
-        f"member{network.consortium.get_any_active_member().member_id}"
-    ) as c:
-        r = c.post(
-            "/gov/read",
-            {"table": "public:ccf.gov.jwt.public_signing_keys", "key": non_oe_kid},
-        )
-        assert r.status_code == http.HTTPStatus.NOT_FOUND.value, r.status_code
-        r = c.post(
-            "/gov/read",
-            {"table": "public:ccf.gov.jwt.public_signing_keys", "key": oe_kid},
-        )
-        assert r.status_code == http.HTTPStatus.OK.value, r.status_code
+        stored_jwt_signing_keys = primary.get_ledger_public_state_at(
+            set_jwt_proposal.completed_seqno
+        )["public:ccf.gov.jwt.public_signing_keys"]
+
+        assert non_oe_kid.encode() not in stored_jwt_signing_keys
+        assert oe_kid.encode() in stored_jwt_signing_keys
 
     return network
 
@@ -316,32 +297,24 @@ class OpenIDProviderServer(AbstractContextManager):
 
 def check_kv_jwt_key_matches(network, kid, cert_pem):
     primary, _ = network.find_nodes()
-    with primary.client(
-        f"member{network.consortium.get_any_active_member().member_id}"
-    ) as c:
-        r = c.post(
-            "/gov/read",
-            {"table": "public:ccf.gov.jwt.public_signing_keys", "key": kid},
-        )
-        if cert_pem is None:
-            assert r.status_code == http.HTTPStatus.NOT_FOUND.value, r.status_code
-        else:
-            assert r.status_code == http.HTTPStatus.OK.value, r.status_code
-            # Note that /gov/read returns all data as JSON.
-            # Here, the stored data is a uint8 array, therefore it
-            # is returned as an array of integers.
-            cert_kv_der = bytes(r.body.json())
-            cert_kv_pem = infra.crypto.cert_der_to_pem(cert_kv_der)
-            assert infra.crypto.are_certs_equal(
-                cert_pem, cert_kv_pem
-            ), "stored cert not equal to input cert"
+
+    latest_public_state, _ = primary.get_latest_ledger_public_state()
+    latest_jwt_signing_key = latest_public_state[
+        "public:ccf.gov.jwt.public_signing_keys"
+    ]
+
+    if cert_pem is None:
+        assert kid.encode() not in latest_jwt_signing_key
+    else:
+        stored_cert = infra.crypto.cert_der_to_pem(latest_jwt_signing_key[kid.encode()])
+        assert infra.crypto.are_certs_equal(
+            cert_pem, stored_cert
+        ), "input cert is not equal to stored cert"
 
 
 def get_jwt_refresh_endpoint_metrics(network) -> dict:
     primary, _ = network.find_nodes()
-    with primary.client(
-        f"member{network.consortium.get_any_active_member().member_id}"
-    ) as c:
+    with primary.client(network.consortium.get_any_active_member().local_id) as c:
         r = c.get("/gov/api/metrics")
         m = next(
             v
@@ -357,7 +330,7 @@ def get_jwt_refresh_endpoint_metrics(network) -> dict:
 def test_jwt_key_auto_refresh(network, args):
     primary, _ = network.find_nodes()
 
-    ca_cert_name = "jwt"
+    ca_cert_bundle_name = "jwt"
     kid = "my_kid"
     issuer_host = "localhost"
     issuer_port = 12345
@@ -367,10 +340,12 @@ def test_jwt_key_auto_refresh(network, args):
     cert_pem = infra.crypto.generate_cert(key_priv_pem, cn=issuer_host)
 
     LOG.info("Add CA cert for JWT issuer")
-    with tempfile.NamedTemporaryFile(prefix="ccf", mode="w+") as ca_cert_fp:
-        ca_cert_fp.write(cert_pem)
-        ca_cert_fp.flush()
-        network.consortium.set_ca_cert(primary, ca_cert_name, ca_cert_fp.name)
+    with tempfile.NamedTemporaryFile(prefix="ccf", mode="w+") as ca_cert_bundle_fp:
+        ca_cert_bundle_fp.write(cert_pem)
+        ca_cert_bundle_fp.flush()
+        network.consortium.set_ca_cert_bundle(
+            primary, ca_cert_bundle_name, ca_cert_bundle_fp.name
+        )
 
     LOG.info("Start OpenID endpoint server")
     jwks = create_jwks(kid, cert_pem)
@@ -378,17 +353,22 @@ def test_jwt_key_auto_refresh(network, args):
         LOG.info("Add JWT issuer with auto-refresh")
         with tempfile.NamedTemporaryFile(prefix="ccf", mode="w+") as metadata_fp:
             json.dump(
-                {"issuer": issuer, "auto_refresh": True, "ca_cert_name": ca_cert_name},
+                {
+                    "issuer": issuer,
+                    "auto_refresh": True,
+                    "ca_cert_bundle_name": ca_cert_bundle_name,
+                },
                 metadata_fp,
             )
             metadata_fp.flush()
             network.consortium.set_jwt_issuer(primary, metadata_fp.name)
 
-        LOG.info("Check that keys got refreshed")
-        # Note: refresh interval is set to 1s, see network args below.
-        with_timeout(
-            lambda: check_kv_jwt_key_matches(network, kid, cert_pem), timeout=5
-        )
+            LOG.info("Check that keys got refreshed")
+            # Note: refresh interval is set to 1s, see network args below.
+            with_timeout(
+                lambda: check_kv_jwt_key_matches(network, kid, cert_pem),
+                timeout=5,
+            )
 
         LOG.info("Check that JWT refresh endpoint has no failures")
         m = get_jwt_refresh_endpoint_metrics(network)
@@ -423,7 +403,7 @@ def test_jwt_key_auto_refresh(network, args):
 def test_jwt_key_initial_refresh(network, args):
     primary, _ = network.find_nodes()
 
-    ca_cert_name = "jwt"
+    ca_cert_bundle_name = "jwt"
     kid = "my_kid"
     issuer_host = "localhost"
     issuer_port = 12345
@@ -433,10 +413,12 @@ def test_jwt_key_initial_refresh(network, args):
     cert_pem = infra.crypto.generate_cert(key_priv_pem, cn=issuer_host)
 
     LOG.info("Add CA cert for JWT issuer")
-    with tempfile.NamedTemporaryFile(prefix="ccf", mode="w+") as ca_cert_fp:
-        ca_cert_fp.write(cert_pem)
-        ca_cert_fp.flush()
-        network.consortium.set_ca_cert(primary, ca_cert_name, ca_cert_fp.name)
+    with tempfile.NamedTemporaryFile(prefix="ccf", mode="w+") as ca_cert_bundle_fp:
+        ca_cert_bundle_fp.write(cert_pem)
+        ca_cert_bundle_fp.flush()
+        network.consortium.set_ca_cert_bundle(
+            primary, ca_cert_bundle_name, ca_cert_bundle_fp.name
+        )
 
     LOG.info("Start OpenID endpoint server")
     jwks = create_jwks(kid, cert_pem)
@@ -444,7 +426,11 @@ def test_jwt_key_initial_refresh(network, args):
         LOG.info("Add JWT issuer with auto-refresh")
         with tempfile.NamedTemporaryFile(prefix="ccf", mode="w+") as metadata_fp:
             json.dump(
-                {"issuer": issuer, "auto_refresh": True, "ca_cert_name": ca_cert_name},
+                {
+                    "issuer": issuer,
+                    "auto_refresh": True,
+                    "ca_cert_bundle_name": ca_cert_bundle_name,
+                },
                 metadata_fp,
             )
             metadata_fp.flush()

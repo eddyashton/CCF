@@ -13,11 +13,12 @@ from http.client import HTTPResponse
 from io import BytesIO
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
 import struct
 import base64
 import re
-import hashlib
 from typing import Union, Optional, List, Any
+from ccf.tx_id import TxID
 
 import requests
 from loguru import logger as LOG  # type: ignore
@@ -35,15 +36,14 @@ def escape_loguru_tags(s):
     return loguru_tag_regex.sub(lambda match: f"\\{match[0]}", s)
 
 
-def truncate(string: str, max_len: int = 128):
+def truncate(string: str, max_len: int = 256):
     if len(string) > max_len:
         return f"{string[: max_len]} + {len(string) - max_len} chars"
     else:
         return string
 
 
-CCF_TX_SEQNO_HEADER = "x-ccf-tx-seqno"
-CCF_TX_VIEW_HEADER = "x-ccf-tx-view"
+CCF_TX_ID_HEADER = "x-ms-ccf-transaction-id"
 
 DEFAULT_CONNECTION_TIMEOUT_SEC = 3
 DEFAULT_REQUEST_TIMEOUT_SEC = 10
@@ -89,10 +89,6 @@ class Identity:
     cert: str
     #: Identity description
     description: str
-
-
-def int_or_none(v):
-    return int(v) if v is not None else None
 
 
 class FakeSocket:
@@ -176,7 +172,7 @@ class Response:
 
     def __str__(self):
         versioned = (self.view, self.seqno) != (None, None)
-        status_color = "red" if self.status_code / 100 in (4, 5) else "green"
+        status_color = "red" if self.status_code // 100 in (4, 5) else "green"
         body_s = escape_loguru_tags(truncate(str(self.body)))
         # Body can't end with a \, or it will escape the loguru closing tag
         if len(body_s) > 0 and body_s[-1] == "\\":
@@ -190,11 +186,12 @@ class Response:
 
     @staticmethod
     def from_requests_response(rr):
+        tx_id = TxID.from_str(rr.headers.get(CCF_TX_ID_HEADER))
         return Response(
             status_code=rr.status_code,
             body=RequestsResponseBody(rr),
-            seqno=int_or_none(rr.headers.get(CCF_TX_SEQNO_HEADER)),
-            view=int_or_none(rr.headers.get(CCF_TX_VIEW_HEADER)),
+            seqno=tx_id.seqno,
+            view=tx_id.view,
             headers=rr.headers,
         )
 
@@ -215,11 +212,12 @@ class Response:
 
         raw_body = response.read()
 
+        tx_id = TxID.from_str(response.getheader(CCF_TX_ID_HEADER))
         return Response(
             response.status,
             body=RawResponseBody(raw_body),
-            seqno=int_or_none(response.getheader(CCF_TX_SEQNO_HEADER)),
-            view=int_or_none(response.getheader(CCF_TX_VIEW_HEADER)),
+            seqno=tx_id.seqno,
+            view=tx_id.view,
             headers=response.headers,
         )
 
@@ -388,7 +386,13 @@ class RequestClient:
             self.session.cert = (self.session_auth.cert, self.session_auth.key)
         if self.signing_auth:
             with open(self.signing_auth.cert) as cert_file:
-                self.key_id = hashlib.sha256(cert_file.read().encode()).hexdigest()
+                self.key_id = (
+                    x509.load_pem_x509_certificate(
+                        cert_file.read().encode(), default_backend()
+                    )
+                    .fingerprint(hashes.SHA256())
+                    .hex()
+                )
 
     def request(
         self,

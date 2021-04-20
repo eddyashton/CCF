@@ -4,7 +4,6 @@
 
 #include "http/http_builder.h"
 #include "http/http_rpc_context.h"
-#include "kv/tx.h"
 #include "node/jwt.h"
 #include "node/rpc/member_frontend.h"
 #include "node/rpc/serdes.h"
@@ -34,7 +33,7 @@ namespace ccf
       const std::shared_ptr<enclave::RPCSessions>& rpcsessions,
       const std::shared_ptr<enclave::RPCMap>& rpc_map,
       const crypto::KeyPairPtr& node_sign_kp,
-      crypto::Pem node_cert) :
+      const crypto::Pem& node_cert) :
       refresh_interval_s(refresh_interval_s),
       network(network),
       consensus(consensus),
@@ -115,10 +114,8 @@ namespace ccf
         http::headers::CONTENT_TYPE, http::headervalues::contenttype::JSON);
       request.set_body(&body);
 
-      const auto contents = node_cert.contents();
-      crypto::Sha256Hash hash({contents.data(), contents.size()});
-      const std::string key_id = fmt::format("{:02x}", fmt::join(hash.h, ""));
-
+      auto node_cert_der = crypto::cert_pem_to_der(node_cert);
+      const auto key_id = crypto::Sha256Hash(node_cert_der).hex_str();
       http::sign_request(request, node_sign_kp, key_id);
       auto packed = request.build_request();
 
@@ -281,8 +278,8 @@ namespace ccf
     {
       auto tx = network.tables->create_read_only_tx();
       auto jwt_issuers = tx.ro(network.jwt_issuers);
-      auto ca_certs = tx.ro(network.ca_certs);
-      jwt_issuers->foreach([this, &ca_certs](
+      auto ca_cert_bundles = tx.ro(network.ca_cert_bundles);
+      jwt_issuers->foreach([this, &ca_cert_bundles](
                              const JwtIssuer& issuer,
                              const JwtIssuerMetadata& metadata) {
         if (!metadata.auto_refresh)
@@ -295,14 +292,15 @@ namespace ccf
         }
         LOG_DEBUG_FMT(
           "JWT key auto-refresh: Refreshing keys for issuer '{}'", issuer);
-        auto& ca_cert_name = metadata.ca_cert_name.value();
-        auto ca_cert_der = ca_certs->get(ca_cert_name);
-        if (!ca_cert_der.has_value())
+        auto& ca_cert_bundle_name = metadata.ca_cert_bundle_name.value();
+        auto ca_cert_bundle_pem = ca_cert_bundles->get(ca_cert_bundle_name);
+        if (!ca_cert_bundle_pem.has_value())
         {
           LOG_FAIL_FMT(
-            "JWT key auto-refresh: CA cert with name '{}' for issuer '{}' not "
+            "JWT key auto-refresh: CA cert bundle with name '{}' for issuer "
+            "'{}' not "
             "found",
-            ca_cert_name,
+            ca_cert_bundle_name,
             issuer);
           send_refresh_jwt_keys_error();
           return true;
@@ -313,7 +311,7 @@ namespace ccf
         auto metadata_url_port =
           !metadata_url.port.empty() ? metadata_url.port : "443";
 
-        auto ca = std::make_shared<tls::CA>(ca_cert_der.value());
+        auto ca = std::make_shared<tls::CA>(ca_cert_bundle_pem.value());
         auto ca_cert = std::make_shared<tls::Cert>(
           ca,
           std::nullopt,

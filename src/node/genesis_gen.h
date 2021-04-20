@@ -1,19 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 #pragma once
+#include "ccf/tx.h"
 #include "code_id.h"
 #include "crypto/hash.h"
 #include "crypto/verifier.h"
 #include "entities.h"
-#include "kv/tx.h"
 #include "ledger_secrets.h"
-#include "lua_interp/lua_interp.h"
-#include "lua_interp/lua_util.h"
 #include "members.h"
 #include "network_tables.h"
 #include "node_info_network.h"
 #include "nodes.h"
-#include "runtime_config/default_whitelists.h"
 #include "values.h"
 
 #include <algorithm>
@@ -28,22 +25,6 @@ namespace ccf
 
     kv::Tx& tx;
 
-    template <typename T>
-    void set_scripts(
-      std::map<std::string, std::string> scripts,
-      T& table,
-      const bool compile = false)
-    {
-      auto tx_scripts = tx.rw(table);
-      for (auto& rs : scripts)
-      {
-        if (compile)
-          tx_scripts->put(rs.first, lua::compile(rs.second));
-        else
-          tx_scripts->put(rs.first, rs.second);
-      }
-    }
-
   public:
     GenesisGenerator(NetworkTables& tables_, kv::Tx& tx_) :
       tables(tables_),
@@ -54,12 +35,9 @@ namespace ccf
     {
       auto v = tx.rw(tables.values);
       for (int id_type = 0; id_type < ValueIds::END_ID; id_type++)
+      {
         v->put(id_type, 0);
-    }
-
-    auto finalize()
-    {
-      return tx.commit();
+      }
     }
 
     void retire_active_nodes()
@@ -81,114 +59,147 @@ namespace ccf
       }
     }
 
-    auto get_active_recovery_members()
+    bool is_recovery_member(const MemberId& member_id)
     {
-      auto members = tx.ro(tables.members);
-      std::map<MemberId, crypto::Pem> active_members_info;
+      auto member_encryption_public_keys =
+        tx.ro(tables.member_encryption_public_keys);
 
-      members->foreach(
-        [&active_members_info](const MemberId& mid, const MemberInfo& mi) {
-          if (mi.status == MemberStatus::ACTIVE && mi.is_recovery())
+      return member_encryption_public_keys->get(member_id).has_value();
+    }
+
+    bool is_active_member(const MemberId& member_id)
+    {
+      auto member_info = tx.ro(tables.member_info);
+      auto mi = member_info->get(member_id);
+      if (!mi.has_value())
+      {
+        return false;
+      }
+
+      return mi->status == MemberStatus::ACTIVE;
+    }
+
+    std::map<MemberId, crypto::Pem> get_active_recovery_members()
+    {
+      auto member_info = tx.ro(tables.member_info);
+      auto member_encryption_public_keys =
+        tx.ro(tables.member_encryption_public_keys);
+
+      std::map<MemberId, crypto::Pem> active_recovery_members;
+
+      member_encryption_public_keys->foreach(
+        [&active_recovery_members,
+         &member_info](const auto& mid, const auto& pem) {
+          auto info = member_info->get(mid);
+          if (!info.has_value())
           {
-            active_members_info[mid] = mi.encryption_pub_key.value();
+            throw std::logic_error(
+              fmt::format("Recovery member {} has no member info", mid));
+          }
+
+          if (info->status == MemberStatus::ACTIVE)
+          {
+            active_recovery_members[mid] = pem;
           }
           return true;
         });
-      return active_members_info;
+      return active_recovery_members;
     }
 
-    MemberId add_member(const MemberPubInfo& member_pub_info)
+    MemberId add_member(const NewMember& member_pub_info)
     {
-      auto m = tx.rw(tables.members);
-      auto mc = tx.rw(tables.member_certs);
-      auto md = tx.rw(tables.member_digests);
-      auto v = tx.rw(tables.values);
-      auto ma = tx.rw(tables.member_acks);
-      auto sig = tx.rw(tables.signatures);
+      auto member_certs = tx.rw(tables.member_certs);
+      auto member_info = tx.rw(tables.member_info);
+      auto member_acks = tx.rw(tables.member_acks);
+      auto signatures = tx.ro(tables.signatures);
 
-      // The key to a CertDERs table must be a DER, for easy comparison against
-      // the DER peer cert retrieved from the connection
       auto member_cert_der =
         crypto::make_verifier(member_pub_info.cert)->cert_der();
+      auto id = crypto::Sha256Hash(member_cert_der).hex_str();
 
-      auto member_id = mc->get(member_cert_der);
-      if (member_id.has_value())
+      auto member = member_certs->get(id);
+      if (member.has_value())
       {
-        throw std::logic_error(fmt::format(
-          "Member certificate already exists (member {})", member_id.value()));
+        // No effect if member already exists
+        return id;
       }
 
-      const auto id = get_next_id(v, ValueIds::NEXT_MEMBER_ID);
-      m->put(id, MemberInfo(member_pub_info, MemberStatus::ACCEPTED));
-      mc->put(member_cert_der, id);
+      member_certs->put(id, member_pub_info.cert);
+      member_info->put(
+        id, {MemberStatus::ACCEPTED, member_pub_info.member_data});
 
-      crypto::Sha256Hash member_cert_digest(member_pub_info.cert.contents());
-      md->put(member_cert_digest.hex_str(), id);
+      if (member_pub_info.encryption_pub_key.has_value())
+      {
+        auto member_encryption_public_keys =
+          tx.rw(tables.member_encryption_public_keys);
+        member_encryption_public_keys->put(
+          id, member_pub_info.encryption_pub_key.value());
+      }
 
-      auto s = sig->get(0);
+      auto s = signatures->get(0);
       if (!s)
       {
-        ma->put(id, MemberAck());
+        member_acks->put(id, MemberAck());
       }
       else
       {
-        ma->put(id, MemberAck(s->root));
+        member_acks->put(id, MemberAck(s->root));
       }
       return id;
     }
 
-    void activate_member(MemberId member_id)
+    void activate_member(const MemberId& member_id)
     {
-      auto members = tx.rw(tables.members);
-      auto member = members->get(member_id);
+      auto member_info = tx.rw(tables.member_info);
+
+      auto member = member_info->get(member_id);
       if (!member.has_value())
       {
         throw std::logic_error(fmt::format(
           "Member {} cannot be activated as they do not exist", member_id));
       }
 
-      // Only accepted members can transition to active state
-      if (member->status != MemberStatus::ACCEPTED)
-      {
-        return;
-      }
-
       member->status = MemberStatus::ACTIVE;
       if (
-        member->is_recovery() &&
+        is_recovery_member(member_id) &&
         (get_active_recovery_members().size() >= max_active_recovery_members))
       {
         throw std::logic_error(fmt::format(
-          "No more than {} active recovery members are allowed",
+          "Cannot activate new recovery member {}: no more than {} active "
+          "recovery members are allowed",
+          member_id,
           max_active_recovery_members));
       }
-      members->put(member_id, member.value());
+      member_info->put(member_id, member.value());
     }
 
-    bool retire_member(MemberId member_id)
+    bool remove_member(const MemberId& member_id)
     {
-      auto m = tx.rw(tables.members);
-      auto member_to_retire = m->get(member_id);
-      if (!member_to_retire.has_value())
-      {
-        LOG_FAIL_FMT(
-          "Could not retire member {}: member does not exist", member_id);
-        return false;
-      }
+      auto member_certs = tx.rw(tables.member_certs);
+      auto member_encryption_public_keys =
+        tx.rw(tables.member_encryption_public_keys);
+      auto member_info = tx.rw(tables.member_info);
+      auto member_acks = tx.rw(tables.member_acks);
+      auto member_gov_history = tx.rw(tables.governance_history);
 
-      if (member_to_retire->status != MemberStatus::ACTIVE)
+      auto member_to_remove = member_info->get(member_id);
+      if (!member_to_remove.has_value())
       {
-        LOG_DEBUG_FMT(
-          "Could not retire member {}: member is not active", member_id);
+        // The remove member proposal is idempotent so if the member does not
+        // exist, the proposal should succeed with no effect
+        LOG_FAIL_FMT(
+          "Could not remove member {}: member does not exist", member_id);
         return true;
       }
 
       // If the member was active and had a recovery share, check that
       // the new number of active members is still sufficient for
       // recovery
-      if (member_to_retire->is_recovery())
+      if (
+        member_to_remove->status == MemberStatus::ACTIVE &&
+        is_recovery_member(member_id))
       {
-        // Because the member to retire is active, there is at least one active
+        // Because the member to remove is active, there is at least one active
         // member (i.e. get_active_recovery_members_count_after >= 0)
         size_t get_active_recovery_members_count_after =
           get_active_recovery_members().size() - 1;
@@ -196,8 +207,8 @@ namespace ccf
         if (get_active_recovery_members_count_after < recovery_threshold)
         {
           LOG_FAIL_FMT(
-            "Failed to retire member {}: number of active recovery members "
-            "({}) would be less than recovery threshold ({})",
+            "Failed to remove recovery member {}: number of active recovery "
+            "members ({}) would be less than recovery threshold ({})",
             member_id,
             get_active_recovery_members_count_after,
             recovery_threshold);
@@ -205,77 +216,64 @@ namespace ccf
         }
       }
 
-      member_to_retire->status = MemberStatus::RETIRED;
-      m->put(member_id, member_to_retire.value());
+      member_info->remove(member_id);
+      member_encryption_public_keys->remove(member_id);
+      member_certs->remove(member_id);
+      member_acks->remove(member_id);
+      member_gov_history->remove(member_id);
+
       return true;
     }
 
-    std::optional<MemberInfo> get_member_info(MemberId member_id)
+    UserId add_user(const NewUser& new_user)
     {
-      auto m = tx.ro(tables.members);
-      auto member = m->get(member_id);
-      if (!member.has_value())
+      auto user_certs = tx.rw(tables.user_certs);
+
+      auto user_cert_der = crypto::make_verifier(new_user.cert)->cert_der();
+      auto id = crypto::Sha256Hash(user_cert_der).hex_str();
+
+      auto user_cert = user_certs->get(id);
+      if (user_cert.has_value())
       {
-        return {};
+        throw std::logic_error(
+          fmt::format("Certificate already exists for user {}", id));
       }
 
-      return member.value();
-    }
+      user_certs->put(id, new_user.cert);
 
-    auto add_user(const ccf::UserInfo& user_info)
-    {
-      auto u = tx.rw(tables.users);
-      auto uc = tx.rw(tables.user_certs);
-      auto ud = tx.rw(tables.user_digests);
-      auto v = tx.rw(tables.values);
-
-      auto user_cert_der = crypto::make_verifier(user_info.cert)->cert_der();
-
-      // Cert should be unique
-      auto user_id = uc->get(user_cert_der);
-      if (user_id.has_value())
+      if (new_user.user_data != nullptr)
       {
-        throw std::logic_error(fmt::format(
-          "User certificate already exists (user {})", user_id.value()));
+        auto user_info = tx.rw(tables.user_info);
+        auto ui = user_info->get(id);
+        if (ui.has_value())
+        {
+          throw std::logic_error(
+            fmt::format("User data already exists for user {}", id));
+        }
+
+        user_info->put(id, {new_user.user_data});
       }
 
-      const auto id = get_next_id(v, ValueIds::NEXT_USER_ID);
-      u->put(id, user_info);
-      uc->put(user_cert_der, id);
-
-      crypto::Sha256Hash user_cert_digest(user_info.cert.contents());
-      ud->put(user_cert_digest.hex_str(), id);
       return id;
     }
 
-    bool remove_user(UserId user_id)
+    void remove_user(const UserId& user_id)
     {
-      auto u = tx.rw(tables.users);
-      auto uc = tx.rw(tables.user_certs);
+      // Has no effect if the user does not exist
+      auto user_certs = tx.rw(tables.user_certs);
+      auto user_info = tx.rw(tables.user_info);
 
-      auto user_info = u->get(user_id);
-      if (!user_info.has_value())
-      {
-        return false;
-      }
-
-      auto pem = crypto::Pem(user_info.value().cert);
-      auto user_cert_der = crypto::make_verifier(pem)->cert_der();
-
-      u->remove(user_id);
-      uc->remove(user_cert_der);
-      return true;
+      user_certs->remove(user_id);
+      user_info->remove(user_id);
     }
 
-    auto add_node(const NodeInfo& node_info)
+    void add_node(const NodeId& id, const NodeInfo& node_info)
     {
-      auto node_id = get_next_id(tx.rw(tables.values), ValueIds::NEXT_NODE_ID);
-
-      auto raw_cert = crypto::make_verifier(node_info.cert)->cert_der();
+      // Increment the node id (only used in BFT)
+      get_next_id(tx.rw(tables.values), ValueIds::NEXT_NODE_ID);
 
       auto node = tx.rw(tables.nodes);
-      node->put(node_id, node_info);
-      return node_id;
+      node->put(id, node_info);
     }
 
     auto get_trusted_nodes(std::optional<NodeId> self_to_exclude = std::nullopt)
@@ -335,6 +333,12 @@ namespace ccf
         return false;
       }
 
+      if (active_service->status == ServiceStatus::OPEN)
+      {
+        // If the service is already open, return with no effect
+        return true;
+      }
+
       if (
         active_service->status != ServiceStatus::OPENING &&
         active_service->status != ServiceStatus::WAITING_FOR_RECOVERY_SHARES)
@@ -362,31 +366,8 @@ namespace ccf
       return active_service->status;
     }
 
-    bool service_wait_for_shares()
-    {
-      auto service = tx.rw(tables.service);
-      auto active_service = service->get(0);
-      if (!active_service.has_value())
-      {
-        LOG_FAIL_FMT("Failed to get active service");
-        return false;
-      }
-
-      if (active_service->status != ServiceStatus::OPENING)
-      {
-        LOG_FAIL_FMT(
-          "Could not wait for shares on current service: status is not "
-          "OPENING");
-        return false;
-      }
-
-      active_service->status = ServiceStatus::WAITING_FOR_RECOVERY_SHARES;
-      service->put(0, active_service.value());
-
-      return true;
-    }
-
-    void trust_node(NodeId node_id, kv::Version latest_ledger_secret_seqno)
+    void trust_node(
+      const NodeId& node_id, kv::Version latest_ledger_secret_seqno)
     {
       auto nodes = tx.rw(tables.nodes);
       auto node_info = nodes->get(node_id);
@@ -410,23 +391,16 @@ namespace ccf
 
     auto get_last_signature()
     {
-      auto sig = tx.ro(tables.signatures);
-      return sig->get(0);
+      auto signatures = tx.ro(tables.signatures);
+      return signatures->get(0);
     }
 
-    void set_whitelist(WlIds id, Whitelist wl)
+    void set_constitution(const std::string& constitution)
     {
-      tx.rw(tables.whitelists)->put(id, wl);
+      tx.rw(tables.constitution)->put(0, constitution);
     }
 
-    void set_gov_scripts(std::map<std::string, std::string> scripts)
-    {
-      // don't compile, because gov scripts are important functionally but not
-      // performance-wise
-      set_scripts(scripts, tables.gov_scripts, false);
-    }
-
-    void trust_node_code_id(CodeDigest& node_code_id)
+    void trust_node_code_id(const CodeDigest& node_code_id)
     {
       auto codeid = tx.rw(tables.node_code_ids);
       codeid->put(node_code_id, CodeStatus::ALLOWED_TO_JOIN);

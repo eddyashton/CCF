@@ -89,8 +89,8 @@ TEST_CASE("Add a node to an opening service")
   gen.init_values();
 
   ShareManager share_manager(network);
-  StubNodeState node;
-  NodeRpcFrontend frontend(network, node);
+  StubNodeContext context;
+  NodeRpcFrontend frontend(network, context);
   frontend.open();
 
   network.identity = std::make_unique<NetworkIdentity>();
@@ -138,7 +138,7 @@ TEST_CASE("Add a node to an opening service")
   }
 
   gen.create_service({});
-  gen.finalize();
+  REQUIRE(gen_tx.commit() == kv::CommitResult::SUCCESS);
   auto tx = network.tables->create_tx();
 
   INFO("Add first node which should be trusted straight away");
@@ -216,9 +216,9 @@ TEST_CASE("Add a node to an open service")
   gen.init_values();
 
   ShareManager share_manager(network);
-  StubNodeState node;
-  node.set_is_public(true);
-  NodeRpcFrontend frontend(network, node);
+  StubNodeContext context;
+  context.get_node_state().set_is_public(true);
+  NodeRpcFrontend frontend(network, context);
   frontend.open();
 
   network.identity = std::make_unique<NetworkIdentity>();
@@ -236,7 +236,7 @@ TEST_CASE("Add a node to an open service")
   gen.activate_member(gen.add_member(
     {member_cert, crypto::make_rsa_key_pair()->public_key_pem()}));
   REQUIRE(gen.open_service());
-  gen.finalize();
+  REQUIRE(gen_tx.commit() == kv::CommitResult::SUCCESS);
 
   // Node certificate
   crypto::KeyPairPtr kp = crypto::make_key_pair();
@@ -298,8 +298,10 @@ TEST_CASE("Add a node to an open service")
   {
     // In a real scenario, nodes are trusted via member governance.
     GenesisGenerator g(network, tx);
-    g.trust_node(0, network.ledger_secrets->get_latest(tx).first);
-    REQUIRE(g.finalize() == kv::CommitResult::SUCCESS);
+    g.trust_node(
+      crypto::Sha256Hash(kp->public_key_der()).hex_str(),
+      network.ledger_secrets->get_latest(tx).first);
+    REQUIRE(tx.commit() == kv::CommitResult::SUCCESS);
 
     // In the meantime, a new ledger secret is added. The new ledger secret
     // should not be passed to the new joiner via the join

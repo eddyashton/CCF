@@ -5,6 +5,129 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.99.2]
+
+### Changed
+
+- The default constitution no longer contains `set_service_principal` or `remove_service_principal` since they are not used by the core framework. Instead any apps which wish to use these tables should add them to their own constitution. A [sample implementation](https://github.com/microsoft/CCF/tree/main/src/runtime_config/test/service_principals/actions.js) is available, and used in the CI tests.
+- Proposal status now includes a `final_votes` and `vote_failures` map, recording the outcome of each vote per member. `failure_reason` and `failure_trace` have been consolidated into a single `failure` object, which is also used for `vote_failures`.
+
+## [0.99.1]
+
+### Added
+
+- The service certificate is now returned as part of the `/node/network/` endpoint response (#2442).
+
+### Changed
+
+- `kv::Map` is now an alias to `kv::JsonSerialisedMap`, which means all existing applications using `kv::Map`s will now require `DECLARE_JSON...` macros for custom key and value types. `msgpack-c` is no longer available to apps and `MSGPACK_DEFINE` macros should be removed. Note that this change may affect throughput of existing applications, in which case an app-defined serialiser (or `kv::RawCopySerialisedMap`) should be used (#2449).
+- `/node/state` endpoint also returns the `seqno` at which a node was started (i.e. `seqno` of the snapshot a node started from or `0` otherwise) (#2422).
+
+### Removed
+
+- `/gov/query` and `/gov/read` governance endpoints are removed (#2442).
+- Lua governance is removed. `JS_GOVERNANCE` env var is no longer necessary, and JS constitution is the only governance script which must be provided and will be used by the service. `--gov-script` can no longer be passed to `cchost` or `sandbox.sh`.
+
+## [0.99.0]
+
+This is a bridging release to simplify the upgrade to 1.0. It includes the new JS constitution, but also supports the existing Lua governance so that users can upgrade in 2 steps - first implementing all of the changes below with their existing Lua governance, then upgrading to the JS governance. Lua governance will be removed in CCF 1.0. See [temporary docs](https://microsoft.github.io/CCF/ccf-0.99.0/governance/js_gov.html) for help with transitioning from Lua to JS.
+
+The 1.0 release will require minimal changes from this release.
+
+### Added
+
+- A new `read_ledger.py` Python command line utility was added to parse and display the content of a ledger directory.
+- `ccf-app` npm package to help with developing JavaScript and TypeScript CCF apps. See [docs](https://microsoft.github.io/CCF/main/build_apps/js_app.html) for further details (#2331).
+
+### Changed
+
+- Retired members are now deleted from the store, instead of being marked as `Retired` (#1401).
+- `retire_member` proposal has been renamed to `remove_member` and is now idempotent (i.e. succeeds even if the member was already removed) (#1401).
+- `accept_recovery` and `open_network` proposals have been merged into a single idempotent `transition_service_to_open` proposal (#1791).
+- The `/tx` endpoint now takes a single `transaction_id` query parameter. For example, rather than calling `/node/tx?view=2&seqno=42`, call `/node/tx?transaction_id=2.42`.
+- The `/commit` endpoint now returns a response with a single `transaction_id` rather than separate `view` and `seqno` fields.
+- `UserRpcFrontend` has been removed, and the return value of `get_rpc_handler` which apps should construct is now simply a `ccf::RpcFrontend`.
+- There is now a distinction between public and private headers. The public headers under `include/ccf` are those we expect apps to use, and others are implementation details which may change/be deprecated/be hidden in future. Most apps should now be including `"ccf/app_interface.h"` and `"ccf/common_endpoint_registry.h"`.
+- Various endpoint-related types have moved under the `ccf::endpoints` namespace. Apps will need to rename these types where they are not using `auto`, for instance to `ccf::endpoints::EndpointContext` and `ccf::endpoints::ForwardingRequired`.
+- Ledger entry frames are no longer serialised with `msgpack` (#2343).
+- In JavaScript apps, the field `caller.jwt.key_issuer` in the `Request` object has been renamed `caller.jwt.keyIssuer` (#2362).
+- The proposals `set_module`, `remove_module` and `set_js_app` have been removed and `deploy_js_app` renamed to `set_js_app` (#2391).
+
+## [0.19.3]
+
+### Changed
+
+- The status filter passed to `/node/network/nodes` now takes the correct CamelCased values (#2238).
+
+## [0.19.2]
+
+### Added
+
+- New `get_user_data_v1` and `get_member_data_v1` C++ API calls have been added to retrieve the data associated with users/members. The user/member data is no longer included in the `AuthnIdentity` caller struct (#2301).
+- New `get_user_cert_v1` and `get_member_cert_v1` C++ API calls have been added to retrieve the PEM certificate of the users/members. The user/member certificate is no longer included in the `AuthnIdentity` caller struct (#2301).
+
+### Changed
+
+- String values in query parameters no longer need to be quoted. For instance, you should now call `/network/nodes?host=127.0.0.1` rather than `/network/nodes?host="127.0.0.1"` (#2309).
+- Schema documentation for query parameters should now be added with `add_query_parameter`, rather than `set_auto_schema`. The `In` type of `set_auto_schema` should only be used to describe the request body (#2309).
+- `json_adapter` will no longer try to convert query parameters to a JSON object. The JSON passed as an argument to these handlers will now be populated only by the request body. The query string should be parsed separately, and `http::parse_query(s)` is added as a starting point. This means strings in query parameters no longer need to be quoted (#2309).
+- Enum values returned by built-in REST API endpoints are now PascalCase. Lua governance scripts that use enum values need to be updated as well, for example, `"ACTIVE"` becomes `"Active"` for member info. The same applies when using the `/gov/query` endpoint (#2152).
+- Most service tables (e.g. for nodes and signatures) are now serialised as JSON instead of msgpack. Some tables (e.g. user and member certificates) are serialised as raw bytes for performance reasons (#2301).
+- The users and members tables have been split into `public:ccf.gov.users.certs`/`public:ccf.gov.users.info` and `public:ccf.gov.members.certs`/`public:ccf.gov.members.encryption_public_keys`/`public:ccf.gov.members.info` respectively (#2301).
+- TypeScript interface/class names have been renamed to PascalCase (#2325).
+
+## [0.19.1]
+
+### Added
+
+- Historical point query support has been added to JavaScript endpoints (#2285).
+- RSA key generation JavaScript endpoint (#2293).
+
+### Changed
+
+- `"readonly"` has been replaced by `"mode"` in `app.json` in JavaScript apps (#2285).
+
+## [0.19.0]
+
+### Changed
+
+- `x-ccf-tx-view` and `x-ccf-tx-seqno` response headers have been removed, and replaced with `x-ms-ccf-transaction-id`. This includes both original fields, separated by a single `.`. Historical queries using `ccf::historical::adapter` should also pass a single combined `x-ms-ccf-transaction-id` header (#2257).
+- Node unique identifier is now the hex-encoded string of the SHA-256 digest of the node's DER-encoded identity public key, which is also used as the node's quote report data. The `sandbox.sh` script still uses incrementing IDs to keep track of nodes and for their respective directories (#2241).
+- Members and users unique identifier is now the hex-encoded string of the SHA-256 digest of their DER-encoded identity certificate (i.e. fingerprint), which has to be specified as the `keyId` field for signed HTTP requests (#2279).
+- The receipt interface has changed, `/app/receipt?commit=23` is replaced by `/app/receipt?transaction_id=2.23`. Receipt fetching is now implemented as a historical query, which means that the first reponse(s) may be 202 with a Retry-After header. Receipts are now structured JSON, as opposed to a flat byte sequence, and `/app/receipt/verify` has been removed in favour of an [offline verification sample](https://microsoft.github.io/CCF/ccf-0.19.0/use_apps/verify_tx.html#transaction-receipts).
+- `ccfapp::get_rpc_handler()` now takes a reference to a `ccf::AbstractNodeContext` rather than `ccf::AbstractNodeState`. The node state can be obtained from the context via `get_node_state()`.
+
+### Removed
+
+- `get_receipt_for_seqno_v1` has been removed. Handlers wanting to return receipts must now use the historical API, and can obtain a receipt via `ccf::historical::StatePtr`. See the [historical query with receipt sample](https://microsoft.github.io/CCF/ccf-0.19.0/build_apps/logging_cpp.html#receipts) for reference.
+- `caller_id` endpoint has been removed. Members and users can now compute their unique identifier without interacting with CCF (#2279).
+- `public:ccf.internal.members.certs_der`, `public:ccf.internal.users.certs_der`, `public:ccf.internal.members.digests` and `public:ccf.internal.users.digests` KV tables have been removed (#2279).
+- `view_change_in_progress` field in `network/status` response has been removed (#2288).
+
+## [0.18.5]
+
+### Changed
+
+- Historical query system now supports range queries.
+
+## [0.18.4]
+
+### Changed
+
+- Governance proposals can be submitted successfully against secondaries (#2247)
+- `set_ca_cert`/`remove_ca_cert` proposals have been renamed `set_ca_cert_bundle`/`remove_ca_cert_bundle` and now also accept a bundle of certificates encoded as concatenated PEM string (#2221). The `ca_cert_name` parameter to the `set_jwt_issuer` proposal has been renamed to `ca_cert_bundle_name`.
+
+### Added
+
+- Support for multiple key wrapping algorithms for C++ and JavaScript applications (#2246)
+
+## [0.18.3]
+
+### Changed
+
+- Fixed format of `notBefore` and `notAfter` in node and network certificates (#2243).
+- CCF now depends on [Open Enclave 0.14](https://github.com/openenclave/openenclave/releases/tag/v0.14.0).
+
 ## [0.18.2]
 
 ### Added
@@ -583,7 +706,7 @@ This pre-release enables experimental support for running CCF with the PBFT cons
 
 - Experimental PBFT support [docs](https://microsoft.github.io/CCF/developers/consensus.html)
 - Increased threading support [docs](https://microsoft.github.io/CCF/developers/threading.html) (#831, #838)
-- Governance proposals can now be rejected, which allows consitutions to implement veto power (#854)
+- Governance proposals can now be rejected, which allows constitutions to implement veto power (#854)
 - Support for non JSON-RPC payloads (#852)
 - RPC to get the OE report (containing the SGX quote) of a specific node (#907)
 
@@ -687,6 +810,16 @@ Some discrepancies with the TR remain, and are being tracked under https://githu
 
 Initial pre-release
 
+[0.99.1]: https://github.com/microsoft/CCF/releases/tag/ccf-0.99.1
+[0.99.0]: https://github.com/microsoft/CCF/releases/tag/ccf-0.99.0
+[0.19.3]: https://github.com/microsoft/CCF/releases/tag/ccf-0.19.3
+[0.19.2]: https://github.com/microsoft/CCF/releases/tag/ccf-0.19.2
+[0.19.1]: https://github.com/microsoft/CCF/releases/tag/ccf-0.19.1
+[0.19.0]: https://github.com/microsoft/CCF/releases/tag/ccf-0.19.0
+[0.18.5]: https://github.com/microsoft/CCF/releases/tag/ccf-0.18.5
+[0.18.4]: https://github.com/microsoft/CCF/releases/tag/ccf-0.18.4
+[0.18.3]: https://github.com/microsoft/CCF/releases/tag/ccf-0.18.3
+[0.18.2]: https://github.com/microsoft/CCF/releases/tag/ccf-0.18.2
 [0.18.1]: https://github.com/microsoft/CCF/releases/tag/ccf-0.18.1
 [0.18.0]: https://github.com/microsoft/CCF/releases/tag/ccf-0.18.0
 [0.17.2]: https://github.com/microsoft/CCF/releases/tag/ccf-0.17.2

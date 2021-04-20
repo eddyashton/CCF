@@ -7,6 +7,7 @@
 #include "http_parser.h"
 #include "http_sig.h"
 #include "node/rpc/error.h"
+#include "node/rpc/tx_status.h"
 #include "ws_builder.h"
 
 namespace ws
@@ -15,7 +16,7 @@ namespace ws
     size_t code,
     const std::vector<uint8_t>& body,
     kv::Version seqno = kv::NoVersion,
-    kv::Consensus::View view = ccf::VIEW_UNKNOWN)
+    ccf::View view = ccf::VIEW_UNKNOWN)
   {
     return make_out_frame(code, seqno, view, body);
   };
@@ -173,14 +174,10 @@ namespace ws
       const std::string_view&, const std::string_view&) override
     {}
 
-    virtual void set_seqno(kv::Version sn) override
+    virtual void set_tx_id(const ccf::TxID& tx_id) override
     {
-      seqno = sn;
-    }
-
-    virtual void set_view(kv::Consensus::View t) override
-    {
-      view = t;
+      view = tx_id.view;
+      seqno = tx_id.seqno;
     }
 
     virtual void set_apply_writes(bool apply) override

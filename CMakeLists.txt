@@ -47,7 +47,11 @@ configure_file(
 )
 configure_file(${CCF_DIR}/python/setup.py.in ${CCF_DIR}/python/setup.py @ONLY)
 
-set(CONSENSUSES cft bft)
+if(ENABLE_BFT)
+  set(CONSENSUSES cft bft)
+else()
+  set(CONSENSUSES cft)
+endif()
 
 option(BUILD_TESTS "Build tests" ON)
 option(BUILD_UNIT_TESTS "Build unit tests" ON)
@@ -56,16 +60,20 @@ option(ZAP_TEST
        "ZAP fuzz test using https://www.zaproxy.org/docs/docker/api-scan/" OFF
 )
 option(BUILD_SMALLBANK "Build SmallBank sample app and clients" ON)
+option(BUILD_TPCC "Build TPPC sample app and clients" ON)
 
 # Build common library for CCF enclaves
 add_custom_target(ccf ALL)
 
+set(CCF_IMPL_SOURCE
+    ${CCF_DIR}/src/enclave/main.cpp ${CCF_DIR}/src/enclave/thread_local.cpp
+    ${CCF_DIR}/src/js/wrap.cpp
+)
+
 if("sgx" IN_LIST COMPILE_TARGETS)
   # enclave version
   add_library(
-    ccf.enclave STATIC
-    ${CCF_DIR}/src/enclave/main.cpp ${CCF_DIR}/src/enclave/thread_local.cpp
-    ${CCF_GENERATED_DIR}/ccf_t.cpp
+    ccf.enclave STATIC ${CCF_IMPL_SOURCE} ${CCF_GENERATED_DIR}/ccf_t.cpp
   )
 
   target_compile_definitions(
@@ -77,21 +85,25 @@ if("sgx" IN_LIST COMPILE_TARGETS)
 
   target_include_directories(
     ccf.enclave SYSTEM
-    PUBLIC $<BUILD_INTERFACE:${CCF_GENERATED_DIR}>
-           $<INSTALL_INTERFACE:include/ccf/>
-           $<INSTALL_INTERFACE:include/3rdparty/>
+    PUBLIC
+      $<BUILD_INTERFACE:${CCF_GENERATED_DIR}>
+      $<INSTALL_INTERFACE:include/ccf/> #< This contains the private headers
+                                        #< which are currently under src, and
+                                        #< should be removed or renamed
+      $<INSTALL_INTERFACE:include/>
+      $<INSTALL_INTERFACE:include/3rdparty/>
   )
 
   target_link_libraries(
     ccf.enclave
     PUBLIC ${OE_TARGET_ENCLAVE_AND_STD}
            -lgcc
+           quickjs.enclave
            ccfcrypto.enclave
            http_parser.enclave
-           lua.enclave
            aft.enclave
            sss.enclave
-           $<BUILD_INTERFACE:merklecpp>
+           ccf_endpoints.enclave
   )
 
   set_property(TARGET ccf.enclave PROPERTY POSITION_INDEPENDENT_CODE ON)
@@ -111,24 +123,25 @@ endif()
 
 if("virtual" IN_LIST COMPILE_TARGETS)
   # virtual version
-  add_library(
-    ccf.virtual STATIC ${CCF_DIR}/src/enclave/main.cpp
-                       ${CCF_DIR}/src/enclave/thread_local.cpp
-  )
+  add_library(ccf.virtual STATIC ${CCF_IMPL_SOURCE})
 
   target_compile_definitions(
     ccf.virtual PUBLIC INSIDE_ENCLAVE VIRTUAL_ENCLAVE
                        _LIBCPP_HAS_THREAD_API_PTHREAD
   )
 
-  target_compile_options(ccf.virtual PUBLIC -stdlib=libc++)
+  target_compile_options(ccf.virtual PUBLIC ${COMPILE_LIBCXX})
   add_warning_checks(ccf.virtual)
 
   target_include_directories(
     ccf.virtual SYSTEM
-    PUBLIC $<BUILD_INTERFACE:${CCF_GENERATED_DIR}>
-           $<INSTALL_INTERFACE:include/ccf/>
-           $<INSTALL_INTERFACE:include/3rdparty/>
+    PUBLIC
+      $<BUILD_INTERFACE:${CCF_GENERATED_DIR}>
+      $<INSTALL_INTERFACE:include/ccf/> #< This contains the private headers
+                                        #< which are currently under src, and
+                                        #< should be removed or renamed
+      $<INSTALL_INTERFACE:include/>
+      $<INSTALL_INTERFACE:include/3rdparty/>
   )
 
   target_link_libraries(
@@ -137,19 +150,17 @@ if("virtual" IN_LIST COMPILE_TARGETS)
            -lgcc
            ccfcrypto.host
            http_parser.host
-           lua.host
+           quickjs.host
            aft.virtual
            sss.host
-           openenclave::oehostverify
+           ccf_endpoints.host
+           openenclave::oehost
            ${CMAKE_THREAD_LIBS_INIT}
-           $<BUILD_INTERFACE:merklecpp>
   )
 
   set_property(TARGET ccf.virtual PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-  use_client_mbedtls(ccf.virtual)
   add_san(ccf.virtual)
-  add_lvi_mitigations(ccf.virtual)
 
   install(
     TARGETS ccf.virtual
@@ -166,10 +177,10 @@ install(
   FILE ccf-targets.cmake
 )
 
-# Install all 3rd-party library includes
+# Install exported 3rd-party library includes
 install(
-  DIRECTORY 3rdparty
-  DESTINATION include
+  DIRECTORY 3rdparty/exported/
+  DESTINATION include/3rdparty
   FILES_MATCHING
   PATTERN "*.h"
   PATTERN "*.hpp"
@@ -184,6 +195,14 @@ install(
   PATTERN "*/test*" EXCLUDE
 )
 
+# Install all public CCF headers
+install(
+  DIRECTORY include/
+  DESTINATION include
+  FILES_MATCHING
+  PATTERN "*.h"
+)
+
 # Install CCF Python infrastructure
 install(
   DIRECTORY tests/infra/
@@ -194,7 +213,10 @@ install(
 )
 
 install(PROGRAMS tests/sandbox/sandbox.sh DESTINATION bin)
-install(FILES tests/sandbox/sandbox_gov.lua DESTINATION bin)
+install(FILES src/runtime_config/default/actions.js DESTINATION bin)
+install(FILES src/runtime_config/default/validate.js DESTINATION bin)
+install(FILES src/runtime_config/sandbox/resolve.js DESTINATION bin)
+install(FILES src/runtime_config/default/apply.js DESTINATION bin)
 install(FILES tests/start_network.py DESTINATION bin)
 install(FILES tests/requirements.txt DESTINATION bin)
 
@@ -216,12 +238,7 @@ sign_app_library(
 )
 
 # Add NoBuiltins app
-add_ccf_app(nobuiltins SRCS samples/apps/nobuiltins/nobuiltins.cpp)
-sign_app_library(
-  nobuiltins.enclave
-  ${CMAKE_CURRENT_SOURCE_DIR}/samples/apps/nobuiltins/oe_sign.conf
-  ${CMAKE_CURRENT_BINARY_DIR}/signing_key.pem
-)
+add_subdirectory(${CCF_DIR}/samples/apps/nobuiltins)
 
 if(BUILD_TESTS)
   enable_testing()
@@ -243,6 +260,7 @@ if(BUILD_TESTS)
       logger_json_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/logger_json_test.cpp
     )
+    target_compile_definitions(logger_json_test PUBLIC VERBOSE_LOGGING)
 
     add_unit_test(
       kv_test
@@ -252,7 +270,6 @@ if(BUILD_TESTS)
       ${CMAKE_CURRENT_SOURCE_DIR}/src/kv/test/kv_snapshot.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/kv/test/kv_dynamic_tables.cpp
     )
-    use_client_mbedtls(kv_test)
     target_link_libraries(
       kv_test PRIVATE ${CMAKE_THREAD_LIBS_INIT} http_parser.host
     )
@@ -267,6 +284,7 @@ if(BUILD_TESTS)
       ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/hash.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/thread_messaging.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/lru.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/hex.cpp
     )
     target_link_libraries(ds_test PRIVATE ${CMAKE_THREAD_LIBS_INIT})
 
@@ -278,33 +296,31 @@ if(BUILD_TESTS)
       raft_test ${CMAKE_CURRENT_SOURCE_DIR}/src/consensus/aft/test/main.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/consensus/aft/test/view_history.cpp
     )
-    target_link_libraries(raft_test PRIVATE ${CRYPTO_LIBRARY})
+    target_link_libraries(raft_test PRIVATE ccfcrypto.host)
 
     add_unit_test(
       raft_enclave_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/consensus/aft/test/enclave.cpp
     )
     target_include_directories(raft_enclave_test PRIVATE ${CCFCRYPTO_INC})
-    target_link_libraries(raft_enclave_test PRIVATE ${CRYPTO_LIBRARY})
+    target_link_libraries(raft_enclave_test PRIVATE ccfcrypto.host)
 
     add_unit_test(
       crypto_test ${CMAKE_CURRENT_SOURCE_DIR}/src/crypto/test/crypto.cpp
     )
     target_include_directories(crypto_test PRIVATE ${CCFCRYPTO_INC})
-    target_link_libraries(crypto_test PRIVATE ${CRYPTO_LIBRARY})
+    target_link_libraries(crypto_test PRIVATE ccfcrypto.host)
 
     add_unit_test(
       history_test ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/history.cpp
     )
-    target_link_libraries(
-      history_test PRIVATE ${CRYPTO_LIBRARY} http_parser.host
-    )
+    target_link_libraries(history_test PRIVATE ccfcrypto.host http_parser.host)
 
     add_unit_test(
       progress_tracker_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/progress_tracker.cpp
     )
-    target_link_libraries(progress_tracker_test PRIVATE ${CRYPTO_LIBRARY})
+    target_link_libraries(progress_tracker_test PRIVATE ccfcrypto.host)
 
     add_unit_test(
       secret_sharing_test
@@ -314,10 +330,8 @@ if(BUILD_TESTS)
 
     add_unit_test(
       encryptor_test ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/encryptor.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/crypto/symmetric_key.cpp
     )
-    use_client_mbedtls(encryptor_test)
-    target_link_libraries(encryptor_test PRIVATE)
+    target_link_libraries(encryptor_test PRIVATE ccfcrypto.host)
 
     add_unit_test(
       historical_queries_test
@@ -338,11 +352,6 @@ if(BUILD_TESTS)
     )
     target_link_libraries(snapshotter_test PRIVATE)
 
-    add_unit_test(
-      msgpack_serialization_test
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/msgpack_serialization.cpp
-    )
-
     add_unit_test(tls_test ${CMAKE_CURRENT_SOURCE_DIR}/src/tls/test/main.cpp)
     target_link_libraries(tls_test PRIVATE ${CMAKE_THREAD_LIBS_INIT})
 
@@ -353,13 +362,11 @@ if(BUILD_TESTS)
       key_exchange_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tls/test/key_exchange.cpp
     )
-    use_client_mbedtls(key_exchange_test)
     target_link_libraries(key_exchange_test PRIVATE)
 
     add_unit_test(
       channels_test ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/channels.cpp
     )
-    use_client_mbedtls(channels_test)
     target_link_libraries(channels_test PRIVATE)
 
     add_unit_test(
@@ -368,12 +375,12 @@ if(BUILD_TESTS)
     target_link_libraries(http_test PRIVATE http_parser.host)
 
     add_unit_test(
-      frontend_test
+      frontend_test ${CMAKE_CURRENT_SOURCE_DIR}/src/js/wrap.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/rpc/test/frontend_test.cpp
     )
     target_link_libraries(
-      frontend_test PRIVATE ${CMAKE_THREAD_LIBS_INIT} lua.host http_parser.host
-                            sss.host
+      frontend_test PRIVATE ${CMAKE_THREAD_LIBS_INIT} http_parser.host sss.host
+                            ccf_endpoints.host quickjs.host
     )
 
     add_unit_test(
@@ -381,22 +388,21 @@ if(BUILD_TESTS)
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/rpc/test/tx_status_test.cpp
     )
 
-    add_unit_test(
-      member_voting_test
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/node/rpc/test/member_voting_test.cpp
-    )
-    target_link_libraries(
-      member_voting_test PRIVATE ${CMAKE_THREAD_LIBS_INIT} lua.host
-                                 http_parser.host sss.host
-    )
+    # TODO: Port or remove entirely? add_unit_test( member_voting_test
+    # ${CMAKE_CURRENT_SOURCE_DIR}/src/js/wrap.cpp
+    # ${CMAKE_CURRENT_SOURCE_DIR}/src/node/rpc/test/member_voting_test.cpp )
+    # target_link_libraries( member_voting_test PRIVATE
+    # ${CMAKE_THREAD_LIBS_INIT} http_parser.host sss.host ccf_endpoints.host
+    # quickjs.host ) set_tests_properties( member_voting_test PROPERTIES
+    # ENVIRONMENT RUNTIME_CONFIG_DIR=${CMAKE_SOURCE_DIR}/src/runtime_config )
 
     add_unit_test(
-      proposal_id_test
+      proposal_id_test ${CMAKE_CURRENT_SOURCE_DIR}/src/js/wrap.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/rpc/test/proposal_id_test.cpp
     )
     target_link_libraries(
-      proposal_id_test PRIVATE ${CMAKE_THREAD_LIBS_INIT} lua.host
-                               http_parser.host sss.host
+      proposal_id_test PRIVATE ${CMAKE_THREAD_LIBS_INIT} http_parser.host
+                               sss.host ccf_endpoints.host quickjs.host
     )
 
     add_unit_test(
@@ -404,24 +410,9 @@ if(BUILD_TESTS)
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/rpc/test/node_frontend_test.cpp
     )
     target_link_libraries(
-      node_frontend_test PRIVATE ${CMAKE_THREAD_LIBS_INIT} lua.host
-                                 http_parser.host sss.host
+      node_frontend_test PRIVATE ${CMAKE_THREAD_LIBS_INIT} http_parser.host
+                                 sss.host ccf_endpoints.host
     )
-
-    if(NOT ENV{RUNTIME_CONFIG_DIR})
-      set_tests_properties(
-        member_voting_test
-        PROPERTIES ENVIRONMENT
-                   RUNTIME_CONFIG_DIR=${CMAKE_SOURCE_DIR}/src/runtime_config
-      )
-    endif()
-
-    add_unit_test(
-      lua_test ${CMAKE_CURRENT_SOURCE_DIR}/src/lua_interp/test/lua_test.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/lua_interp/test/lua_kv.cpp
-    )
-    target_include_directories(lua_test PRIVATE ${LUA_DIR})
-    target_link_libraries(lua_test PRIVATE lua.host http_parser.host)
 
     add_unit_test(
       merkle_test ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/merkle_test.cpp
@@ -429,22 +420,16 @@ if(BUILD_TESTS)
 
     # Merkle Tree memory test
     add_executable(merkle_mem src/node/test/merkle_mem.cpp)
+    target_compile_options(merkle_mem PRIVATE ${COMPILE_LIBCXX})
     target_link_libraries(
-      merkle_mem PRIVATE ccfcrypto.host ${CMAKE_THREAD_LIBS_INIT}
-                         $<BUILD_INTERFACE:merklecpp> crypto
+      merkle_mem PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${LINK_LIBCXX} crypto
     )
-    use_client_mbedtls(merkle_mem)
-
-    # merklecpp tests
-    set(MERKLECPP_TEST_PREFIX "merklecpp-")
-    add_subdirectory(src/libmerklecpp/test)
 
     # Raft driver and scenario test
     add_executable(
       raft_driver ${CMAKE_CURRENT_SOURCE_DIR}/src/consensus/aft/test/driver.cpp
     )
     target_link_libraries(raft_driver PRIVATE ccfcrypto.host)
-    use_client_mbedtls(raft_driver)
     target_include_directories(raft_driver PRIVATE src/aft)
 
     add_test(
@@ -469,6 +454,7 @@ if(BUILD_TESTS)
   # Picobench benchmarks
   add_picobench(map_bench SRCS src/ds/test/map_bench.cpp)
   add_picobench(logger_bench SRCS src/ds/test/logger_bench.cpp)
+  target_compile_definitions(logger_bench PUBLIC VERBOSE_LOGGING)
   add_picobench(json_bench SRCS src/ds/test/json_bench.cpp)
   add_picobench(ring_buffer_bench SRCS src/ds/test/ring_buffer_bench.cpp)
   add_picobench(
@@ -476,27 +462,35 @@ if(BUILD_TESTS)
     SRCS src/crypto/test/bench.cpp
     LINK_LIBS
   )
-  add_picobench(
-    merkle_bench
-    SRCS src/node/test/merkle_bench.cpp
-    LINK_LIBS ccfcrypto.host crypto
+  add_picobench(history_bench SRCS src/node/test/history_bench.cpp)
+
+  if(LONG_TESTS)
+    add_picobench(
+      kv_bench SRCS src/kv/test/kv_bench.cpp src/enclave/thread_local.cpp
+    )
+    add_picobench(merkle_bench SRCS src/node/test/merkle_bench.cpp)
+    add_picobench(hash_bench SRCS src/ds/test/hash_bench.cpp)
+    add_picobench(digest_bench SRCS src/crypto/test/digest_bench.cpp)
+  endif()
+
+  set(CONSTITUTION_ARGS
+      --constitution
+      ${CCF_DIR}/src/runtime_config/default/actions.js
+      --constitution
+      ${CCF_DIR}/src/runtime_config/test/test_actions.js
+      --constitution
+      ${CCF_DIR}/src/runtime_config/default/validate.js
+      --constitution
+      ${CCF_DIR}/src/runtime_config/test/resolve.js
+      --constitution
+      ${CCF_DIR}/src/runtime_config/default/apply.js
   )
-  add_picobench(
-    history_bench
-    SRCS src/node/test/history_bench.cpp
-    LINK_LIBS ccfcrypto.host crypto
-  )
-  add_picobench(
-    kv_bench
-    SRCS src/kv/test/kv_bench.cpp src/crypto/symmetric_key.cpp
-         src/enclave/thread_local.cpp
-    LINK_LIBS ccfcrypto.host
-  )
-  add_picobench(hash_bench SRCS src/ds/test/hash_bench.cpp)
-  add_picobench(
-    digest_bench
-    SRCS src/crypto/test/digest_bench.cpp
-    LINK_LIBS ccfcrypto.host
+  add_e2e_test(
+    NAME governance_js_test
+    PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/governance_js.py
+    CONSENSUS cft
+    CONSTITUTION ${CONSTITUTION_ARGS}
+    ADDITIONAL_ARGS --oe-binary ${OE_BINDIR} --initial-operator-count 1
   )
 
   # Storing signed governance operations
@@ -629,10 +623,15 @@ if(BUILD_TESTS)
     ADDITIONAL_ARGS --js-app-bundle ${CMAKE_SOURCE_DIR}/tests/js-content-types
   )
 
+  set(SERVICE_PRINCIPAL_CONSTITUTION_ARGS
+      ${CONSTITUTION_ARGS} --constitution
+      ${CCF_DIR}/src/runtime_config/test/service_principals_actions.js
+  )
   add_e2e_test(
     NAME governance_test
     PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/governance.py
     CONSENSUS cft
+    CONSTITUTION ${SERVICE_PRINCIPAL_CONSTITUTION_ARGS}
     ADDITIONAL_ARGS --oe-binary ${OE_BINDIR} --initial-operator-count 1
   )
 
@@ -640,6 +639,7 @@ if(BUILD_TESTS)
     NAME governance_no_session_auth_test
     PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/governance.py
     CONSENSUS cft
+    CONSTITUTION ${SERVICE_PRINCIPAL_CONSTITUTION_ARGS}
     ADDITIONAL_ARGS --oe-binary ${OE_BINDIR} --initial-operator-count 1
                     --disable-member-session-auth
   )
@@ -656,24 +656,34 @@ if(BUILD_TESTS)
     CONSENSUS cft
   )
 
-  if(QUOTES_ENABLED)
-    add_e2e_test(
-      NAME reconfiguration_test
-      PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/reconfiguration.py
-      CONSENSUS cft
-    )
+  add_e2e_test(
+    NAME nobuiltins_test
+    PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/nobuiltins.py
+    CONSENSUS cft
+    ADDITIONAL_ARGS -p
+                    ${CMAKE_BINARY_DIR}/samples/apps/nobuiltins/libnobuiltins
+  )
 
-    add_e2e_test(
-      NAME code_update_test
-      PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/code_update.py
-      CONSENSUS cft
-      ADDITIONAL_ARGS --oe-binary ${OE_BINDIR} --js-app-bundle
-                      ${CMAKE_SOURCE_DIR}/samples/apps/logging/js
-    )
-  endif()
+  add_e2e_test(
+    NAME reconfiguration_test
+    PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/reconfiguration.py
+    CONSENSUS cft
+  )
+
+  add_e2e_test(
+    NAME code_update_test
+    PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/code_update.py
+    CONSENSUS cft
+    ADDITIONAL_ARGS --oe-binary ${OE_BINDIR} --js-app-bundle
+                    ${CMAKE_SOURCE_DIR}/samples/apps/logging/js
+  )
 
   if(BUILD_SMALLBANK)
     include(${CMAKE_CURRENT_SOURCE_DIR}/src/apps/smallbank/smallbank.cmake)
+  endif()
+
+  if(BUILD_TPCC)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/src/apps/tpcc/tpcc.cmake)
   endif()
 
   if(TLS_TEST)
@@ -719,13 +729,10 @@ if(BUILD_TESTS)
   )
 
   if(NOT SAN)
-    # Writing new ledger files and generating new snapshots uses more file
-    # descriptors so disable those for this test
     add_e2e_test(
       NAME connections_cft
       PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/connections.py
       CONSENSUS cft
-      ADDITIONAL_ARGS --ledger-chunk-bytes 100Mib --snapshot-tx-interval 10000
     )
   endif()
 

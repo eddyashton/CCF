@@ -7,6 +7,7 @@
 #  include "code_id.h"
 #  include "enclave/oe_shim.h"
 #  include "entities.h"
+#  include "http/http_status.h"
 #  include "network_tables.h"
 #  include "node/rpc/node_interface.h"
 #  include "quote_info.h"
@@ -130,7 +131,9 @@ namespace ccf
         if (claim_name == OE_CLAIM_UNIQUE_ID)
         {
           std::copy(
-            claim.value, claim.value + claim.value_size, unique_id.begin());
+            claim.value,
+            claim.value + claim.value_size,
+            unique_id.data.begin());
           unique_id_found = true;
         }
         else if (claim_name == OE_CLAIM_CUSTOM_CLAIMS_BUFFER)
@@ -195,11 +198,10 @@ namespace ccf
     }
 
     static QuoteVerificationResult verify_quoted_node_public_key(
-      const crypto::Pem& expected_node_public_key,
+      const std::vector<uint8_t>& expected_node_public_key,
       const crypto::Sha256Hash& quoted_hash)
     {
-      if (
-        quoted_hash != crypto::Sha256Hash(expected_node_public_key.contents()))
+      if (quoted_hash != crypto::Sha256Hash(expected_node_public_key))
       {
         return QuoteVerificationResult::FailedInvalidQuotedPublicKey;
       }
@@ -244,12 +246,13 @@ namespace ccf
       return unique_id;
     }
 
-    static QuoteInfo generate_quote(const crypto::Pem& node_public_key)
+    static QuoteInfo generate_quote(
+      const std::vector<uint8_t>& node_public_key_der)
     {
       QuoteInfo node_quote_info;
       node_quote_info.format = QuoteFormat::oe_sgx_v1;
 
-      crypto::Sha256Hash h{node_public_key.contents()};
+      crypto::Sha256Hash h{node_public_key_der};
 
       Evidence evidence;
       Endorsements endorsements;
@@ -302,7 +305,7 @@ namespace ccf
     static QuoteVerificationResult verify_quote_against_store(
       kv::ReadOnlyTx& tx,
       const QuoteInfo& quote_info,
-      const crypto::Pem& expected_node_public_key)
+      const std::vector<uint8_t>& expected_node_public_key_der)
     {
       CodeDigest unique_id;
       crypto::Sha256Hash quoted_hash;
@@ -320,7 +323,7 @@ namespace ccf
       }
 
       return verify_quoted_node_public_key(
-        expected_node_public_key, quoted_hash);
+        expected_node_public_key_der, quoted_hash);
     }
   };
 }

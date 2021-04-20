@@ -2,12 +2,11 @@
   "endpoints": {
     "/jwt": {
       "get": {
-        "js_module": "src/endpoints/jwt.js",
+        "js_module": "endpoints/jwt.js",
         "js_function": "jwt",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": [],
-        "readonly": true,
+        "mode": "readonly",
         "openapi": {
           "responses": {
             "200": {
@@ -52,12 +51,11 @@
     },
     "/crypto": {
       "get": {
-        "js_module": "src/endpoints/crypto.js",
+        "js_module": "endpoints/crypto.js",
         "js_function": "crypto",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["user_cert"],
-        "readonly": true,
+        "mode": "readonly",
         "openapi": {
           "responses": {
             "200": {
@@ -85,12 +83,11 @@
     },
     "/generateAesKey": {
       "post": {
-        "js_module": "src/endpoints/crypto.js",
+        "js_module": "endpoints/crypto.js",
         "js_function": "generateAesKey",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["user_cert"],
-        "readonly": true,
+        "mode": "readonly",
         "openapi": {
           "requestBody": {
             "required": true,
@@ -109,6 +106,7 @@
           },
           "responses": {
             "200": {
+              "description": "Generated key",
               "content": {
                 "application/octet-stream": {}
               }
@@ -117,14 +115,64 @@
         }
       }
     },
-    "/wrapKeyRsaOaep": {
+    "/generateRsaKeyPair": {
       "post": {
-        "js_module": "src/endpoints/crypto.js",
-        "js_function": "wrapKeyRsaOaep",
+        "js_module": "endpoints/crypto.js",
+        "js_function": "generateRsaKeyPair",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["user_cert"],
-        "readonly": true,
+        "mode": "readonly",
+        "openapi": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "size": {
+                      "type": "number"
+                    },
+                    "exponent": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["size"],
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Generated key pair",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "properties": {
+                      "privateKey": {
+                        "type": "string"
+                      },
+                      "publicKey": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["privateKey", "publicKey"],
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wrapKey": {
+      "post": {
+        "js_module": "endpoints/crypto.js",
+        "js_function": "wrapKey",
+        "forwarding_required": "always",
+        "authn_policies": ["user_cert"],
+        "mode": "readonly",
         "openapi": {
           "requestBody": {
             "required": true,
@@ -138,7 +186,44 @@
                     "wrappingKey": {
                       "type": "string"
                     },
-                    "label": {
+                    "parameters": {
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Wrapped key",
+              "content": {
+                "application/octet-stream": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/digest": {
+      "post": {
+        "js_module": "endpoints/crypto.js",
+        "js_function": "digest",
+        "forwarding_required": "always",
+        "authn_policies": ["user_cert"],
+        "mode": "readonly",
+        "openapi": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "algorithm": {
+                      "type": "string"
+                    },
+                    "data": {
                       "type": "string"
                     }
                   },
@@ -149,8 +234,9 @@
           },
           "responses": {
             "200": {
+              "description": "Digest",
               "content": {
-                "application/octet-stream": {}
+                "text/plain": {}
               }
             }
           }
@@ -159,12 +245,11 @@
     },
     "/partition": {
       "post": {
-        "js_module": "src/endpoints/partition.js",
+        "js_module": "endpoints/partition.js",
         "js_function": "partition",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["user_cert"],
-        "readonly": false,
+        "mode": "readonly",
         "openapi": {
           "responses": {
             "200": {
@@ -198,12 +283,11 @@
     },
     "/proto": {
       "post": {
-        "js_module": "src/endpoints/proto.js",
+        "js_module": "endpoints/proto.js",
         "js_function": "proto",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["user_cert"],
-        "readonly": false,
+        "mode": "readonly",
         "openapi": {
           "requestBody": {
             "required": true,
@@ -213,6 +297,7 @@
           },
           "responses": {
             "200": {
+              "description": "Protobuf encoded data",
               "content": {
                 "application/x-protobuf": {}
               }
@@ -223,12 +308,11 @@
     },
     "/log": {
       "get": {
-        "js_module": "src/endpoints/log.js",
+        "js_module": "endpoints/log.js",
         "js_function": "getLogItem",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["user_cert"],
-        "readonly": false,
+        "mode": "readonly",
         "openapi": {
           "responses": {
             "200": {
@@ -253,12 +337,11 @@
         }
       },
       "post": {
-        "js_module": "src/endpoints/log.js",
+        "js_module": "endpoints/log.js",
         "js_function": "setLogItem",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["user_cert"],
-        "readonly": false,
+        "mode": "readwrite",
         "openapi": {
           "responses": {
             "200": {
@@ -290,12 +373,11 @@
     },
     "/log/all": {
       "get": {
-        "js_module": "src/endpoints/log.js",
+        "js_module": "endpoints/log.js",
         "js_function": "getAllLogItems",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["user_cert"],
-        "readonly": false,
+        "mode": "readonly",
         "openapi": {
           "responses": {
             "200": {
@@ -318,6 +400,23 @@
                   }
                 }
               }
+            }
+          }
+        }
+      }
+    },
+    "/rpc/apply_writes": {
+      "post": {
+        "js_module": "endpoints/rpc.js",
+        "js_function": "applyWrites",
+        "forwarding_required": "always",
+        "execute_outside_consensus": "never",
+        "authn_policies": ["user_cert"],
+        "mode": "readwrite",
+        "openapi": {
+          "responses": {
+            "400": {
+              "description": "Error"
             }
           }
         }

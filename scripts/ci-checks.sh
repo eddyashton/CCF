@@ -12,20 +12,23 @@ fi
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
+ROOT_DIR=$( dirname "$SCRIPT_DIR" )
+pushd "$ROOT_DIR"
+
 echo "Shell scripts"
 git ls-files | grep -e '\.sh$' | grep -E -v "^3rdparty" | xargs shellcheck -s bash -e SC2044,SC2002,SC1091,SC2181
 
 echo "TODOs"
-"$SCRIPT_DIR"/check-todo.sh src
+"$SCRIPT_DIR"/check-todo.sh include src
 
 echo "C/C++ format"
 if [ $FIX -ne 0 ]; then
-  "$SCRIPT_DIR"/check-format.sh -f src samples
+  "$SCRIPT_DIR"/check-format.sh -f include src samples
 else
-  "$SCRIPT_DIR"/check-format.sh src samples
+  "$SCRIPT_DIR"/check-format.sh include src samples
 fi
 
-npm --loglevel=error install prettier 1>/dev/null
+npm install --loglevel=error --no-save prettier 1>/dev/null
 echo "TypeScript, JavaScript, Markdown, YAML and JSON format"
 if [ $FIX -ne 0 ]; then
   git ls-files | grep -e '\.ts$' -e '\.js$' -e '\.md$' -e '\.yaml$' -e '\.yml$' -e '\.json$' | xargs npx prettier --write
@@ -33,7 +36,7 @@ else
   git ls-files | grep -e '\.ts$' -e '\.js$' -e '\.md$' -e '\.yaml$' -e '\.yml$' -e '\.json$' | xargs npx prettier --check
 fi
 
-npm install --loglevel=error @apidevtools/swagger-cli 1>/dev/null
+npm install --loglevel=error --no-save @apidevtools/swagger-cli 1>/dev/null
 echo "OpenAPI"
 find doc/schemas/*.json -exec npx swagger-cli validate {} \;
 

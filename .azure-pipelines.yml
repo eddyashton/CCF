@@ -25,11 +25,11 @@ schedules:
 resources:
   containers:
     - container: nosgx
-      image: ccfciteam/ccf-ci:oe0.13.0-xxd
+      image: ccfciteam/ccf-ci:oe0.15.0
       options: --publish-all --cap-add SYS_PTRACE -v /dev/shm:/tmp/ccache -v /lib/modules:/lib/modules:ro
 
     - container: sgx
-      image: ccfciteam/ccf-ci:oe0.13.0-xxd
+      image: ccfciteam/ccf-ci:oe0.15.0
       options: --publish-all --device /dev/sgx:/dev/sgx -v /dev/shm:/tmp/ccache -v /lib/modules:/lib/modules:ro
 
 variables:
@@ -42,3 +42,4 @@ jobs:
   - template: .azure-pipelines-templates/matrix.yml
     parameters:
       perf_or_release: ${{ variables['perf_or_release'] }}
+      perf_tests: run

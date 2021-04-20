@@ -8,11 +8,11 @@ import infra.network
 import infra.path
 import infra.proc
 import infra.net
+from ccf.ledger import NodeStatus
 import infra.e2e_args
 import suite.test_requirements as reqs
 import infra.logging_app as app
 import json
-import urllib.parse
 
 from loguru import logger as LOG
 
@@ -41,7 +41,7 @@ def test_quote(network, args):
 
         r = c.get("/node/quotes/self")
         primary_quote_info = r.body.json()
-        assert primary_quote_info["node_id"] == 0
+        assert primary_quote_info["node_id"] == primary.node_id
         primary_mrenclave = primary_quote_info["mrenclave"]
         assert primary_mrenclave == expected_mrenclave, (
             primary_mrenclave,
@@ -55,16 +55,6 @@ def test_quote(network, args):
         for quote in quotes:
             mrenclave = quote["mrenclave"]
             assert mrenclave == expected_mrenclave, (mrenclave, expected_mrenclave)
-            quote_path = os.path.join(network.common_dir, f"quote{quote['node_id']}")
-            endorsements_path = os.path.join(
-                network.common_dir, f"endorsements{quote['node_id']}"
-            )
-
-            with open(quote_path, "wb") as q:
-                q.write(bytes.fromhex(quote["raw"]))
-
-            with open(endorsements_path, "wb") as e:
-                e.write(bytes.fromhex(quote["endorsements"]))
 
             cafile = os.path.join(network.common_dir, "networkcert.pem")
             assert (
@@ -87,19 +77,19 @@ def test_user(network, args, verify=True):
     # Note: This test should not be chained in the test suite as it creates
     # a new user and uses its own LoggingTxs
     primary, _ = network.find_nodes()
-    new_user_id = 3
-    network.create_user(new_user_id, args.participants_curve)
+    new_user_local_id = f"user{3}"
+    new_user = network.create_user(new_user_local_id, args.participants_curve)
     user_data = {"lifetime": "temporary"}
-    network.consortium.add_user(primary, new_user_id, user_data)
-    txs = app.LoggingTxs(user_id=new_user_id)
+    network.consortium.add_user(primary, new_user.local_id, user_data)
+    txs = app.LoggingTxs(user_id=new_user.local_id)
     txs.issue(
         network=network,
         number_txs=1,
     )
     if verify:
         txs.verify()
-    network.consortium.remove_user(primary, new_user_id)
-    with primary.client(f"user{new_user_id}") as c:
+    network.consortium.remove_user(primary, new_user.service_id)
+    with primary.client(new_user_local_id) as c:
         r = c.get("/app/log/private")
         assert r.status_code == http.HTTPStatus.UNAUTHORIZED.value
     return network
@@ -111,7 +101,9 @@ def test_no_quote(network, args):
         args.package, "local://localhost", args
     )
     with untrusted_node.client(
-        ca=os.path.join(untrusted_node.common_dir, f"{untrusted_node.node_id}.pem")
+        ca=os.path.join(
+            untrusted_node.common_dir, f"{untrusted_node.local_node_id}.pem"
+        )
     ) as uc:
         r = uc.get("/node/quotes/self")
         assert r.status_code == http.HTTPStatus.NOT_FOUND
@@ -122,37 +114,23 @@ def test_no_quote(network, args):
 def test_member_data(network, args):
     assert args.initial_operator_count > 0
     primary, _ = network.find_nodes()
-    with primary.client("member0") as mc:
 
-        def member_info(mid):
-            return mc.post(
-                "/gov/read", {"table": "public:ccf.gov.members.info", "key": mid}
-            ).body.json()
+    latest_public_tables, _ = primary.get_latest_ledger_public_state()
+    members_info = latest_public_tables["public:ccf.gov.members.info"]
 
-        md_count = 0
-        for member in network.get_members():
-            if member.member_data:
-                assert (
-                    member_info(member.member_id)["member_data"] == member.member_data
-                )
-                md_count += 1
-            else:
-                assert "member_data" not in member_info(member.member_id)
-        assert md_count == args.initial_operator_count
+    md_count = 0
+    for member in network.get_members():
+        stored_member_info = json.loads(members_info[member.service_id.encode()])
+        if member.member_data:
+            assert (
+                stored_member_info["member_data"] == member.member_data
+            ), f'stored member data "{stored_member_info["member_data"]}" != expected "{member.member_data} "'
+            md_count += 1
+        else:
+            assert "member_data" not in stored_member_info
 
-    return network
+    assert md_count == args.initial_operator_count
 
-
-@reqs.description("Check caller_id")
-def test_caller_id(network, args):
-    primary, _ = network.find_nodes()
-    with primary.client("user0") as uc:
-        with open(network.consortium.user_cert_path(1), "r") as ucert:
-            pem = ucert.read()
-        json_pem = json.dumps(pem)
-        r = uc.get(f"/app/caller_id?cert={urllib.parse.quote_plus(json_pem)}")
-        assert r.status_code == http.HTTPStatus.OK.value
-        assert r.body.json()["caller_id"] == 1
     return network
 
 
@@ -161,71 +139,63 @@ def test_node_ids(network, args):
     nodes = network.find_nodes()
     for node in nodes:
         with node.client() as c:
-            r = c.get(
-                f'/node/network/nodes?host="{node.pubhost}"&port="{node.pubport}"'
-            )
+            r = c.get(f"/node/network/nodes?host={node.pubhost}&port={node.pubport}")
             assert r.status_code == http.HTTPStatus.OK.value
             info = r.body.json()["nodes"]
             assert len(info) == 1
             assert info[0]["node_id"] == node.node_id
-            assert info[0]["status"] == "TRUSTED"
+            assert info[0]["status"] == NodeStatus.TRUSTED.value
         return network
 
 
 @reqs.description("Checking service principals proposals")
 def test_service_principals(network, args):
-    primary, _ = network.find_nodes()
+    node = network.find_node_by_role()
 
     principal_id = "0xdeadbeef"
-    ballot = {"ballot": {"text": "return true"}}
-
-    def read_service_principal():
-        with primary.client("member0") as mc:
-            return mc.post(
-                "/gov/read",
-                {"table": "public:gov.service_principals", "key": principal_id},
-            )
 
     # Initially, there is nothing in this table
-    r = read_service_principal()
-    assert r.status_code == http.HTTPStatus.NOT_FOUND.value
+    latest_public_tables, _ = node.get_latest_ledger_public_state()
+    assert "public:ccf.gov.service_principals" not in latest_public_tables
 
     # Create and accept a proposal which populates an entry in this table
     principal_data = {"name": "Bob", "roles": ["Fireman", "Zookeeper"]}
     proposal = {
-        "script": {
-            "text": 'tables, args = ...\nreturn Calls:call("set_service_principal", args)'
-        },
-        "parameter": {
-            "id": principal_id,
-            "data": principal_data,
-        },
+        "actions": [
+            {
+                "name": "set_service_principal",
+                "args": {"id": principal_id, "data": principal_data},
+            }
+        ]
     }
-    proposal = network.consortium.get_any_active_member().propose(primary, proposal)
-    network.consortium.vote_using_majority(primary, proposal, ballot)
+    ballot = {"ballot": "export function vote(proposal, proposer_id) { return true; }"}
+    proposal = network.consortium.get_any_active_member().propose(node, proposal)
+    network.consortium.vote_using_majority(node, proposal, ballot)
 
     # Confirm it can be read
-    r = read_service_principal()
-    assert r.status_code == http.HTTPStatus.OK.value
-    j = r.body.json()
-    assert j == principal_data
+    latest_public_tables, _ = node.get_latest_ledger_public_state()
+    assert (
+        json.loads(
+            latest_public_tables["public:ccf.gov.service_principals"][
+                principal_id.encode()
+            ]
+        )
+        == principal_data
+    )
 
     # Create and accept a proposal which removes an entry from this table
     proposal = {
-        "script": {
-            "text": 'tables, args = ...\nreturn Calls:call("remove_service_principal", args)'
-        },
-        "parameter": {
-            "id": principal_id,
-        },
+        "actions": [{"name": "remove_service_principal", "args": {"id": principal_id}}]
     }
-    proposal = network.consortium.get_any_active_member().propose(primary, proposal)
-    network.consortium.vote_using_majority(primary, proposal, ballot)
+    proposal = network.consortium.get_any_active_member().propose(node, proposal)
+    network.consortium.vote_using_majority(node, proposal, ballot)
 
     # Confirm it is gone
-    r = read_service_principal()
-    assert r.status_code == http.HTTPStatus.NOT_FOUND.value
-
+    latest_public_tables, _ = node.get_latest_ledger_public_state()
+    assert (
+        principal_id.encode()
+        not in latest_public_tables["public:ccf.gov.service_principals"]
+    )
     return network
 
 
@@ -240,12 +210,12 @@ def run(args):
         args.nodes, args.binary_dir, args.debug_nodes, args.perf_nodes, pdb=args.pdb
     ) as network:
         network.start_and_join(args)
+
         network = test_node_ids(network, args)
         network = test_member_data(network, args)
         network = test_quote(network, args)
         network = test_user(network, args)
         network = test_no_quote(network, args)
-        network = test_caller_id(network, args)
         network = test_service_principals(network, args)
         network = test_ack_state_digest_update(network, args)
 

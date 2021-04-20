@@ -7,6 +7,7 @@
 #include "node/ledger_secrets.h"
 #include "node/members.h"
 #include "node/node_info_network.h"
+#include "tls/base64.h"
 
 #include <nlohmann/json.hpp>
 #include <openenclave/advanced/mallinfo.h>
@@ -34,6 +35,7 @@ namespace ccf
       ccf::NodeId node_id;
       ccf::State state;
       kv::Version last_signed_seqno;
+      kv::Version startup_seqno;
 
       // Only on recovery
       std::optional<kv::Version> recovery_target_seqno;
@@ -45,13 +47,14 @@ namespace ccf
   {
     struct In
     {
-      std::vector<MemberPubInfo> members_info;
-      std::string gov_script;
+      std::vector<NewMember> members_info;
+      std::string constitution;
+      NodeId node_id;
       crypto::Pem node_cert;
       crypto::Pem network_cert;
       QuoteInfo quote_info;
       crypto::Pem public_encryption_key;
-      std::vector<uint8_t> code_digest;
+      CodeDigest code_digest;
       NodeInfoNetwork node_info_network;
       ServiceConfiguration configuration;
     };
@@ -65,12 +68,13 @@ namespace ccf
       QuoteInfo quote_info;
       crypto::Pem public_encryption_key;
       ConsensusType consensus_type = ConsensusType::CFT;
+      std::optional<kv::Version> startup_seqno = std::nullopt;
     };
 
     struct Out
     {
       NodeStatus node_status;
-      NodeId node_id;
+      NodeId node_id; // Only used in BFT
 
       // Only if the caller node is trusted
       struct NetworkInfo

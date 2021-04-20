@@ -130,9 +130,10 @@ namespace kv
      * visibility described above only applies to the keys and values passed to
      * this functor.
      *
-     * @param F functor, taking (const K& k, const V& v) and returning a bool.
-     * Return value determines whether the iteration should continue (true) or
-     * stop (false).
+     * @tparam F Functor class, taking (const K& k, const V& v) and returning a
+     * bool. Return value determines whether the iteration should continue
+     * (true) or stop (false).
+     * @param f Functor instance
      */
     template <class F>
     void foreach(F&& f)
@@ -205,10 +206,10 @@ namespace kv
     using WriteableBase = WriteableMapHandle<K, V, KSerialiser, VSerialiser>;
 
   public:
-    MapHandle(kv::untyped::ChangeSet& changes) :
+    MapHandle(kv::untyped::ChangeSet& changes, const std::string& map_name) :
       ReadableBase(untyped_handle),
       WriteableBase(untyped_handle),
-      untyped_handle(changes)
+      untyped_handle(changes, map_name)
     {}
   };
 }

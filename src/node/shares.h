@@ -3,10 +3,9 @@
 #pragma once
 
 #include "entities.h"
-#include "kv/map.h"
+#include "service_map.h"
 
 #include <map>
-#include <msgpack/msgpack.hpp>
 #include <optional>
 #include <vector>
 
@@ -26,11 +25,6 @@ namespace ccf
 
     // Version at which the previous ledger secret was written to the store
     std::optional<kv::Version> previous_secret_stored_version = std::nullopt;
-
-    MSGPACK_DEFINE(
-      wrapped_latest_ledger_secret,
-      encrypted_shares,
-      previous_secret_stored_version);
   };
 
   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(RecoverySharesInfo)
@@ -73,8 +67,6 @@ namespace ccf
     {
       return !(*this == other);
     }
-
-    MSGPACK_DEFINE(encrypted_data, version, previous_secret_stored_version)
   };
 
   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(PreviousLedgerSecretInfo)
@@ -91,7 +83,7 @@ namespace ccf
       std::nullopt;
 
     // Version at which the _next_ ledger secret is applicable from
-    // Note: In most cases (e.g. re-key, member retirement), this is unset and
+    // Note: In most cases (e.g. re-key, member removal), this is unset and
     // the version at which the next ledger secret is applicable from is
     // derived from the local hook on recovery. In one case (i.e. after recovery
     // of the public ledger), a new ledger secret is created to protect the
@@ -99,17 +91,11 @@ namespace ccf
     // shares are only written at a later version, once the previous ledger
     // secrets have been restored.
     std::optional<kv::Version> next_version = std::nullopt;
-
-    MSGPACK_DEFINE(previous_ledger_secret, next_version)
   };
 
   // Note: Both fields are never empty at the same time
   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(EncryptedLedgerSecretInfo)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter"
-#pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
   DECLARE_JSON_REQUIRED_FIELDS(EncryptedLedgerSecretInfo)
-#pragma clang diagnostic pop
   DECLARE_JSON_OPTIONAL_FIELDS(
     EncryptedLedgerSecretInfo, previous_ledger_secret, next_version)
 
@@ -124,10 +110,11 @@ namespace ccf
   // The key for this table is always 0. It is updated every time the member
   // recovery shares are updated, e.g. when the recovery threshold is modified
   // and when the ledger secret is updated
-  using RecoveryShares = kv::Map<size_t, RecoverySharesInfo>;
+  using RecoveryShares = ServiceMap<size_t, RecoverySharesInfo>;
 
   // The key for this table is always 0. It is updated every time the ledger
   // secret is updated, e.g. at startup or on ledger rekey. It is not updated on
   // a pure re-share.
-  using EncryptedLedgerSecretsInfo = kv::Map<size_t, EncryptedLedgerSecretInfo>;
+  using EncryptedLedgerSecretsInfo =
+    ServiceMap<size_t, EncryptedLedgerSecretInfo>;
 }

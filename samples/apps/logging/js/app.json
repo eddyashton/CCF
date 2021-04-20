@@ -5,27 +5,44 @@
         "js_module": "logging.js",
         "js_function": "get_private",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["jwt", "user_cert"],
-        "readonly": true,
+        "mode": "readonly",
         "openapi": {}
       },
       "post": {
         "js_module": "logging.js",
         "js_function": "post_private",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["jwt", "user_cert"],
-        "readonly": false,
+        "mode": "readwrite",
         "openapi": {}
       },
       "delete": {
         "js_module": "logging.js",
         "js_function": "delete_private",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["jwt", "user_cert"],
-        "readonly": false,
+        "mode": "readwrite",
+        "openapi": {}
+      }
+    },
+    "/log/private/historical": {
+      "get": {
+        "js_module": "logging.js",
+        "js_function": "get_historical",
+        "forwarding_required": "never",
+        "authn_policies": ["jwt", "user_cert"],
+        "mode": "historical",
+        "openapi": {}
+      }
+    },
+    "/log/private/historical_receipt": {
+      "get": {
+        "js_module": "logging.js",
+        "js_function": "get_historical_with_receipt",
+        "forwarding_required": "never",
+        "authn_policies": ["jwt", "user_cert"],
+        "mode": "historical",
         "openapi": {}
       }
     },
@@ -34,27 +51,24 @@
         "js_module": "logging.js",
         "js_function": "get_public",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["jwt", "user_cert"],
-        "readonly": true,
+        "mode": "readonly",
         "openapi": {}
       },
       "post": {
         "js_module": "logging.js",
         "js_function": "post_public",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["jwt", "user_cert"],
-        "readonly": false,
+        "mode": "readwrite",
         "openapi": {}
       },
       "delete": {
         "js_module": "logging.js",
         "js_function": "delete_public",
         "forwarding_required": "always",
-        "execute_outside_consensus": "never",
         "authn_policies": ["jwt", "user_cert"],
-        "readonly": false,
+        "mode": "readwrite",
         "openapi": {}
       }
     }

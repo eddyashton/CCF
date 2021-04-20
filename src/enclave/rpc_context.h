@@ -2,6 +2,7 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "ccf/tx_id.h"
 #include "http/http_builder.h"
 #include "http/http_consts.h"
 #include "http/ws_consts.h"
@@ -36,6 +37,18 @@ namespace ccf
     RESTVerb() : verb(std::numeric_limits<int>::min()) {}
     RESTVerb(const llhttp_method& hm) : verb(hm) {}
     RESTVerb(const ws::Verb& wv) : verb(wv) {}
+    RESTVerb(const std::string& s)
+    {
+#define HTTP_METHOD_GEN(NUM, NAME, STRING) \
+  if (s == #STRING) \
+  { \
+    verb = static_cast<llhttp_method>(NUM); \
+    return; \
+  }
+      HTTP_METHOD_MAP(HTTP_METHOD_GEN)
+#undef HTTP_METHOD_GEN
+      throw std::logic_error(fmt::format("unknown method {}", s));
+    }
 
     std::optional<llhttp_method> get_http_method() const
     {
@@ -73,8 +86,6 @@ namespace ccf
     {
       return !(*this == o);
     }
-
-    MSGPACK_DEFINE(verb);
   };
 
   // Custom to_json and from_json specializations which encode RESTVerb in a
@@ -182,8 +193,7 @@ namespace enclave
     virtual void set_response_status(int status) = 0;
     virtual int get_response_status() const = 0;
 
-    virtual void set_seqno(kv::Version) = 0;
-    virtual void set_view(kv::Consensus::View) = 0;
+    virtual void set_tx_id(const ccf::TxID& tx_id) = 0;
 
     virtual void set_response_header(
       const std::string_view& name, const std::string_view& value) = 0;

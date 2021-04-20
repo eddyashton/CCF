@@ -168,9 +168,18 @@ int main(int argc, char** argv)
       "Number of transactions between snapshots")
     ->capture_default_str();
 
+  size_t max_open_sessions = 1'000;
+  app
+    .add_option(
+      "--max-open-sessions",
+      max_open_sessions,
+      "Number of TLS sessions which may be open at the same time. Additional "
+      "connections past this limit will be refused")
+    ->capture_default_str();
+
   logger::Level host_log_level{logger::Level::INFO};
   std::vector<std::pair<std::string, logger::Level>> level_map;
-  for (int i = logger::TRACE; i < logger::MAX_LOG_LEVEL; i++)
+  for (int i = logger::MOST_VERBOSE; i < logger::MAX_LOG_LEVEL; i++)
   {
     level_map.emplace_back(
       logger::config::LevelNames[i], static_cast<logger::Level>(i));
@@ -353,16 +362,15 @@ int main(int argc, char** argv)
     ->capture_default_str()
     ->check(CLI::NonexistentPath);
 
-  std::string gov_script = "gov.lua";
+  std::vector<std::string> constitution_paths;
   start
     ->add_option(
-      "--gov-script",
-      gov_script,
-      "Path to Lua file that defines the contents of the "
-      "public:ccf.gov.scripts table")
-    ->capture_default_str()
-    ->check(CLI::ExistingFile)
-    ->required();
+      "--constitution",
+      constitution_paths,
+      "Path to one or more JS file that are concatenated to define the "
+      "contents of the "
+      "public:ccf.gov.constitution table")
+    ->type_size(-1);
 
   std::vector<cli::ParsedMemberInfo> members_info;
   cli::add_member_info_option(
@@ -422,9 +430,10 @@ int main(int argc, char** argv)
     ->capture_default_str()
     ->check(CLI::NonexistentPath);
 
-  CurveID curve_id = CurveID::SECP384R1;
-  std::vector<std::pair<std::string, CurveID>> curve_id_map = {
-    {"secp384r1", CurveID::SECP384R1}, {"secp256r1", CurveID::SECP256R1}};
+  crypto::CurveID curve_id = crypto::CurveID::SECP384R1;
+  std::vector<std::pair<std::string, crypto::CurveID>> curve_id_map = {
+    {"secp384r1", crypto::CurveID::SECP384R1},
+    {"secp256r1", crypto::CurveID::SECP256R1}};
   app
     .add_option(
       "--curve-id",
@@ -676,6 +685,7 @@ int main(int argc, char** argv)
                                     public_rpc_address.port};
     ccf_config.domain = domain;
     ccf_config.snapshot_tx_interval = snapshot_tx_interval;
+    ccf_config.max_open_sessions = max_open_sessions;
 
     ccf_config.subject_name = subject_name;
     ccf_config.subject_alternative_names = subject_alternative_names;
@@ -708,7 +718,18 @@ int main(int argc, char** argv)
         ccf_config.genesis.members_info.emplace_back(
           files::slurp(m_info.cert_file), public_encryption_key_file, md);
       }
-      ccf_config.genesis.gov_script = files::slurp_string(gov_script);
+      ccf_config.genesis.constitution = "";
+      for (const auto& constitution_path : constitution_paths)
+      {
+        // Separate with single newlines
+        if (!ccf_config.genesis.constitution.empty())
+        {
+          ccf_config.genesis.constitution += '\n';
+        }
+
+        ccf_config.genesis.constitution +=
+          files::slurp_string(constitution_path);
+      }
       ccf_config.genesis.recovery_threshold = recovery_threshold.value();
       LOG_INFO_FMT(
         "Creating new node: new network (with {} initial member(s) and {} "
@@ -750,9 +771,10 @@ int main(int argc, char** argv)
             snapshot));
         }
 
-        ccf_config.startup_snapshot = files::slurp(snapshot);
+        ccf_config.startup_snapshot = snapshots.read_snapshot(snapshot);
         ccf_config.startup_snapshot_evidence_seqno =
           snapshot_evidence_idx->first;
+
         LOG_INFO_FMT(
           "Found latest snapshot file: {} (size: {}, evidence seqno: {})",
           snapshot,
@@ -761,14 +783,25 @@ int main(int argc, char** argv)
       }
       else
       {
-        LOG_FAIL_FMT(
-          "No snapshot found: Node will request all historical transactions");
+        LOG_INFO_FMT(
+          "No snapshot found: Node will replay all historical transactions");
       }
     }
 
     if (start_type == StartType::Unknown)
     {
       LOG_FATAL_FMT("Start command should be start|join|recover. Exiting.");
+    }
+
+    if (consensus == ConsensusType::BFT)
+    {
+#ifdef ENABLE_BFT
+      LOG_INFO_FMT(
+        "Selected consensus BFT is experimental in {}", ccf::ccf_version);
+#else
+      LOG_FAIL_FMT(
+        "Selected consensus BFT is not supported in {}", ccf::ccf_version);
+#endif
     }
 
     enclave.create_node(

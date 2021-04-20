@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 #pragma once
+
 #include "ds/buffer.h"
 #include "ds/serialized.h"
 #include "ds/thread_messaging.h"
-#include "mbedtls_wrappers.h"
 
 namespace crypto
 {
@@ -91,7 +91,7 @@ namespace crypto
       return serial_hdr;
     }
 
-    void apply(const std::vector<uint8_t>& serial_hdr)
+    void deserialise(const std::vector<uint8_t>& serial_hdr)
     {
       auto data_ = serial_hdr.data();
       auto size = serial_hdr.size();
@@ -135,28 +135,64 @@ namespace crypto
 
   class KeyAesGcm
   {
-  private:
-    mutable std::
-      array<mbedtls::GcmContext, threading::ThreadMessaging::max_num_threads>
-        ctxs;
-
   public:
-    KeyAesGcm(CBuffer rawKey);
-    KeyAesGcm(const KeyAesGcm& that) = delete;
-    KeyAesGcm(KeyAesGcm&& that);
+    KeyAesGcm() = default;
+    virtual ~KeyAesGcm() = default;
 
-    void encrypt(
+    // AES-GCM encryption
+    virtual void encrypt(
       CBuffer iv,
       CBuffer plain,
       CBuffer aad,
       uint8_t* cipher,
-      uint8_t tag[GCM_SIZE_TAG]) const;
+      uint8_t tag[GCM_SIZE_TAG]) const = 0;
 
-    bool decrypt(
+    // AES-GCM decryption
+    virtual bool decrypt(
       CBuffer iv,
       const uint8_t tag[GCM_SIZE_TAG],
       CBuffer cipher,
       CBuffer aad,
-      uint8_t* plain) const;
+      uint8_t* plain) const = 0;
+
+    virtual size_t key_size() const = 0;
   };
+
+  std::unique_ptr<KeyAesGcm> make_key_aes_gcm(CBuffer rawKey);
+
+  /** Check for unsupported AES key sizes
+   * @p num_bits Key size in bits
+   */
+  inline void check_supported_aes_key_size(size_t num_bits)
+  {
+    if (num_bits != 128 && num_bits != 192 && num_bits != 256)
+      throw std::runtime_error("unsupported key size");
+  }
+
+  /** Default initialization vector for AES-GCM (12 zeroes) */
+  static std::vector<uint8_t> default_iv(12, 0);
+
+  /// AES-GCM Encryption with @p key of @p data
+  /// @param key The key
+  /// @param plaintext The data
+  /// @param iv Intialization vector
+  /// @param aad Additional authenticated data
+  /// @return ciphertext
+  std::vector<uint8_t> aes_gcm_encrypt(
+    const std::vector<uint8_t>& key,
+    std::vector<uint8_t>& plaintext,
+    const std::vector<uint8_t>& iv = default_iv,
+    const std::vector<uint8_t>& aad = {});
+
+  /// AES-GCM Decryption with @p key of @p data
+  /// @param key The key
+  /// @param ciphertext The (encrypted) data
+  /// @param iv Initialization vector
+  /// @param aad Additional authenticated data
+  /// @return plaintext
+  std::vector<uint8_t> aes_gcm_decrypt(
+    const std::vector<uint8_t>& key,
+    std::vector<uint8_t>& ciphertext,
+    const std::vector<uint8_t>& iv = default_iv,
+    const std::vector<uint8_t>& aad = {});
 }

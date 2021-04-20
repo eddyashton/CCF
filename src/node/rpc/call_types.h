@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 #pragma once
+
+#include "ccf/receipt.h"
+#include "ccf/tx_id.h"
 #include "ds/json_schema.h"
 #include "kv/kv_types.h"
-#include "metrics.h"
 #include "node/code_id.h"
 #include "node/identity.h"
 #include "node/ledger_secrets.h"
@@ -20,21 +22,15 @@ namespace ccf
   {
     struct Out
     {
-      kv::Consensus::View view;
-      kv::Consensus::SeqNo seqno;
+      ccf::TxID transaction_id;
     };
   };
 
   struct GetTxStatus
   {
-    struct In
-    {
-      kv::Consensus::View view;
-      kv::Consensus::SeqNo seqno;
-    };
-
     struct Out
     {
+      ccf::TxID transaction_id;
       TxStatus status;
     };
   };
@@ -58,9 +54,9 @@ namespace ccf
     struct Out
     {
       ServiceStatus service_status;
-      std::optional<kv::Consensus::View> current_view;
+      crypto::Pem service_certificate;
+      std::optional<ccf::View> current_view;
       std::optional<NodeId> primary_id;
-      std::optional<bool> view_change_in_progress;
     };
   };
 
@@ -82,32 +78,10 @@ namespace ccf
 
   struct GetNodes
   {
-    struct In
-    {
-      std::optional<std::string> host;
-      std::optional<std::string> port;
-      std::optional<NodeStatus> status;
-    };
-
     struct Out
     {
       std::vector<GetNode::NodeInfo> nodes = {};
     };
-  };
-
-  struct CallerInfo
-  {
-    CallerId caller_id;
-  };
-
-  struct GetCallerId
-  {
-    struct In
-    {
-      std::string cert;
-    };
-
-    using Out = CallerInfo;
   };
 
   struct GetAPI
@@ -130,19 +104,6 @@ namespace ccf
     struct Out
     {
       std::vector<Entry> metrics;
-    };
-  };
-
-  struct GetReceipt
-  {
-    struct In
-    {
-      int64_t commit = 0;
-    };
-
-    struct Out
-    {
-      std::vector<std::uint8_t> receipt = {};
     };
   };
 

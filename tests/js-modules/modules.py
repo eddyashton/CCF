@@ -15,24 +15,12 @@ import infra.net
 import infra.e2e_args
 import infra.crypto
 import suite.test_requirements as reqs
-import ccf.proposal_generator
 import openapi_spec_validator
 
 from loguru import logger as LOG
 
 THIS_DIR = os.path.dirname(__file__)
 PARENT_DIR = os.path.normpath(os.path.join(THIS_DIR, os.path.pardir))
-
-
-def make_module_set_proposal(module_path, file_path, network):
-    primary, _ = network.find_nodes()
-    proposal_body, careful_vote = ccf.proposal_generator.set_module(
-        module_path, file_path
-    )
-    proposal = network.consortium.get_any_active_member().propose(
-        primary, proposal_body
-    )
-    network.consortium.vote_using_majority(primary, proposal, careful_vote)
 
 
 def validate_openapi(client):
@@ -49,46 +37,13 @@ def validate_openapi(client):
         raise e
 
 
-@reqs.description("Test module set and remove")
-def test_module_set_and_remove(network, args):
-    primary, _ = network.find_nodes()
-
-    LOG.info("Member makes a module set proposal")
-    bundle_dir = os.path.join(THIS_DIR, "basic-module-import")
-    module_file_path = os.path.join(bundle_dir, "src", "foo.js")
-    module_path = "/anything/you/want/when/setting/manually/dot/js.js"
-    make_module_set_proposal(module_path, module_file_path, network)
-    module_content = open(module_file_path, "r").read()
-
-    with primary.client(
-        f"member{network.consortium.get_any_active_member().member_id}"
-    ) as c:
-        r = c.post("/gov/read", {"table": "public:gov.modules", "key": module_path})
-        assert r.status_code == http.HTTPStatus.OK, r.status_code
-        assert r.body.json()["js"] == module_content, r.body
-
-    LOG.info("Member makes a module remove proposal")
-    proposal_body, careful_vote = ccf.proposal_generator.remove_module(module_path)
-    proposal = network.consortium.get_any_active_member().propose(
-        primary, proposal_body
-    )
-    network.consortium.vote_using_majority(primary, proposal, careful_vote)
-
-    with primary.client(
-        f"member{network.consortium.get_any_active_member().member_id}"
-    ) as c:
-        r = c.post("/gov/read", {"table": "public:gov.modules", "key": module_path})
-        assert r.status_code == http.HTTPStatus.NOT_FOUND, r.status_code
-    return network
-
-
 @reqs.description("Test module import")
 def test_module_import(network, args):
     primary, _ = network.find_nodes()
 
     # Update JS app, deploying modules _and_ app script that imports module
     bundle_dir = os.path.join(THIS_DIR, "basic-module-import")
-    network.consortium.deploy_js_app(primary, bundle_dir)
+    network.consortium.set_js_app(primary, bundle_dir)
 
     with primary.client("user0") as c:
         r = c.post("/app/test_module", {})
@@ -106,18 +61,21 @@ def test_app_bundle(network, args):
     # Testing the bundle archive support of the Python client here.
     # Plain bundle folders are tested in the npm-based app tests.
     bundle_dir = os.path.join(PARENT_DIR, "js-app-bundle")
+    raw_module_name = "/math.js".encode()
     with tempfile.TemporaryDirectory(prefix="ccf") as tmp_dir:
         bundle_path = shutil.make_archive(
             os.path.join(tmp_dir, "bundle"), "zip", bundle_dir
         )
-        network.consortium.deploy_js_app(primary, bundle_path)
+        set_js_proposal = network.consortium.set_js_app(primary, bundle_path)
 
-    LOG.info("Verifying that modules and endpoints were added")
-    with primary.client(
-        f"member{network.consortium.get_any_active_member().member_id}"
-    ) as c:
-        r = c.post("/gov/read", {"table": "public:gov.modules", "key": "/math.js"})
-        assert r.status_code == http.HTTPStatus.OK, r.status_code
+        assert (
+            raw_module_name
+            in primary.get_ledger_public_state_at(set_js_proposal.completed_seqno)[
+                "public:ccf.gov.modules"
+            ]
+        ), "Module was not added"
+
+    LOG.info("Verifying that app was deployed")
 
     with primary.client("user0") as c:
         valid_body = {"op": "sub", "left": 82, "right": 40}
@@ -135,22 +93,19 @@ def test_app_bundle(network, args):
         validate_openapi(c)
 
     LOG.info("Removing js app")
-    proposal_body, careful_vote = ccf.proposal_generator.remove_js_app()
-    proposal = network.consortium.get_any_active_member().propose(
-        primary, proposal_body
-    )
-    network.consortium.vote_using_majority(primary, proposal, careful_vote)
+    remove_js_proposal = network.consortium.remove_js_app(primary)
 
     LOG.info("Verifying that modules and endpoints were removed")
     with primary.client("user0") as c:
         r = c.post("/app/compute", valid_body)
         assert r.status_code == http.HTTPStatus.NOT_FOUND, r.status_code
 
-    with primary.client(
-        f"member{network.consortium.get_any_active_member().member_id}"
-    ) as c:
-        r = c.post("/gov/read", {"table": "public:gov.modules", "key": "/math.js"})
-        assert r.status_code == http.HTTPStatus.NOT_FOUND, r.status_code
+    assert (
+        primary.get_ledger_public_state_at(remove_js_proposal.completed_seqno)[
+            "public:ccf.gov.modules"
+        ][raw_module_name]
+        is None
+    ), "Module was not removed"
 
     return network
 
@@ -162,7 +117,7 @@ def test_dynamic_endpoints(network, args):
     bundle_dir = os.path.join(PARENT_DIR, "js-app-bundle")
 
     LOG.info("Deploying initial js app bundle archive")
-    network.consortium.deploy_js_app(primary, bundle_dir)
+    network.consortium.set_js_app(primary, bundle_dir)
 
     valid_body = {"op": "sub", "left": 82, "right": 40}
     expected_response = {"result": 42}
@@ -203,7 +158,7 @@ def test_dynamic_endpoints(network, args):
         ]
         with open(metadata_path, "w") as f:
             json.dump(metadata, f, indent=2)
-        network.consortium.deploy_js_app(primary, modified_bundle_dir)
+        network.consortium.set_js_app(primary, modified_bundle_dir)
 
     LOG.info("Checking modified endpoint is accessible without auth")
     with primary.client() as c:
@@ -229,6 +184,10 @@ def test_dynamic_endpoints(network, args):
 def test_npm_app(network, args):
     primary, _ = network.find_nodes()
 
+    LOG.info("Building ccf-app npm package (dependency)")
+    ccf_pkg_dir = os.path.join(PARENT_DIR, "..", "js", "ccf-app")
+    subprocess.run(["npm", "install"], cwd=ccf_pkg_dir, check=True)
+
     LOG.info("Building npm app")
     app_dir = os.path.join(PARENT_DIR, "npm-app")
     subprocess.run(["npm", "install"], cwd=app_dir, check=True)
@@ -236,7 +195,7 @@ def test_npm_app(network, args):
 
     LOG.info("Deploying npm app")
     bundle_dir = os.path.join(app_dir, "dist")
-    network.consortium.deploy_js_app(primary, bundle_dir)
+    network.consortium.set_js_app(primary, bundle_dir)
 
     LOG.info("Calling npm app endpoints")
     with primary.client("user0") as c:
@@ -262,17 +221,26 @@ def test_npm_app(network, args):
         assert len(r.body.data()) == key_size // 8
         assert r.body.data() != b"\x00" * (key_size // 8)
 
+        r = c.post("/app/generateRsaKeyPair", {"size": 2048})
+        assert r.status_code == http.HTTPStatus.OK, r.status_code
+        assert infra.crypto.check_key_pair_pem(
+            r.body.json()["privateKey"], r.body.json()["publicKey"]
+        )
+
         aes_key_to_wrap = infra.crypto.generate_aes_key(256)
         wrapping_key_priv_pem, wrapping_key_pub_pem = infra.crypto.generate_rsa_keypair(
             2048
         )
         label = "label42"
         r = c.post(
-            "/app/wrapKeyRsaOaep",
+            "/app/wrapKey",
             {
                 "key": b64encode(aes_key_to_wrap).decode(),
-                "wrappingKey": wrapping_key_pub_pem,
-                "label": label,
+                "wrappingKey": b64encode(bytes(wrapping_key_pub_pem, "ascii")).decode(),
+                "wrapAlgo": {
+                    "name": "RSA-OAEP",
+                    "label": b64encode(bytes(label, "ascii")).decode(),
+                },
             },
         )
         assert r.status_code == http.HTTPStatus.OK, r.status_code
@@ -280,6 +248,54 @@ def test_npm_app(network, args):
             r.body.data(), wrapping_key_priv_pem, label.encode("ascii")
         )
         assert unwrapped == aes_key_to_wrap
+
+        aes_wrapping_key = infra.crypto.generate_aes_key(256)
+        r = c.post(
+            "/app/wrapKey",
+            {
+                "key": b64encode(aes_key_to_wrap).decode(),
+                "wrappingKey": b64encode(aes_wrapping_key).decode(),
+                "wrapAlgo": {"name": "AES-KWP"},
+            },
+        )
+        assert r.status_code == http.HTTPStatus.OK, r.status_code
+        unwrapped = infra.crypto.unwrap_key_aes_pad(r.body.data(), aes_wrapping_key)
+        assert unwrapped == aes_key_to_wrap
+
+        wrapping_key_priv_pem, wrapping_key_pub_pem = infra.crypto.generate_rsa_keypair(
+            2048
+        )
+        label = "label44"
+        r = c.post(
+            "/app/wrapKey",
+            {
+                "key": b64encode(aes_key_to_wrap).decode(),
+                "wrappingKey": b64encode(bytes(wrapping_key_pub_pem, "ascii")).decode(),
+                "wrapAlgo": {
+                    "name": "RSA-OAEP-AES-KWP",
+                    "aesKeySize": 256,
+                    "label": b64encode(bytes(label, "ascii")).decode(),
+                },
+            },
+        )
+        assert r.status_code == http.HTTPStatus.OK, r.status_code
+        unwrapped = infra.crypto.unwrap_key_rsa_oaep_aes_pad(
+            r.body.data(), wrapping_key_priv_pem, label.encode("ascii")
+        )
+        assert unwrapped == aes_key_to_wrap
+
+        r = c.post(
+            "/app/digest",
+            {
+                "algorithm": "SHA-256",
+                "data": b64encode(bytes("Hello world!", "ascii")).decode(),
+            },
+        )
+        assert r.status_code == http.HTTPStatus.OK, r.status_code
+        assert (
+            r.body.text()
+            == "c0535e4be2b79ffd93291305436bf889314e4a3faec05ecffcbb7df31ad9e51a"
+        ), r.body
 
         r = c.get("/app/log?id=42")
         assert r.status_code == http.HTTPStatus.NOT_FOUND, r.status_code
@@ -304,6 +320,13 @@ def test_npm_app(network, args):
         assert len(body) == 2, body
         assert {"id": 42, "msg": "Saluton!"} in body, body
         assert {"id": 43, "msg": "Bonjour!"} in body, body
+
+        r = c.post("/app/rpc/apply_writes")
+        assert r.status_code == http.HTTPStatus.BAD_REQUEST, r.status_code
+        val = primary.get_ledger_public_state_at(r.seqno)["public:apply_writes"][
+            "foo".encode()
+        ]
+        assert val == b"bar", val
 
         r = c.get("/app/jwt")
         assert r.status_code == http.HTTPStatus.UNAUTHORIZED, r.status_code
@@ -371,7 +394,6 @@ def run(args):
         args.nodes, args.binary_dir, args.debug_nodes, args.perf_nodes, pdb=args.pdb
     ) as network:
         network.start_and_join(args)
-        network = test_module_set_and_remove(network, args)
         network = test_module_import(network, args)
         network = test_app_bundle(network, args)
         network = test_dynamic_endpoints(network, args)

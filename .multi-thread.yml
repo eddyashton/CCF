@@ -11,11 +11,12 @@ pr:
   paths:
     include:
       - .multi-thread.yml
+      - .threading_canary
 
 resources:
   containers:
     - container: sgx
-      image: ccfciteam/ccf-ci:oe0.13.0-xxd
+      image: ccfciteam/ccf-ci:oe0.15.0
       options: --publish-all --device /dev/sgx:/dev/sgx -v /dev/shm:/tmp/ccache
 
 jobs:

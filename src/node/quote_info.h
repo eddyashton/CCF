@@ -4,7 +4,6 @@
 #pragma once
 #include "ds/json.h"
 
-#include <msgpack/msgpack.hpp>
 #include <vector>
 
 namespace ccf
@@ -15,20 +14,15 @@ namespace ccf
   };
 
   DECLARE_JSON_ENUM(QuoteFormat, {{QuoteFormat::oe_sgx_v1, "OE_SGX_v1"}})
-}
 
-MSGPACK_ADD_ENUM(ccf::QuoteFormat);
-
-namespace ccf
-{
   struct QuoteInfo
   {
+    /// Quote format
     QuoteFormat format = QuoteFormat::oe_sgx_v1;
-
+    /// Enclave quote
     std::vector<uint8_t> quote;
+    /// Quote endorsements
     std::vector<uint8_t> endorsements;
-
-    MSGPACK_DEFINE(format, quote, endorsements);
   };
 
   DECLARE_JSON_TYPE(QuoteInfo);

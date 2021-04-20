@@ -11,9 +11,6 @@
 #include <regex>
 #include <string>
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
-
 namespace ds
 {
   /**
@@ -99,14 +96,20 @@ namespace ds
     }
 
     static inline nlohmann::json& path_operation(
-      nlohmann::json& path, llhttp_method verb)
+      nlohmann::json& path, llhttp_method verb, bool default_responses = true)
     {
       // HTTP_GET becomes the string "get"
       std::string s = llhttp_method_name(verb);
       nonstd::to_lower(s);
       auto& po = access::get_object(path, s);
-      // responses is required field in a path_operation
-      access::get_object(po, "responses");
+
+      if (default_responses)
+      {
+        // responses is required field in a path_operation, but caller may
+        // choose to add their own later
+        access::get_object(po, "responses");
+      }
+
       return po;
     }
 
@@ -222,8 +225,7 @@ namespace ds
         {
           throw std::logic_error(fmt::format(
             "Adding security scheme with name '{}'. Does not match previous "
-            "scheme "
-            "registered with this name: {} vs {}",
+            "scheme registered with this name: {} vs {}",
             name,
             security_scheme.dump(),
             existing_scheme.dump()));
@@ -233,6 +235,19 @@ namespace ds
       {
         schemes.emplace(name, security_scheme);
       }
+    }
+
+    // This adds a schema description of T to the object j, potentially
+    // modifying another part of the given Doc (for instance, by adding the
+    // schema to a shared component in the document, and making j be a reference
+    // to that). This default implementation simply falls back to
+    // fill_json_schema, which already exists to describe leaf types. A
+    // recursive implementation for struct-to-object types is created by the
+    // json.h macros, and this could be implemented manually for other types.
+    template <typename Doc, typename T>
+    void add_schema_components(Doc&, nlohmann::json& j, const T& t)
+    {
+      fill_json_schema(j, t);
     }
 
     struct SchemaHelper
@@ -249,8 +264,17 @@ namespace ds
         }
         else if constexpr (nonstd::is_specialization<T, std::vector>::value)
         {
-          schema["type"] = "array";
-          schema["items"] = add_schema_component<typename T::value_type>();
+          if constexpr (std::is_same<T, std::vector<uint8_t>>::value)
+          {
+            // Byte vectors are always base64 encoded
+            schema["type"] = "string";
+            schema["format"] = "base64";
+          }
+          else
+          {
+            schema["type"] = "array";
+            schema["items"] = add_schema_component<typename T::value_type>();
+          }
 
           return add_schema_to_components(
             document, ds::json::schema_name<T>(), schema);
@@ -259,10 +283,9 @@ namespace ds
           nonstd::is_specialization<T, std::map>::value ||
           nonstd::is_specialization<T, std::unordered_map>::value)
         {
-          // Nlohmann serialises maps to an array of (K, V) pairs
-          if (std::is_same<typename T::key_type, std::string>::value)
+          if constexpr (nlohmann::detail::
+                          is_compatible_object_type<nlohmann::json, T>::value)
           {
-            // ...unless the keys are strings!
             schema["type"] = "object";
             schema["additionalProperties"] =
               add_schema_component<typename T::mapped_type>();
@@ -422,5 +445,3 @@ namespace ds
     }
   }
 }
-
-#pragma clang diagnostic pop

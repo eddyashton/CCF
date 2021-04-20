@@ -1,20 +1,9 @@
 {
   "components": {
     "schemas": {
-      "CallerInfo": {
-        "properties": {
-          "caller_id": {
-            "$ref": "#/components/schemas/uint64"
-          }
-        },
-        "required": [
-          "caller_id"
-        ],
-        "type": "object"
-      },
       "CodeStatus": {
         "enum": [
-          "ALLOWED_TO_JOIN"
+          "AllowedToJoin"
         ],
         "type": "string"
       },
@@ -66,6 +55,11 @@
         ],
         "type": "object"
       },
+      "EntityId": {
+        "format": "hex",
+        "pattern": "^[a-f0-9]{64}$",
+        "type": "string"
+      },
       "GetCode__Out": {
         "properties": {
           "versions": {
@@ -100,27 +94,12 @@
       },
       "GetCommit__Out": {
         "properties": {
-          "seqno": {
-            "$ref": "#/components/schemas/int64"
-          },
-          "view": {
-            "$ref": "#/components/schemas/int64"
+          "transaction_id": {
+            "$ref": "#/components/schemas/TransactionId"
           }
         },
         "required": [
-          "view",
-          "seqno"
-        ],
-        "type": "object"
-      },
-      "GetReceipt__Out": {
-        "properties": {
-          "receipt": {
-            "$ref": "#/components/schemas/uint8_array"
-          }
-        },
-        "required": [
-          "receipt"
+          "transaction_id"
         ],
         "type": "object"
       },
@@ -128,9 +107,13 @@
         "properties": {
           "status": {
             "$ref": "#/components/schemas/TxStatus"
+          },
+          "transaction_id": {
+            "$ref": "#/components/schemas/TransactionId"
           }
         },
         "required": [
+          "transaction_id",
           "status"
         ],
         "type": "object"
@@ -162,6 +145,60 @@
         ],
         "type": "object"
       },
+      "LoggingGetHistoricalRange__Entry": {
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/uint64"
+          },
+          "msg": {
+            "$ref": "#/components/schemas/string"
+          },
+          "seqno": {
+            "$ref": "#/components/schemas/uint64"
+          }
+        },
+        "required": [
+          "seqno",
+          "id",
+          "msg"
+        ],
+        "type": "object"
+      },
+      "LoggingGetHistoricalRange__Entry_array": {
+        "items": {
+          "$ref": "#/components/schemas/LoggingGetHistoricalRange__Entry"
+        },
+        "type": "array"
+      },
+      "LoggingGetHistoricalRange__Out": {
+        "properties": {
+          "@nextLink": {
+            "$ref": "#/components/schemas/string"
+          },
+          "entries": {
+            "$ref": "#/components/schemas/LoggingGetHistoricalRange__Entry_array"
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "type": "object"
+      },
+      "LoggingGetReceipt__Out": {
+        "properties": {
+          "msg": {
+            "$ref": "#/components/schemas/string"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          }
+        },
+        "required": [
+          "msg",
+          "receipt"
+        ],
+        "type": "object"
+      },
       "LoggingGet__Out": {
         "properties": {
           "msg": {
@@ -188,6 +225,50 @@
         ],
         "type": "object"
       },
+      "Receipt": {
+        "properties": {
+          "leaf": {
+            "$ref": "#/components/schemas/string"
+          },
+          "node_id": {
+            "$ref": "#/components/schemas/EntityId"
+          },
+          "proof": {
+            "$ref": "#/components/schemas/Receipt__Element_array"
+          },
+          "root": {
+            "$ref": "#/components/schemas/string"
+          },
+          "signature": {
+            "$ref": "#/components/schemas/string"
+          }
+        },
+        "required": [
+          "signature",
+          "root",
+          "proof",
+          "leaf",
+          "node_id"
+        ],
+        "type": "object"
+      },
+      "Receipt__Element": {
+        "properties": {
+          "left": {
+            "$ref": "#/components/schemas/string"
+          },
+          "right": {
+            "$ref": "#/components/schemas/string"
+          }
+        },
+        "type": "object"
+      },
+      "Receipt__Element_array": {
+        "items": {
+          "$ref": "#/components/schemas/Receipt__Element"
+        },
+        "type": "array"
+      },
       "Report": {
         "properties": {
           "histogram": {
@@ -203,36 +284,18 @@
         ],
         "type": "object"
       },
-      "TxStatus": {
-        "enum": [
-          "UNKNOWN",
-          "PENDING",
-          "COMMITTED",
-          "INVALID"
-        ],
+      "TransactionId": {
+        "pattern": "^[0-9]+\\.[0-9]+$",
         "type": "string"
       },
-      "VerifyReceipt__In": {
-        "properties": {
-          "receipt": {
-            "$ref": "#/components/schemas/uint8_array"
-          }
-        },
-        "required": [
-          "receipt"
+      "TxStatus": {
+        "enum": [
+          "Unknown",
+          "Pending",
+          "Committed",
+          "Invalid"
         ],
-        "type": "object"
-      },
-      "VerifyReceipt__Out": {
-        "properties": {
-          "valid": {
-            "$ref": "#/components/schemas/boolean"
-          }
-        },
-        "required": [
-          "valid"
-        ],
-        "type": "object"
+        "type": "string"
       },
       "boolean": {
         "type": "boolean"
@@ -240,11 +303,6 @@
       "int32": {
         "maximum": 2147483647,
         "minimum": -2147483648,
-        "type": "integer"
-      },
-      "int64": {
-        "maximum": 9223372036854775807,
-        "minimum": -9223372036854775808,
         "type": "integer"
       },
       "json": {},
@@ -255,17 +313,6 @@
         "maximum": 18446744073709551615,
         "minimum": 0,
         "type": "integer"
-      },
-      "uint8": {
-        "maximum": 255,
-        "minimum": 0,
-        "type": "integer"
-      },
-      "uint8_array": {
-        "items": {
-          "$ref": "#/components/schemas/uint8"
-        },
-        "type": "array"
       }
     },
     "securitySchemes": {
@@ -325,40 +372,6 @@
         }
       }
     },
-    "/caller_id": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "cert",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CallerInfo"
-                }
-              }
-            },
-            "description": "Default response description"
-          }
-        },
-        "security": [
-          {
-            "user_signature": []
-          },
-          {
-            "member_signature": []
-          }
-        ]
-      }
-    },
     "/code": {
       "get": {
         "responses": {
@@ -412,22 +425,10 @@
         "parameters": [
           {
             "in": "query",
-            "name": "seqno",
-            "required": false,
+            "name": "transaction_id",
+            "required": true,
             "schema": {
-              "maximum": 9223372036854775807,
-              "minimum": -9223372036854775808,
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "view",
-            "required": false,
-            "schema": {
-              "maximum": 9223372036854775807,
-              "minimum": -9223372036854775808,
-              "type": "integer"
+              "$ref": "#/components/schemas/TransactionId"
             }
           }
         ],
@@ -451,11 +452,9 @@
           {
             "in": "query",
             "name": "id",
-            "required": false,
+            "required": true,
             "schema": {
-              "maximum": 18446744073709551615,
-              "minimum": 0,
-              "type": "integer"
+              "$ref": "#/components/schemas/uint64"
             }
           }
         ],
@@ -482,11 +481,9 @@
           {
             "in": "query",
             "name": "id",
-            "required": false,
+            "required": true,
             "schema": {
-              "maximum": 18446744073709551615,
-              "minimum": 0,
-              "type": "integer"
+              "$ref": "#/components/schemas/uint64"
             }
           }
         ],
@@ -601,11 +598,9 @@
           {
             "in": "query",
             "name": "id",
-            "required": false,
+            "required": true,
             "schema": {
-              "maximum": 18446744073709551615,
-              "minimum": 0,
-              "type": "integer"
+              "$ref": "#/components/schemas/uint64"
             }
           }
         ],
@@ -615,6 +610,84 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LoggingGet__Out"
+                }
+              }
+            },
+            "description": "Default response description"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/log/private/historical/range": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from_seqno",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/uint64"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_seqno",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/uint64"
+            }
+          },
+          {
+            "in": "query",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/uint64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoggingGetHistoricalRange__Out"
+                }
+              }
+            },
+            "description": "Default response description"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/log/private/historical_receipt": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/uint64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoggingGetReceipt__Out"
                 }
               }
             },
@@ -689,11 +762,9 @@
           {
             "in": "query",
             "name": "id",
-            "required": false,
+            "required": true,
             "schema": {
-              "maximum": 18446744073709551615,
-              "minimum": 0,
-              "type": "integer"
+              "$ref": "#/components/schemas/uint64"
             }
           }
         ],
@@ -720,11 +791,9 @@
           {
             "in": "query",
             "name": "id",
-            "required": false,
+            "required": true,
             "schema": {
-              "maximum": 18446744073709551615,
-              "minimum": 0,
-              "type": "integer"
+              "$ref": "#/components/schemas/uint64"
             }
           }
         ],
@@ -825,12 +894,10 @@
         "parameters": [
           {
             "in": "query",
-            "name": "commit",
-            "required": false,
+            "name": "transaction_id",
+            "required": true,
             "schema": {
-              "maximum": 9223372036854775807,
-              "minimum": -9223372036854775808,
-              "type": "integer"
+              "$ref": "#/components/schemas/TransactionId"
             }
           }
         ],
@@ -839,33 +906,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GetReceipt__Out"
-                }
-              }
-            },
-            "description": "Default response description"
-          }
-        }
-      }
-    },
-    "/receipt/verify": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VerifyReceipt__In"
-              }
-            }
-          },
-          "description": "Auto-generated request body schema"
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VerifyReceipt__Out"
+                  "$ref": "#/components/schemas/Receipt"
                 }
               }
             },
@@ -879,22 +920,10 @@
         "parameters": [
           {
             "in": "query",
-            "name": "seqno",
-            "required": false,
+            "name": "transaction_id",
+            "required": true,
             "schema": {
-              "maximum": 9223372036854775807,
-              "minimum": -9223372036854775808,
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "view",
-            "required": false,
-            "schema": {
-              "maximum": 9223372036854775807,
-              "minimum": -9223372036854775808,
-              "type": "integer"
+              "$ref": "#/components/schemas/TransactionId"
             }
           }
         ],

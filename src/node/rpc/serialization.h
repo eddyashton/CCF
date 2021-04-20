@@ -11,16 +11,17 @@ namespace ccf
 {
   DECLARE_JSON_ENUM(
     ccf::State,
-    {{ccf::State::uninitialized, "uninitialized"},
-     {ccf::State::initialized, "initialized"},
-     {ccf::State::pending, "pending"},
-     {ccf::State::partOfPublicNetwork, "partOfPublicNetwork"},
-     {ccf::State::partOfNetwork, "partOfNetwork"},
-     {ccf::State::readingPublicLedger, "readingPublicLedger"},
-     {ccf::State::readingPrivateLedger, "readingPrivateLedger"},
-     {ccf::State::verifyingSnapshot, "verifyingSnapshot"}})
+    {{ccf::State::uninitialized, "Uninitialized"},
+     {ccf::State::initialized, "Initialized"},
+     {ccf::State::pending, "Pending"},
+     {ccf::State::partOfPublicNetwork, "PartOfPublicNetwork"},
+     {ccf::State::partOfNetwork, "PartOfNetwork"},
+     {ccf::State::readingPublicLedger, "ReadingPublicLedger"},
+     {ccf::State::readingPrivateLedger, "ReadingPrivateLedger"},
+     {ccf::State::verifyingSnapshot, "VerifyingSnapshot"}})
   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(GetState::Out)
-  DECLARE_JSON_REQUIRED_FIELDS(GetState::Out, node_id, state, last_signed_seqno)
+  DECLARE_JSON_REQUIRED_FIELDS(
+    GetState::Out, node_id, state, last_signed_seqno, startup_seqno)
   DECLARE_JSON_OPTIONAL_FIELDS(
     GetState::Out, recovery_target_seqno, last_recovered_seqno)
 
@@ -30,7 +31,8 @@ namespace ccf
     node_info_network,
     quote_info,
     public_encryption_key,
-    consensus_type)
+    consensus_type,
+    startup_seqno)
 
   DECLARE_JSON_TYPE(NetworkIdentity)
   DECLARE_JSON_REQUIRED_FIELDS(NetworkIdentity, cert, priv_key)
@@ -51,7 +53,8 @@ namespace ccf
   DECLARE_JSON_REQUIRED_FIELDS(
     CreateNetworkNodeToNode::In,
     members_info,
-    gov_script,
+    constitution,
+    node_id,
     node_cert,
     network_cert,
     quote_info,
@@ -61,20 +64,18 @@ namespace ccf
     configuration)
 
   DECLARE_JSON_TYPE(GetCommit::Out)
-  DECLARE_JSON_REQUIRED_FIELDS(GetCommit::Out, view, seqno)
+  DECLARE_JSON_REQUIRED_FIELDS(GetCommit::Out, transaction_id)
 
-  DECLARE_JSON_TYPE(GetTxStatus::In)
-  DECLARE_JSON_REQUIRED_FIELDS(GetTxStatus::In, view, seqno)
   DECLARE_JSON_TYPE(GetTxStatus::Out)
-  DECLARE_JSON_REQUIRED_FIELDS(GetTxStatus::Out, status)
+  DECLARE_JSON_REQUIRED_FIELDS(GetTxStatus::Out, transaction_id, status)
 
   DECLARE_JSON_TYPE(GetNetworkInfo::Out)
   DECLARE_JSON_REQUIRED_FIELDS(
     GetNetworkInfo::Out,
     service_status,
+    service_certificate,
     current_view,
-    primary_id,
-    view_change_in_progress)
+    primary_id)
 
   DECLARE_JSON_TYPE(GetNode::NodeInfo)
   DECLARE_JSON_REQUIRED_FIELDS(
@@ -87,35 +88,14 @@ namespace ccf
     local_port,
     primary)
 
-  DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(GetNodes::In)
-  // Current limitation of the JSON macros: It is necessary to defined
-  // DECLARE_JSON_REQUIRED_FIELDS even though there are no required
-  // fields. This raises some compiler warnings that are disabled locally.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter"
-#pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
-  DECLARE_JSON_REQUIRED_FIELDS(GetNodes::In);
-#pragma clang diagnostic pop
-  DECLARE_JSON_OPTIONAL_FIELDS(GetNodes::In, host, port, status)
   DECLARE_JSON_TYPE(GetNodes::Out)
   DECLARE_JSON_REQUIRED_FIELDS(GetNodes::Out, nodes)
-
-  DECLARE_JSON_TYPE(CallerInfo)
-  DECLARE_JSON_REQUIRED_FIELDS(CallerInfo, caller_id)
-
-  DECLARE_JSON_TYPE(GetCallerId::In)
-  DECLARE_JSON_REQUIRED_FIELDS(GetCallerId::In, cert)
 
   DECLARE_JSON_TYPE(EndpointMetrics::Entry)
   DECLARE_JSON_REQUIRED_FIELDS(
     EndpointMetrics::Entry, path, method, calls, errors, failures, retries)
   DECLARE_JSON_TYPE(EndpointMetrics::Out)
   DECLARE_JSON_REQUIRED_FIELDS(EndpointMetrics::Out, metrics)
-
-  DECLARE_JSON_TYPE(GetReceipt::In)
-  DECLARE_JSON_REQUIRED_FIELDS(GetReceipt::In, commit)
-  DECLARE_JSON_TYPE(GetReceipt::Out)
-  DECLARE_JSON_REQUIRED_FIELDS(GetReceipt::Out, receipt)
 
   DECLARE_JSON_TYPE(VerifyReceipt::In)
   DECLARE_JSON_REQUIRED_FIELDS(VerifyReceipt::In, receipt)

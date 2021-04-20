@@ -24,8 +24,9 @@ namespace ccf
   {
   public:
     virtual ~AbstractNodeState() {}
-    virtual bool accept_recovery(kv::Tx& tx) = 0;
+    virtual void transition_service_to_open(kv::Tx& tx) = 0;
     virtual bool rekey_ledger(kv::Tx& tx) = 0;
+    virtual void trigger_recovery_shares_refresh(kv::Tx& tx) = 0;
     virtual bool is_part_of_public_network() const = 0;
     virtual bool is_primary() const = 0;
     virtual bool is_reading_public_ledger() const = 0;
@@ -40,6 +41,7 @@ namespace ccf
     virtual QuoteVerificationResult verify_quote(
       kv::ReadOnlyTx& tx,
       const QuoteInfo& quote_info,
-      const crypto::Pem& expected_node_public_key) = 0;
+      const std::vector<uint8_t>& expected_node_public_key_der) = 0;
+    virtual std::optional<kv::Version> get_startup_snapshot_seqno() = 0;
   };
 }

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "crypto/hash.h"
+#include "ds/json.h"
 #include "ds/logger.h"
 
 #include <mbedtls/ecp.h>
@@ -15,20 +16,22 @@ namespace crypto
   // SNIPPET_START: supported_curves
   enum class CurveID
   {
+    /// No curve
     NONE = 0,
+    /// The SECP384R1 curve
     SECP384R1,
+    /// The SECP256R1 curve
     SECP256R1
   };
 
+  DECLARE_JSON_ENUM(
+    CurveID,
+    {{CurveID::NONE, "None"},
+     {CurveID::SECP384R1, "secp384r1"},
+     {CurveID::SECP256R1, "secp256r1"}});
+
   static constexpr CurveID service_identity_curve_choice = CurveID::SECP384R1;
   // SNIPPET_END: supported_curves
-
-  // Helper to access elliptic curve id from context
-  inline mbedtls_ecp_group_id get_mbedtls_ec_from_context(
-    const mbedtls_pk_context& ctx)
-  {
-    return mbedtls_pk_ec(ctx)->grp.id;
-  }
 
   // Get message digest algorithm to use for given elliptic curve
   inline MDType get_md_for_ec(CurveID ec)
@@ -42,30 +45,6 @@ namespace crypto
       default:
       {
         throw std::logic_error(fmt::format("Unhandled CurveID: {}", ec));
-      }
-    }
-  }
-
-  inline mbedtls_md_type_t get_mbedtls_md_for_ec(
-    mbedtls_ecp_group_id ec, bool allow_none = false)
-  {
-    switch (ec)
-    {
-      case MBEDTLS_ECP_DP_SECP384R1:
-        return MBEDTLS_MD_SHA384;
-      case MBEDTLS_ECP_DP_SECP256R1:
-        return MBEDTLS_MD_SHA256;
-      default:
-      {
-        if (allow_none)
-        {
-          return MBEDTLS_MD_NONE;
-        }
-        else
-        {
-          const auto error = fmt::format("Unhandled ecp group id: {}", ec);
-          throw std::logic_error(error);
-        }
       }
     }
   }

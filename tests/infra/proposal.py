@@ -18,11 +18,11 @@ class ProposalNotAccepted(Exception):
 
 # Values defined in node/proposals.h
 class ProposalState(Enum):
-    Open = "OPEN"
-    Accepted = "ACCEPTED"
-    Withdrawn = "WITHDRAWN"
-    Rejected = "REJECTED"
-    Failed = "FAILED"
+    OPEN = "Open"
+    ACCEPTED = "Accepted"
+    WITHDRAWN = "Withdrawn"
+    REJECTED = "Rejected"
+    FAILED = "Failed"
 
 
 class Proposal:
@@ -40,6 +40,13 @@ class Proposal:
         self.votes_for = 0
         self.view = view
         self.seqno = seqno
+
+        self.completed_view = view if state == ProposalState.ACCEPTED else None
+        self.completed_seqno = seqno if state == ProposalState.ACCEPTED else None
+
+    def set_completed(self, seqno, view):
+        self.completed_seqno = seqno
+        self.completed_view = view
 
     def increment_votes_for(self):
         self.votes_for += 1

@@ -9,24 +9,29 @@
 #include <algorithm>
 #include <iostream>
 
-namespace kv
+namespace kv::test
 {
+  static NodeId PrimaryNodeId = std::string("PrimaryNodeId");
+  static NodeId FirstBackupNodeId = std::string("FirstBackupNodeId");
+  static NodeId SecondBackupNodeId = std::string("SecondBackupNodeId");
+  static NodeId ThirdBackupNodeId = std::string("ThirdBackupNodeId");
+
   class StubConsensus : public Consensus
   {
   private:
-    std::vector<kv::BatchVector::value_type> replica;
+    std::vector<BatchVector::value_type> replica;
     ConsensusType consensus_type;
 
   public:
     aft::ViewHistory view_history;
 
     StubConsensus(ConsensusType consensus_type_ = ConsensusType::CFT) :
-      Consensus(0),
+      Consensus(PrimaryNodeId),
       replica(),
       consensus_type(consensus_type_)
     {}
 
-    bool replicate(const BatchVector& entries, View view) override
+    bool replicate(const BatchVector& entries, ccf::View view) override
     {
       for (const auto& entry : entries)
       {
@@ -50,7 +55,7 @@ namespace kv
       }
     }
 
-    std::optional<kv::BatchVector::value_type> pop_oldest_entry()
+    std::optional<BatchVector::value_type> pop_oldest_entry()
     {
       if (!replica.empty())
       {
@@ -74,7 +79,7 @@ namespace kv
       replica.clear();
     }
 
-    std::pair<View, SeqNo> get_committed_txid() override
+    std::pair<ccf::View, ccf::SeqNo> get_committed_txid() override
     {
       return {2, 0};
     }
@@ -89,14 +94,14 @@ namespace kv
       return r;
     }
 
-    SeqNo get_committed_seqno() override
+    ccf::SeqNo get_committed_seqno() override
     {
       return 0;
     }
 
-    NodeId primary() override
+    std::optional<NodeId> primary() override
     {
-      return 0;
+      return PrimaryNodeId;
     }
 
     bool view_change_in_progress() override
@@ -106,42 +111,47 @@ namespace kv
 
     std::set<NodeId> active_nodes() override
     {
-      return {0};
+      return {PrimaryNodeId};
     }
 
     NodeId id() override
     {
-      return 0;
+      return PrimaryNodeId;
     }
 
-    View get_view(SeqNo seqno) override
+    ccf::View get_view(ccf::SeqNo seqno) override
     {
       return 2;
     }
 
-    View get_view() override
+    ccf::View get_view() override
     {
       return 2;
     }
 
-    std::vector<SeqNo> get_view_history(SeqNo seqno) override
+    std::vector<ccf::SeqNo> get_view_history(ccf::SeqNo seqno) override
     {
       return view_history.get_history_until(seqno);
     }
 
     void initialise_view_history(
-      const std::vector<SeqNo>& view_history_) override
+      const std::vector<ccf::SeqNo>& view_history_) override
     {
       view_history.initialise(view_history_);
     }
 
-    void recv_message(OArray&& oa) override {}
+    void recv_message(const NodeId& from, OArray&& oa) override {}
 
     void add_configuration(
-      SeqNo seqno, const Configuration::Nodes& conf) override
+      ccf::SeqNo seqno, const Configuration::Nodes& conf) override
     {}
 
-    Configuration::Nodes get_latest_configuration() const override
+    Configuration::Nodes get_latest_configuration_unsafe() const override
+    {
+      return {};
+    }
+
+    Configuration::Nodes get_latest_configuration() override
     {
       return {};
     }
@@ -174,7 +184,7 @@ namespace kv
       return false;
     }
 
-    bool replicate(const BatchVector& entries, View view) override
+    bool replicate(const BatchVector& entries, ccf::View view) override
     {
       return false;
     }
