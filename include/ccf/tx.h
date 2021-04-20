@@ -292,6 +292,19 @@ namespace kv
       return get_handle_by_name<typename M::Handle>(map_name);
     }
 
+    // TODO: Doxy docs
+    // Enabled iff the type has a static function named M which takes 0
+    // arguments and returns a std::string - this will be used as the name to
+    // retrieve the map.
+    template <class M>
+    typename std::enable_if<
+      std::is_same<decltype(&M::name), std::string (*)()>::value,
+      typename M::Handle*>::type
+    rw()
+    {
+      return get_handle_by_name<typename M::Handle>(M::name());
+    }
+
     /** Get a write-only handle from a map instance.
      *
      * @param m Map instance
@@ -313,6 +326,19 @@ namespace kv
     typename M::WriteOnlyHandle* wo(const std::string& map_name)
     {
       return get_handle_by_name<typename M::Handle>(map_name);
+    }
+
+    // TODO: Doxy docs
+    // Enabled iff the type has a static function named M which takes 0
+    // arguments and returns a std::string - this will be used as the name to
+    // retrieve the map.
+    template <class M>
+    typename std::enable_if<
+      std::is_same<decltype(&M::name), std::string (*)()>::value,
+      typename M::WriteOnlyHandle*>::type
+    wo()
+    {
+      return get_handle_by_name<typename M::Handle>(M::name());
     }
   };
 }
