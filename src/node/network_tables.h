@@ -78,7 +78,6 @@ namespace ccf
     //
     // User tables
     //
-    UserCerts user_certs;
     UserInfo user_info;
 
     //
@@ -128,7 +127,6 @@ namespace ccf
       jwt_issuers(Tables::JWT_ISSUERS),
       jwt_public_signing_keys(Tables::JWT_PUBLIC_SIGNING_KEYS),
       jwt_public_signing_key_issuer(Tables::JWT_PUBLIC_SIGNING_KEY_ISSUER),
-      user_certs(Tables::USER_CERTS),
       user_info(Tables::USER_INFO),
       nodes(Tables::NODES),
       service(Tables::SERVICE),

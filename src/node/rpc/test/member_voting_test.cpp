@@ -782,7 +782,7 @@ DOCTEST_TEST_CASE("Add and remove user via proposed calls")
     auto tx1 = network.tables->create_tx();
     user_der = crypto::make_verifier(user_cert)->cert_der();
     user_id = crypto::Sha256Hash(user_der).hex_str();
-    DOCTEST_REQUIRE(tx1.rw(network.user_certs)->get(user_id).has_value());
+    DOCTEST_REQUIRE(tx1.rw<ccf::UserCerts>()->get(user_id).has_value());
   }
 
   {
@@ -813,7 +813,7 @@ DOCTEST_TEST_CASE("Add and remove user via proposed calls")
     DOCTEST_CHECK(r.state == ProposalState::ACCEPTED);
 
     auto tx1 = network.tables->create_tx();
-    auto user = tx1.rw(network.user_certs)->get(user_id);
+    auto user = tx1.rw<ccf::UserCerts>()->get(user_id);
     DOCTEST_CHECK(!user.has_value());
   }
 }

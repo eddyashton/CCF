@@ -76,8 +76,7 @@ namespace ccf
       const auto signed_request = parse_signed_request(ctx);
       if (signed_request.has_value())
       {
-        UserCerts users_certs_table(Tables::USER_CERTS);
-        auto users_certs = tx.ro(users_certs_table);
+        auto users_certs = tx.ro<UserCerts>();
         auto user_cert = users_certs->get(signed_request->key_id);
         if (user_cert.has_value())
         {

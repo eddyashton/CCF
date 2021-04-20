@@ -27,6 +27,13 @@ namespace ccf
   DECLARE_JSON_TYPE(UserDetails)
   DECLARE_JSON_REQUIRED_FIELDS(UserDetails, user_data)
 
-  using UserCerts = kv::RawCopySerialisedMap<UserId, crypto::Pem>;
+  struct UserCerts : public kv::RawCopySerialisedMap<UserId, crypto::Pem>
+  {
+    static std::string name()
+    {
+      return "public:ccf.gov.users.certs";
+    }
+  };
+
   using UserInfo = ServiceMap<UserId, UserDetails>;
 }

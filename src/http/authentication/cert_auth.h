@@ -32,7 +32,7 @@ namespace ccf
       const auto& caller_cert = ctx->session->caller_cert;
       auto caller_id = crypto::Sha256Hash(caller_cert).hex_str();
 
-      auto user_certs = tx.ro<UserCerts>(Tables::USER_CERTS);
+      auto user_certs = tx.ro<UserCerts>();
       if (user_certs->has(caller_id))
       {
         auto identity = std::make_unique<UserCertAuthnIdentity>();

@@ -227,7 +227,7 @@ namespace ccf
 
     UserId add_user(const NewUser& new_user)
     {
-      auto user_certs = tx.rw(tables.user_certs);
+      auto user_certs = tx.rw<ccf::UserCerts>();
 
       auto user_cert_der = crypto::make_verifier(new_user.cert)->cert_der();
       auto id = crypto::Sha256Hash(user_cert_der).hex_str();
@@ -260,7 +260,7 @@ namespace ccf
     void remove_user(const UserId& user_id)
     {
       // Has no effect if the user does not exist
-      auto user_certs = tx.rw(tables.user_certs);
+      auto user_certs = tx.rw<ccf::UserCerts>();
       auto user_info = tx.rw(tables.user_info);
 
       user_certs->remove(user_id);
