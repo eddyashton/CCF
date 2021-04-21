@@ -34,6 +34,8 @@ namespace kv::untyped
     ChangeSet& tx_changes;
     std::string map_name;
 
+    size_t key_count;
+
     /** Get pointer to current value if this key exists, else nullptr if it does
      * not exist or has been deleted. If non-null, points to something owned by
      * tx_changes - expect this is used/dereferenced immediately, and there is
@@ -85,7 +87,11 @@ namespace kv::untyped
   public:
     MapHandle(ChangeSet& cs, const std::string& map_name) :
       tx_changes(cs),
-      map_name(map_name)
+      map_name(map_name),
+      // TODO: This doesn't work! Because state contains deleted versions. So we
+      // either need to iterate and find all of them now, or lazily, or wait
+      // until this deleted items are really deleted
+      key_count(cs.state.size())
     {}
 
     std::optional<ValueType> get(const KeyType& key)
@@ -161,7 +167,22 @@ namespace kv::untyped
     void put(const KeyType& key, const ValueType& value)
     {
       LOG_TRACE_FMT("KV[{}]::put({}, {})", map_name, key, value);
+
+      const auto write = tx_changes.writes.find(key);
+
+      // If this didn't previously exist, or was removed locally, count it as a
+      // new key
+      if (
+        (write == tx_changes.writes.end() &&
+         tx_changes.state.getp(key) == nullptr) ||
+        !write->second.has_value())
+      {
+        ++key_count;
+        LOG_TRACE_FMT("New write, incremented count to {}", key_count);
+      }
+
       // Record in the write set.
+      // tx_changes.writes.insert(write, std::make_pair(key, value));
       tx_changes.writes[key] = value;
     }
 
@@ -178,9 +199,20 @@ namespace kv::untyped
           // this key only exists locally, there is no reason to maintain and
           // serialise it
           tx_changes.writes.erase(key);
+          --key_count;
+          LOG_TRACE_FMT(
+            "New removal of local write, decremented count to {}", key_count);
         }
         else
         {
+          if (write->second.has_value())
+          {
+            --key_count;
+            LOG_TRACE_FMT(
+              "First removal of real write, decremented count to {}",
+              key_count);
+          }
+
           // If we have written, change the write set to indicate a remove.
           write->second = std::nullopt;
         }
@@ -193,6 +225,11 @@ namespace kv::untyped
       {
         return false;
       }
+
+      --key_count;
+      LOG_TRACE_FMT(
+        "Recording removal of committed write, decremented count to {}",
+        key_count);
 
       // Record in the write set.
       tx_changes.writes[key] = std::nullopt;
@@ -243,14 +280,10 @@ namespace kv::untyped
 
     size_t size()
     {
-      size_t size_ = 0;
-
-      foreach([&size_](const auto&, const auto&) {
-        ++size_;
-        return true;
-      });
-
-      return size_;
+      // TODO: This is wrong, this needs to take a read dependency! If an
+      // operation writes size() to another table, it must correctly record what
+      // size it was reading!
+      return key_count;
     }
   };
 }

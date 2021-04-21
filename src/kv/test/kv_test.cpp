@@ -351,15 +351,23 @@ TEST_CASE("size")
   }
 
   {
+    INFO("Size of deleted committed state");
+    auto tx = kv_store.create_tx();
+    auto handle = tx.rw(map);
+
+    REQUIRE(handle->size() == 0);
+  }
+
+  {
     INFO("Sanity check");
     for (size_t i = 0; i < 20; ++i)
     {
       auto tx = kv_store.create_tx();
       auto handle = tx.rw(map);
-      for (size_t j = 0; j < 1'000; ++j)
+      for (size_t j = 0; j < 10; ++j)
       {
-        const auto key = std::to_string(rand() % 10'000);
-        if (rand() % 4 == 0)
+        const auto key = std::to_string(rand() % 10);
+        if (rand() % 2 == 0)
         {
           handle->remove(key);
         }
@@ -371,11 +379,20 @@ TEST_CASE("size")
 
       const auto claimed_size = handle->size();
       size_t manual_size = 0;
-      handle->foreach([&manual_size](const auto&, const auto&) {
+      std::vector<std::string> ss;
+      handle->foreach([&manual_size, &ss](const auto& k, const auto&) {
         ++manual_size;
+        ss.push_back(k);
         return true;
       });
 
+      std::cout << fmt::format("Manual found: {}", fmt::join(ss, " ")) << std::endl;
+      std::cout << fmt::format(
+                     "In iteration {}, comparing {} and {}",
+                     i,
+                     claimed_size,
+                     manual_size)
+                << std::endl;
       REQUIRE(claimed_size == manual_size);
       REQUIRE(tx.commit() == kv::CommitResult::SUCCESS);
     }
