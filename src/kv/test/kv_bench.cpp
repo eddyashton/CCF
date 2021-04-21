@@ -238,42 +238,72 @@ static void des_snap(picobench::state& s)
   s.stop_timer();
 }
 
+static void interact(picobench::state& s)
+{
+  logger::config::level() = logger::INFO;
+
+  kv::Store kv_store;
+  auto tx = kv_store.create_tx();
+  auto handle = tx.rw<MapType>("map");
+
+  s.start_timer();
+  for (int i = 0; i < s.iterations(); i++)
+  {
+    handle->put(gen_key(i), gen_value(i));
+  }
+
+  size_t size = handle->size();
+
+  for (int i = 0; i < s.iterations(); i++)
+  {
+    handle->remove(gen_key(i));
+  }
+
+  size = handle->size();
+  (void)size;
+
+  s.stop_timer();
+}
+
 const std::vector<int> tx_count = {10, 100, 1000};
 const uint32_t sample_size = 100;
 
 using SD = kv::SecurityDomain;
 
-PICOBENCH_SUITE("commit_latency");
-PICOBENCH(commit_latency<10>).iterations(tx_count).samples(10).baseline();
-PICOBENCH(commit_latency<100>).iterations(tx_count).samples(10);
+// PICOBENCH_SUITE("commit_latency");
+// PICOBENCH(commit_latency<10>).iterations(tx_count).samples(10).baseline();
+// PICOBENCH(commit_latency<100>).iterations(tx_count).samples(10);
 
-PICOBENCH_SUITE("serialise");
-PICOBENCH(serialise<SD::PUBLIC>)
-  .iterations(tx_count)
-  .samples(sample_size)
-  .baseline();
-PICOBENCH(serialise<SD::PRIVATE>).iterations(tx_count).samples(sample_size);
+// PICOBENCH_SUITE("serialise");
+// PICOBENCH(serialise<SD::PUBLIC>)
+//   .iterations(tx_count)
+//   .samples(sample_size)
+//   .baseline();
+// PICOBENCH(serialise<SD::PRIVATE>).iterations(tx_count).samples(sample_size);
 
-PICOBENCH_SUITE("deserialise");
-PICOBENCH(deserialise<SD::PUBLIC>)
-  .iterations(tx_count)
-  .samples(sample_size)
-  .baseline();
-PICOBENCH(deserialise<SD::PRIVATE>).iterations(tx_count).samples(sample_size);
+// PICOBENCH_SUITE("deserialise");
+// PICOBENCH(deserialise<SD::PUBLIC>)
+//   .iterations(tx_count)
+//   .samples(sample_size)
+//   .baseline();
+// PICOBENCH(deserialise<SD::PRIVATE>).iterations(tx_count).samples(sample_size);
 
-const uint32_t snapshot_sample_size = 10;
-const std::vector<int> map_count = {20, 100};
+// const uint32_t snapshot_sample_size = 10;
+// const std::vector<int> map_count = {20, 100};
 
-PICOBENCH_SUITE("serialise_snapshot");
-PICOBENCH(ser_snap<100>)
-  .iterations(map_count)
-  .samples(snapshot_sample_size)
-  .baseline();
-PICOBENCH(ser_snap<1000>).iterations(map_count).samples(snapshot_sample_size);
+// PICOBENCH_SUITE("serialise_snapshot");
+// PICOBENCH(ser_snap<100>)
+//   .iterations(map_count)
+//   .samples(snapshot_sample_size)
+//   .baseline();
+// PICOBENCH(ser_snap<1000>).iterations(map_count).samples(snapshot_sample_size);
 
-PICOBENCH_SUITE("deserialise_snapshot");
-PICOBENCH(des_snap<100>)
-  .iterations(map_count)
-  .samples(snapshot_sample_size)
-  .baseline();
-PICOBENCH(des_snap<1000>).iterations(map_count).samples(snapshot_sample_size);
+// PICOBENCH_SUITE("deserialise_snapshot");
+// PICOBENCH(des_snap<100>)
+//   .iterations(map_count)
+//   .samples(snapshot_sample_size)
+//   .baseline();
+// PICOBENCH(des_snap<1000>).iterations(map_count).samples(snapshot_sample_size);
+
+PICOBENCH_SUITE("interact");
+PICOBENCH(interact).iterations({1000, 10'000, 100'000}).samples(10).baseline();
