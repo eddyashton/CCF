@@ -37,29 +37,25 @@ assigned_decorators = {}
 
 
 def find_id_in_log(obj):
-    id_for_colour = obj
     try:
         # If obj looks like a file, try searching it for a line declaring its ID
         # Open a second copy by name, to avoid having to reset the original obj
         with open(obj.name) as fp:
-            print(f"Looking in {obj.name}")
             regex = re.compile(
                 r"Created new node n\[(.*)\]|Created join node n\[(.*)\]"
             )
             for line in fp:
                 match = regex.search(line)
                 if match:
-                    print(f"Found a match!")
-                    id_for_colour = match.group(1) or match.group(2)
-                    break
+                    return match.group(1) or match.group(2)
     except Exception:
         pass
-    return RGB_color_picker(id_for_colour)
 
 
 def decorated_line(line, key):
     if key not in assigned_decorators:
-        assigned_decorators[key] = colour_highlight(pick_for=key, picker=find_id_in_log, pick_key=None)
+        log_id = find_id_in_log(key)
+        assigned_decorators[key] = colour_highlight(pick_for=log_id or key, pick_key=str)
     return assigned_decorators[key](line)
 
 
