@@ -137,9 +137,7 @@ def populate_id_replacers(streams):
                 c.luminance = 1.0 - c.luminance
                 red, green, blue = (int(n * 255) for n in c.rgb)
                 replace_s = f"\033[38;2;{red};{green};{blue}m{replace_s}\033[0m"
-            id_replacers[
-                re.compile(log_regex_s)
-            ] = replace_s
+            id_replacers[re.compile(log_regex_s)] = replace_s
 
 
 def replace_ids(s):
@@ -218,7 +216,9 @@ def print_interleaved_files():
 
 
 CCF_LOG_LINE_REGEX = r"(?P<prefix>(?P<datetime>.*Z)\s+(?P<timeoffset>\S+)?\s+(?P<thread_id>\d+)\s+\[(?P<level>\w+)\s?\]\s+(?P<filename>.*):(?P<linenumber>\d+)\s+\| )?(?P<content>.*$)"
-REWRITTEN_LOG_LINE = "{datetime:27} |{index:02}| {indent}{content} ({basename}:{linenumber})"
+REWRITTEN_LOG_LINE = (
+    "{datetime:27} |{index:02}| {indent}{content} ({basename}:{linenumber})"
+)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
