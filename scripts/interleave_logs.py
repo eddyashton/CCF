@@ -1,6 +1,7 @@
 import argparse
 import functools
 import re
+import os
 from colour import Color
 from contextlib import ExitStack
 from datetime import datetime
@@ -109,7 +110,12 @@ def regex_rewriter(stream, regex_s, format_string):
             "original": s,
         }
         for group_name in regex.groupindex.keys():
-            format_dict[group_name] = m.group(group_name) or ""
+            group_match = m.group(group_name) or ""
+            format_dict[group_name] = group_match
+            if group_name == "filename":
+                format_dict["basename"] = os.path.basename(group_match)
+                format_dict["dirname"] = os.path.dirname(group_match)
+                format_dict["without_ext"], format_dict["ext"] = os.path.splitext(s)
         return format_string.format(**format_dict)
 
     return fn
@@ -124,13 +130,16 @@ def populate_id_replacers(streams):
         if log_id:
             # Match trimmed versions of this ID too. Only first N characters are required, remainder are optional
             log_regex_s = log_id[:10] + "".join(f"{c}?" for c in log_id[10:])
-            c = rescale_colour(Color(pick_for=log_id, pick_key=hash))
-            # To make fg colours more readable, invert their luminance
-            c.luminance = 1.0 - c.luminance
-            red, green, blue = (int(n * 255) for n in c.rgb)
+            replace_s = f"{stream.index}={log_id[:4]}"
+            if args.colour:
+                c = rescale_colour(Color(pick_for=log_id, pick_key=hash))
+                # To make fg colours more readable, invert their luminance
+                c.luminance = 1.0 - c.luminance
+                red, green, blue = (int(n * 255) for n in c.rgb)
+                replace_s = f"\033[38;2;{red};{green};{blue}m{replace_s}\033[0m"
             id_replacers[
                 re.compile(log_regex_s)
-            ] = f"\033[38;2;{red};{green};{blue}m{stream.index}={log_id[:4]}\033[0m"
+            ] = replace_s
 
 
 def replace_ids(s):
@@ -209,7 +218,7 @@ def print_interleaved_files():
 
 
 CCF_LOG_LINE_REGEX = r"(?P<prefix>(?P<datetime>.*Z)\s+(?P<timeoffset>\S+)?\s+(?P<thread_id>\d+)\s+\[(?P<level>\w+)\s?\]\s+(?P<filename>.*):(?P<linenumber>\d+)\s+\| )?(?P<content>.*$)"
-REWRITTEN_LOG_LINE = "{datetime:27} |{index:02}| {indent}{content}"
+REWRITTEN_LOG_LINE = "{datetime:27} |{index:02}| {indent}{content} ({basename}:{linenumber})"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
