@@ -39,7 +39,11 @@ class InStream:
     def __init__(self, index, file):
         self.index = index
         self.file = file
+
+        self.indent = args.indent * self.index
+
         self.log_id = find_id_in_log(file)
+
         self.bg_colour = Color(args.bg_colours[self.index % len(args.bg_colours)])
         # To hopefully make fg colours more readable, invert their luminance
         self.fg_colour = Color(self.bg_colour.hex)
@@ -108,7 +112,7 @@ def regex_rewriter(stream, regex_s, format_string):
         if not m:
             return None
         format_dict = {
-            "indent": "  " * stream.index,
+            "indent": stream.indent,
             "index": stream.index,
             "original": s,
         }
@@ -250,7 +254,7 @@ def print_interleaved_files():
 
 CCF_NODE_LOG_REGEX = r"(?P<prefix>(?P<datetime>(?P<date>.*)(?:T| )(?P<time>.*)Z)\s+(?P<timeoffset>\S+)?\s+(?P<thread_id>\d+)\s+\[(?P<level>\w+)\s?\]\s+(?P<filename>.*):(?P<linenumber>\d+)\s+\| )?(?P<content>.*$)"
 DEFAULT_OUTPUT_FORMAT = (
-    "{short_time} |{index:02}| {indent}{content} ({basename}:{linenumber})"
+    "{short_time} |{index:02}| {content} ({basename}:{linenumber})"
 )
 DEFAULT_BG_COLOURS = [
     Color(hue=hue, luminance=luminance, saturation=0.4).hex
@@ -291,6 +295,11 @@ if __name__ == "__main__":
         nargs="+",
         help="Colours to use for each log, if --colour is on",
         default=DEFAULT_BG_COLOURS,
+    )
+    parser.add_argument(
+        "--indent",
+        help="Indentation to be substituted in the {indent} argument when formatting each output line, repeated according to the input stream's index",
+        default="  ",
     )
 
     args = parser.parse_args()
