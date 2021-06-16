@@ -1,10 +1,10 @@
 import argparse
+import datetime
 import functools
 import re
 import os
 from colour import Color
 from contextlib import ExitStack
-from datetime import datetime
 
 args = None
 
@@ -40,6 +40,10 @@ class InStream:
         self.index = index
         self.file = file
         self.log_id = find_id_in_log(file)
+        self.bg_colour = Color(args.bg_colours[self.index % len(args.bg_colours)])
+        # To hopefully make fg colours more readable, invert their luminance
+        self.fg_colour = Color(self.bg_colour.hex)
+        self.fg_colour.luminance = 1.0 - self.fg_colour.luminance
 
         self.decorator = None
 
@@ -75,9 +79,7 @@ def rescale_colour(c):
     return c
 
 
-def add_background_colour(*args, **kwargs):
-    c = rescale_colour(Color(*args, **kwargs))
-
+def add_background_colour(c):
     red, green, blue = (int(n * 255) for n in c.rgb)
 
     escape_sequence_regex = re.compile(r"\033\[(\d+(?:;\d+)*)m")
@@ -113,10 +115,44 @@ def regex_rewriter(stream, regex_s, format_string):
         for group_name in regex.groupindex.keys():
             group_match = m.group(group_name) or ""
             format_dict[group_name] = group_match
+
+            # If the regex found a filename, add some helpful transformations of it
             if group_name == "filename":
                 format_dict["basename"] = os.path.basename(group_match)
                 format_dict["dirname"] = os.path.dirname(group_match)
                 format_dict["without_ext"], format_dict["ext"] = os.path.splitext(s)
+
+            # If the regex found date/time, add some helpful transformations/summarisations
+            elif group_name == "date":
+                try:
+                    date = datetime.date.fromisoformat(group_match)
+                    format_dict["year"] = date.year
+                    format_dict["month"] = date.month
+                    format_dict["day"] = date.day
+                except Exception:
+                    format_dict["date"] = ' "      " '
+                    format_dict["year"] = '"  "'
+                    format_dict["month"] = '""'
+                    format_dict["day"] = '""'
+
+            elif group_name == "time":
+                try:
+                    time = datetime.time.fromisoformat(group_match)
+                    format_dict["hour"] = time.hour
+                    format_dict["minute"] = time.minute
+                    format_dict["second"] = time.second
+                    format_dict["microsecond"] = time.microsecond
+                    format_dict[
+                        "short_time"
+                    ] = f"{time.minute:02}:{time.second:02}.{time.microsecond//1000:03}"
+                except Exception:
+                    format_dict["time"] = ' "           " '
+                    format_dict["hour"] = '""'
+                    format_dict["minute"] = '""'
+                    format_dict["second"] = '""'
+                    format_dict["microsecond"] = '"    "'
+                    format_dict["short_time"] = ' "     " '
+
         return format_string.format(**format_dict)
 
     return fn
@@ -133,9 +169,7 @@ def populate_id_replacers(streams):
             log_regex_s = log_id[:10] + "".join(f"{c}?" for c in log_id[10:])
             replace_s = f"{stream.index}={log_id[:4]}"
             if args.colour:
-                c = rescale_colour(Color(pick_for=log_id, pick_key=hash))
-                # To make fg colours more readable, invert their luminance
-                c.luminance = 1.0 - c.luminance
+                c = stream.fg_colour
                 red, green, blue = (int(n * 255) for n in c.rgb)
                 replace_s = f"\033[38;2;{red};{green};{blue}m{replace_s}\033[0m"
             id_replacers[re.compile(log_regex_s)] = replace_s
@@ -149,10 +183,9 @@ def replace_ids(s):
 
 def decorated_line(line, stream):
     if stream.decorator is None:
-        log_id = stream.log_id
         decorator_fns = []
         if args.colour:
-            decorator_fns.append(add_background_colour(pick_for=log_id, pick_key=str))
+            decorator_fns.append(add_background_colour(stream.bg_colour))
         decorator_fns.append(
             regex_rewriter(stream, args.line_parsing_regex, args.output_format)
         )
@@ -165,14 +198,13 @@ def decorated_line(line, stream):
 def next_timestamped_block_in_file(stream):
     lines = []
     nextline = stream.file.readline()
-    prev_time = datetime.now()
+    prev_time = datetime.datetime.now()
     while nextline:
         try:
             # Assumes the timestamped lines start with an ISO timestamp, and then a space
             date_s, _ = nextline.split(" ", maxsplit=1)
             # datetime doesn't like Z as a UTC timezone specifier
-            date_s = date_s.replace("Z", "+00:00")
-            next_time = datetime.fromisoformat(date_s)
+            next_time = datetime.datetime.fromisoformat(date_s.replace("Z", "+00:00"))
             if lines:
                 yield prev_time, lines
                 lines = []
@@ -216,10 +248,15 @@ def print_interleaved_files():
                 print(line)
 
 
-CCF_NODE_LOG_REGEX = r"(?P<prefix>(?P<datetime>.*Z)\s+(?P<timeoffset>\S+)?\s+(?P<thread_id>\d+)\s+\[(?P<level>\w+)\s?\]\s+(?P<filename>.*):(?P<linenumber>\d+)\s+\| )?(?P<content>.*$)"
+CCF_NODE_LOG_REGEX = r"(?P<prefix>(?P<datetime>(?P<date>.*)(?:T| )(?P<time>.*)Z)\s+(?P<timeoffset>\S+)?\s+(?P<thread_id>\d+)\s+\[(?P<level>\w+)\s?\]\s+(?P<filename>.*):(?P<linenumber>\d+)\s+\| )?(?P<content>.*$)"
 DEFAULT_OUTPUT_FORMAT = (
-    "{datetime:27} |{index:02}| {indent}{content} ({basename}:{linenumber})"
+    "{short_time} |{index:02}| {indent}{content} ({basename}:{linenumber})"
 )
+DEFAULT_BG_COLOURS = [
+    Color(hue=hue, luminance=luminance, saturation=0.4).hex
+    for luminance in [0.3, 0.45]
+    for hue in [0, 2 / 9, 6 / 9, 8 / 9, 1 / 9, 3 / 9, 5 / 9, 7 / 9]
+]
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -249,8 +286,13 @@ if __name__ == "__main__":
         help="Format string used to rewrite each input line",
         default=DEFAULT_OUTPUT_FORMAT,
     )
+    parser.add_argument(
+        "--bg-colours",
+        nargs="+",
+        help="Colours to use for each log, if --colour is on",
+        default=DEFAULT_BG_COLOURS,
+    )
 
-    # Deliberately global, visible to functions above. Python!
     args = parser.parse_args()
 
     print_interleaved_files()
