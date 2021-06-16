@@ -33,17 +33,24 @@ saturation_rescaler = make_rescaler(0, 1, 0.3, 0.6)
 luminance_rescaler = make_rescaler(0, 1, 0.2, 0.3)
 
 
-def colour_highlight(*args, **kwargs):
+def add_background_colour(*args, **kwargs):
     c = Color(*args, **kwargs)
     c.saturation = saturation_rescaler(c.saturation)
     c.luminance = luminance_rescaler(c.luminance)
 
     red, green, blue = (int(n * 255) for n in c.rgb)
 
+    escape_sequence_regex = re.compile(r"\033\[(\d+(?:;\d+)*)m")
+
     def fn(s):
         if s is None:
             return None
-        return f"\033[48;2;{red};{green};{blue}m{s}\033[0m"
+        # To add background throughout this string, while maintaining existing colours, we need to replace any existing colour
+        # escape codes with a new sequence which _additionally_ sets the background colour (including where existing escape codes
+        # _end_ a coloured segment)
+        background_colour_sequence = f"48;2;{red};{green};{blue}"
+        replaced_s = escape_sequence_regex.sub(f'\033[\\1;{background_colour_sequence}m', s)
+        return f"\033[{background_colour_sequence}m{replaced_s}\033[0m"
 
     return fn
 
@@ -99,7 +106,7 @@ def decorated_line(line, key):
         log_id = find_id_in_log(key) or key
         decorator_fns = []
         if args.colour:
-            decorator_fns.append(colour_highlight(pick_for=log_id, pick_key=str))
+            decorator_fns.append(add_background_colour(pick_for=log_id, pick_key=str))
         decorator_fns.append(
             regex_rewriter(key, args.line_parsing_regex, args.output_format)
         )
