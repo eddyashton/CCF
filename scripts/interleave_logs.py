@@ -92,7 +92,8 @@ def add_background_colour(*args, **kwargs):
         replaced_s = escape_sequence_regex.sub(
             f"\033[\\1;{background_colour_sequence}m", s
         )
-        return f"\033[{background_colour_sequence}m{replaced_s}\033[0m"
+        # NB: Include clear-to-end-of-line (\033[K) sequence, to colour entire line
+        return f"\033[{background_colour_sequence}m{replaced_s}\033[K\033[0m"
 
     return fn
 
@@ -215,8 +216,8 @@ def print_interleaved_files():
                 print(line)
 
 
-CCF_LOG_LINE_REGEX = r"(?P<prefix>(?P<datetime>.*Z)\s+(?P<timeoffset>\S+)?\s+(?P<thread_id>\d+)\s+\[(?P<level>\w+)\s?\]\s+(?P<filename>.*):(?P<linenumber>\d+)\s+\| )?(?P<content>.*$)"
-REWRITTEN_LOG_LINE = (
+CCF_NODE_LOG_REGEX = r"(?P<prefix>(?P<datetime>.*Z)\s+(?P<timeoffset>\S+)?\s+(?P<thread_id>\d+)\s+\[(?P<level>\w+)\s?\]\s+(?P<filename>.*):(?P<linenumber>\d+)\s+\| )?(?P<content>.*$)"
+DEFAULT_OUTPUT_FORMAT = (
     "{datetime:27} |{index:02}| {indent}{content} ({basename}:{linenumber})"
 )
 
@@ -241,12 +242,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--line-parsing-regex",
         help="Regex used to parse incoming log lines, producing groups which can be substituted into output lines in --output-format. Default parses expected lines from CCF node logs",
-        default=CCF_LOG_LINE_REGEX,
+        default=CCF_NODE_LOG_REGEX,
     )
     parser.add_argument(
         "--output-format",
         help="Format string used to rewrite each input line",
-        default=REWRITTEN_LOG_LINE,
+        default=DEFAULT_OUTPUT_FORMAT,
     )
 
     # Deliberately global, visible to functions above. Python!
