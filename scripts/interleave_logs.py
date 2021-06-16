@@ -28,15 +28,19 @@ def make_rescaler(from_min, from_max, to_min, to_max):
     return rescale
 
 
-# Rescale saturation and luminance of all auto-selected colours, to (hopefully) end up with a palette visible on most terminals
+# Rescale saturation and luminance of all auto-selected colours, to (hopefully) end up with a palette that is readable on most terminals
 saturation_rescaler = make_rescaler(0, 1, 0.3, 0.6)
 luminance_rescaler = make_rescaler(0, 1, 0.2, 0.3)
 
 
-def add_background_colour(*args, **kwargs):
-    c = Color(*args, **kwargs)
+def rescale_colour(c):
     c.saturation = saturation_rescaler(c.saturation)
     c.luminance = luminance_rescaler(c.luminance)
+    return c
+
+
+def add_background_colour(*args, **kwargs):
+    c = rescale_colour(Color(*args, **kwargs))
 
     red, green, blue = (int(n * 255) for n in c.rgb)
 
@@ -45,30 +49,40 @@ def add_background_colour(*args, **kwargs):
     def fn(s):
         if s is None:
             return None
-        # To add background throughout this string, while maintaining existing colours, we need to replace any existing colour
-        # escape codes with a new sequence which _additionally_ sets the background colour (including where existing escape codes
-        # _end_ a coloured segment)
+        # To add background throughout this string while maintaining existing colours, we need to replace any existing colour
+        # escape codes with a new sequence which _additionally_ sets the background colour (including the escape codes _ending_
+        # a coloured segment)
         background_colour_sequence = f"48;2;{red};{green};{blue}"
-        replaced_s = escape_sequence_regex.sub(f'\033[\\1;{background_colour_sequence}m', s)
+        replaced_s = escape_sequence_regex.sub(
+            f"\033[\\1;{background_colour_sequence}m", s
+        )
         return f"\033[{background_colour_sequence}m{replaced_s}\033[0m"
 
     return fn
 
 
+found_ids = {}
+
+
 def find_id_in_log(obj):
-    try:
-        # If obj looks like a file, try searching it for a line declaring its ID
-        # Open a second copy by name, to avoid having to reset the original obj
-        with open(obj.name) as fp:
-            regex = re.compile(
-                r"Created new node n\[(.*)\]|Created join node n\[(.*)\]"
-            )
-            for line in fp:
-                match = regex.search(line)
-                if match:
-                    return match.group(1) or match.group(2)
-    except Exception:
-        pass
+    if not obj in found_ids:
+        found_id = None
+        try:
+            # If obj looks like a file, try searching it for a line declaring its ID
+            # Open a second copy by name, to avoid having to reset the original obj
+            with open(obj.name) as fp:
+                regex = re.compile(
+                    r"Created new node n\[(.*)\]|Created join node n\[(.*)\]"
+                )
+                for line in fp:
+                    match = regex.search(line)
+                    if match:
+                        found_id = match.group(1) or match.group(2)
+                        break
+        except Exception:
+            pass
+        found_ids[obj] = found_id
+    return found_ids[obj]
 
 
 assigned_indents = {}
@@ -98,6 +112,30 @@ def regex_rewriter(key, regex_s, format_string):
     return fn
 
 
+id_replacers = {}
+
+
+def populate_id_replacers(fps):
+    for i, fp in enumerate(fps):
+        log_id = find_id_in_log(fp)
+        if log_id:
+            # Match trimmed versions of this ID too. Only first N characters are required, remainder are optional
+            log_regex_s = log_id[:10] + "".join(f"{c}?" for c in log_id[10:])
+            c = rescale_colour(Color(pick_for=log_id, pick_key=hash))
+            # To make fg colours more readable, invert their luminance
+            c.luminance = 1.0 - c.luminance
+            red, green, blue = (int(n * 255) for n in c.rgb)
+            id_replacers[
+                re.compile(log_regex_s)
+            ] = f"\033[38;2;{red};{green};{blue}m{i}={log_id[:4]}\033[0m"
+
+
+def replace_ids(s):
+    for id_regex, repl in id_replacers.items():
+        s = id_regex.sub(repl, s)
+    return s
+
+
 assigned_decorators = {}
 
 
@@ -110,6 +148,8 @@ def decorated_line(line, key):
         decorator_fns.append(
             regex_rewriter(key, args.line_parsing_regex, args.output_format)
         )
+        if args.replace_ids:
+            decorator_fns.append(replace_ids)
         assigned_decorators[key] = compose(*decorator_fns)
     return assigned_decorators[key](line)
 
@@ -158,6 +198,8 @@ def print_interleaved_files():
     with ExitStack() as stack:
         files = [stack.enter_context(open(file)) for file in args.files]
 
+        populate_id_replacers(files)
+
         for _, block in next_block_from_files(files):
             for line in block:
                 print(line)
@@ -176,6 +218,12 @@ if __name__ == "__main__":
         "--colour",
         action="store_true",
         help="Add unique background colours for each input log",
+        default=False,
+    )
+    parser.add_argument(
+        "--replace-ids",
+        action="store_true",
+        help="Replace all IDs identified in the logs with a briefer form",
         default=False,
     )
     parser.add_argument(
