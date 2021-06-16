@@ -8,6 +8,41 @@ from datetime import datetime
 args = None
 
 
+def find_id_in_log(obj):
+    try:
+        find_id_in_log.found_ids
+    except AttributeError:
+        find_id_in_log.found_ids = {}
+
+    if not obj in find_id_in_log.found_ids:
+        found_id = None
+        try:
+            # If obj looks like a file, try searching it for a line declaring its ID
+            # Open a second copy by name, to avoid having to reset the original obj
+            with open(obj.name) as fp:
+                regex = re.compile(
+                    r"Created new node n\[(.*)\]|Created join node n\[(.*)\]"
+                )
+                for line in fp:
+                    match = regex.search(line)
+                    if match:
+                        found_id = match.group(1) or match.group(2)
+                        break
+        except Exception:
+            pass
+        find_id_in_log.found_ids[obj] = found_id
+    return find_id_in_log.found_ids[obj]
+
+
+class InStream:
+    def __init__(self, index, file):
+        self.index = index
+        self.file = file
+        self.log_id = find_id_in_log(file)
+
+        self.decorator = None
+
+
 def compose(*fs):
     def compose2(f, g):
         def fn(*args, **kwargs):
@@ -61,48 +96,16 @@ def add_background_colour(*args, **kwargs):
     return fn
 
 
-found_ids = {}
-
-
-def find_id_in_log(obj):
-    if not obj in found_ids:
-        found_id = None
-        try:
-            # If obj looks like a file, try searching it for a line declaring its ID
-            # Open a second copy by name, to avoid having to reset the original obj
-            with open(obj.name) as fp:
-                regex = re.compile(
-                    r"Created new node n\[(.*)\]|Created join node n\[(.*)\]"
-                )
-                for line in fp:
-                    match = regex.search(line)
-                    if match:
-                        found_id = match.group(1) or match.group(2)
-                        break
-        except Exception:
-            pass
-        found_ids[obj] = found_id
-    return found_ids[obj]
-
-
-assigned_indents = {}
-assigned_indices = {}
-
-
-def regex_rewriter(key, regex_s, format_string):
+def regex_rewriter(stream, regex_s, format_string):
     regex = re.compile(regex_s)
-    if not key in assigned_indices:
-        assigned_indices[key] = len(assigned_indices)
-    if not key in assigned_indents:
-        assigned_indents[key] = "  " * len(assigned_indents)
 
     def fn(s):
         m = regex.match(s)
         if not m:
             return None
         format_dict = {
-            "indent": assigned_indents[key],
-            "index": assigned_indices[key],
+            "indent": "  " * stream.index,
+            "index": stream.index,
             "original": s,
         }
         for group_name in regex.groupindex.keys():
@@ -115,9 +118,9 @@ def regex_rewriter(key, regex_s, format_string):
 id_replacers = {}
 
 
-def populate_id_replacers(fps):
-    for i, fp in enumerate(fps):
-        log_id = find_id_in_log(fp)
+def populate_id_replacers(streams):
+    for stream in streams:
+        log_id = stream.log_id
         if log_id:
             # Match trimmed versions of this ID too. Only first N characters are required, remainder are optional
             log_regex_s = log_id[:10] + "".join(f"{c}?" for c in log_id[10:])
@@ -127,7 +130,7 @@ def populate_id_replacers(fps):
             red, green, blue = (int(n * 255) for n in c.rgb)
             id_replacers[
                 re.compile(log_regex_s)
-            ] = f"\033[38;2;{red};{green};{blue}m{i}={log_id[:4]}\033[0m"
+            ] = f"\033[38;2;{red};{green};{blue}m{stream.index}={log_id[:4]}\033[0m"
 
 
 def replace_ids(s):
@@ -136,27 +139,24 @@ def replace_ids(s):
     return s
 
 
-assigned_decorators = {}
-
-
-def decorated_line(line, key):
-    if key not in assigned_decorators:
-        log_id = find_id_in_log(key) or key
+def decorated_line(line, stream):
+    if stream.decorator is None:
+        log_id = stream.log_id
         decorator_fns = []
         if args.colour:
             decorator_fns.append(add_background_colour(pick_for=log_id, pick_key=str))
         decorator_fns.append(
-            regex_rewriter(key, args.line_parsing_regex, args.output_format)
+            regex_rewriter(stream, args.line_parsing_regex, args.output_format)
         )
         if args.replace_ids:
             decorator_fns.append(replace_ids)
-        assigned_decorators[key] = compose(*decorator_fns)
-    return assigned_decorators[key](line)
+        stream.decorator = compose(*decorator_fns)
+    return stream.decorator(line)
 
 
-def next_timestamped_block_in_file(fp):
+def next_timestamped_block_in_file(stream):
     lines = []
-    nextline = fp.readline()
+    nextline = stream.file.readline()
     prev_time = datetime.now()
     while nextline:
         try:
@@ -171,15 +171,15 @@ def next_timestamped_block_in_file(fp):
             prev_time = next_time
         except ValueError:
             pass
-        decorated = decorated_line(nextline.rstrip(), fp)
+        decorated = decorated_line(nextline.rstrip(), stream)
         if decorated is not None:
             lines.append(decorated)
-        nextline = fp.readline()
+        nextline = stream.file.readline()
     yield prev_time, lines
 
 
-def next_block_from_files(fps):
-    gens = list(next_timestamped_block_in_file(fp) for fp in fps)
+def next_block_from_files(streams):
+    gens = list(next_timestamped_block_in_file(stream) for stream in streams)
     available = [(next(gen), gen) for gen in gens]
     available.sort()
     while available:
@@ -196,11 +196,14 @@ def next_block_from_files(fps):
 
 def print_interleaved_files():
     with ExitStack() as stack:
-        files = [stack.enter_context(open(file)) for file in args.files]
+        streams = [
+            InStream(i, stack.enter_context(open(file)))
+            for i, file in enumerate(args.files)
+        ]
 
-        populate_id_replacers(files)
+        populate_id_replacers(streams)
 
-        for _, block in next_block_from_files(files):
+        for _, block in next_block_from_files(streams):
             for line in block:
                 print(line)
 
