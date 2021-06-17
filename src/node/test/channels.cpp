@@ -619,7 +619,7 @@ TEST_CASE("Interrupted key exchange")
 
         REQUIRE(channel1.consume_initiator_key_share(
           get_first(eio2, NodeMsgType::channel_msg).unauthenticated_data(),
-          true));
+          false));
         REQUIRE(channel2.consume_responder_key_share(
           get_first(eio1, NodeMsgType::channel_msg).unauthenticated_data()));
         REQUIRE(channel1.check_peer_key_share_signature(
