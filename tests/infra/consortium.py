@@ -7,6 +7,7 @@ import http
 import json
 import random
 import re
+import uuid
 import infra.network
 import infra.proc
 import infra.checker
@@ -27,6 +28,7 @@ class Consortium:
         common_dir,
         key_generator,
         share_script,
+        consensus,
         members_info=None,
         curve=None,
         public_state=None,
@@ -36,6 +38,7 @@ class Consortium:
         self.members = []
         self.key_generator = key_generator
         self.share_script = share_script
+        self.consensus = consensus
         self.members = []
         self.recovery_threshold = None
         self.authenticate_session = authenticate_session
@@ -391,14 +394,24 @@ class Consortium:
         proposal = self.get_any_active_member().propose(remote_node, proposal_body)
         return self.vote_using_majority(remote_node, proposal, careful_vote)
 
-    def set_js_app(self, remote_node, app_bundle_path):
-        proposal_body, careful_vote = self.make_proposal("set_js_app", app_bundle_path)
+    def set_js_app(self, remote_node, app_bundle_path, disable_bytecode_cache=False):
+        proposal_body, careful_vote = self.make_proposal(
+            "set_js_app", app_bundle_path, disable_bytecode_cache
+        )
         proposal = self.get_any_active_member().propose(remote_node, proposal_body)
         # Large apps take a long time to process - wait longer than normal for commit
         return self.vote_using_majority(remote_node, proposal, careful_vote, timeout=10)
 
     def remove_js_app(self, remote_node):
         proposal_body, careful_vote = ccf.proposal_generator.remove_js_app()
+        proposal = self.get_any_active_member().propose(remote_node, proposal_body)
+        return self.vote_using_majority(remote_node, proposal, careful_vote)
+
+    def refresh_js_app_bytecode_cache(self, remote_node):
+        (
+            proposal_body,
+            careful_vote,
+        ) = ccf.proposal_generator.refresh_js_app_bytecode_cache()
         proposal = self.get_any_active_member().propose(remote_node, proposal_body)
         return self.vote_using_majority(remote_node, proposal, careful_vote)
 
@@ -447,7 +460,10 @@ class Consortium:
             if r.body.json()["state"] == infra.node.State.PART_OF_NETWORK.value:
                 is_recovery = False
 
-        proposal_body, careful_vote = self.make_proposal("transition_service_to_open")
+        proposal_body, careful_vote = self.make_proposal(
+            "transition_service_to_open",
+            args=None if self.consensus == "cft" else {"nonce": str(uuid.uuid4())},
+        )
         proposal = self.get_any_active_member().propose(remote_node, proposal_body)
         self.vote_using_majority(
             remote_node, proposal, careful_vote, wait_for_global_commit=True
