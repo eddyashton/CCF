@@ -28,7 +28,7 @@ Replay of previous messages is disallowed by using a monotonic counter as the AE
 
 Encryption keys are automatically refreshed periodically (in line with https://datatracker.ietf.org/doc/html/rfc8446#section-5.5) by starting a fresh key-exchange protocol.
 
-The following diagram shows how this key-exchange protocol executes when a new node is added to the network, with the precise contents of each message.
+The following diagram shows how this key-exchange protocol executes when a new node is added to the network, with the contents of each message.
 
 .. mermaid::
 
@@ -57,7 +57,6 @@ The following diagram shows how this key-exchange protocol executes when a new n
         Note over Backup: Derives channel send and recv keys from shared secret
 
         Note over Primary, Backup: Node-to-node channel between P and B is now established
-
 
         Primary->>+Backup: Consensus headers message (e.g. replication) <br> (integrity protected with channel key)
         Backup->>+Primary: Consensus headers response
