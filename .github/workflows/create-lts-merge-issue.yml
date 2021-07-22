@@ -16,8 +16,6 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        # GitHub handle of the user(s) to assign the issue (comma-separated)
-        assignees: ${{ pullRequest.owner }}
         # The name of the file to use as the issue template
         filename: .github/lts_merge_template.md
 
