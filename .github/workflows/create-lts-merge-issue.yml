@@ -5,13 +5,15 @@ on:
     types: [labeled]
 
 jobs:
-  build:
+  create_issue:
     if: ${{ github.event.label.name == 'for_lts' }}
     runs-on: ubuntu-latest
 
     steps:
-      - name: Create an issue
+      - name: Checkout
         uses: actions/checkout@v2
+
+      - name: Create an issue
         uses: JasonEtco/create-an-issue@v2.4.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
