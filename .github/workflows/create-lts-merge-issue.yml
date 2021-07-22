@@ -18,8 +18,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AAAA: ${{ github.event.pull_request.owner }}
-          BBBB: ${{ pull_request.owner }}
-          CCCC: ${{ pullRequest.owner }}
           DDDD: ${{ env }}
           EEEE: ${{ github.event }}
         with:
