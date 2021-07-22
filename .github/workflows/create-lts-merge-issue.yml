@@ -2,20 +2,21 @@ name: "Create LTS Merge Issue"
 
 on:
   pull_request:
-    types: [ labeled ]
+    types: [labeled]
 
 jobs:
-  build:
+  create_issue:
     if: ${{ github.event.label.name == 'for_lts' }}
     runs-on: ubuntu-latest
 
     steps:
-    - name: Create an issue
-      # You may pin to the exact commit or the version.
-      uses: JasonEtco/create-an-issue@v2.4.0
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        # The name of the file to use as the issue template
-        filename: .github/lts_merge_template.md
+      - name: Checkout
+        uses: actions/checkout@v2
 
+      - name: Create an issue
+        uses: JasonEtco/create-an-issue@v2.4.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # The name of the file to use as the issue template
+          filename: .github/lts_merge_template.md
