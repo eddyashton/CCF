@@ -17,6 +17,11 @@ jobs:
         uses: JasonEtco/create-an-issue@v2.4.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AAAA: ${{ github.event.pull_request.owner }}
+          BBBB: ${{ pull_request.owner }}
+          CCCC: ${{ pullRequest.owner }}
+          DDDD: ${{ env }}
+          EEEE: ${{ github.event }}
         with:
           assignees: ${{ github.event.pull_request.owner }}
           filename: .github/lts_merge_template.md
