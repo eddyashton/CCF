@@ -18,8 +18,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AAAA: ${{ github.event.pull_request.owner }}
-          DDDD: ${{ env }}
-          EEEE: ${{ github.event }}
         with:
           assignees: ${{ github.event.pull_request.owner }}
           filename: .github/lts_merge_template.md
