@@ -1,8 +1,6 @@
 ---
-title: "Test test"
+title: "[LTS] Merge #{{ env.PR_ID }} to LTS"
 labels: lts-candidate
 ---
 
-PR #{{ env.PR_NUMBER }} has the `lts-candidate` label, so should be merged to the LTS branch.
-
-Author: {{ env.AUTHOR }}
+PR #{{ env.PR_ID }} has the `lts-candidate` label, so should be merged to the LTS branch.

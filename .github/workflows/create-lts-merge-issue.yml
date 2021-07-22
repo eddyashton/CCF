@@ -17,7 +17,6 @@ jobs:
         uses: JasonEtco/create-an-issue@v2.4.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_ID: ${{ github.event.pull_request.number }}
         with:
           assignees: ${{ github.event.pull_request.user.login }}
