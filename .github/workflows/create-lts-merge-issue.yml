@@ -11,7 +11,7 @@ jobs:
 
     steps:
       - name: Create an issue
-        # You may pin to the exact commit or the version.
+        uses: actions/checkout@v2
         uses: JasonEtco/create-an-issue@v2.4.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
