@@ -1,30 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include "consensus/aft/raft.h"
-#include "ds/logger.h"
-#include "kv/test/stub_consensus.h"
-#include "logging_stub.h"
+
+#include "test_common.h"
 
 #define DOCTEST_CONFIG_NO_SHORT_MACRO_NAMES
-
-#include <chrono>
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
-#include <string>
-
-using namespace std;
-
-using ms = std::chrono::milliseconds;
-using TRaft =
-  aft::Aft<aft::LedgerStubProxy, aft::ChannelStubProxy, aft::StubSnapshotter>;
-using Store = aft::LoggingStubStore;
-using StoreSig = aft::LoggingStubStoreSig;
-using Adaptor = aft::Adaptor<Store>;
 
 threading::ThreadMessaging threading::ThreadMessaging::thread_messaging;
 std::atomic<uint16_t> threading::ThreadMessaging::thread_count = 1;
 
-std::vector<uint8_t> cert;
+using ms = std::chrono::milliseconds;
 
 DOCTEST_TEST_CASE("Single node startup" * doctest::test_suite("single"))
 {
@@ -311,28 +297,6 @@ static size_t dispatch_all(
   return count;
 }
 
-template <class NodeMap, class Messages, class Assertion>
-static size_t dispatch_all_and_DOCTEST_CHECK(
-  NodeMap& nodes,
-  const ccf::NodeId& from,
-  Messages& messages,
-  const Assertion& assertion)
-{
-  size_t count = 0;
-  while (messages.size())
-  {
-    auto message = messages.front();
-    messages.pop_front();
-    auto tgt_node_id = get<0>(message);
-    auto contents = get<1>(message);
-    assertion(contents);
-    nodes[tgt_node_id]->recv_message(
-      from, reinterpret_cast<uint8_t*>(&contents), sizeof(contents));
-    count++;
-  }
-  return count;
-}
-
 DOCTEST_TEST_CASE(
   "Multiple nodes append entries" * doctest::test_suite("multiple"))
 {
@@ -404,7 +368,7 @@ DOCTEST_TEST_CASE(
   r1.add_configuration(0, config);
   r2.add_configuration(0, config);
 
-  map<ccf::NodeId, TRaft*> nodes;
+  std::map<ccf::NodeId, TRaft*> nodes;
   nodes[node_id0] = &r0;
   nodes[node_id1] = &r1;
   nodes[node_id2] = &r2;
@@ -596,7 +560,7 @@ DOCTEST_TEST_CASE("Multiple nodes late join" * doctest::test_suite("multiple"))
   r0.add_configuration(0, config);
   r1.add_configuration(0, config);
 
-  map<ccf::NodeId, TRaft*> nodes;
+  std::map<ccf::NodeId, TRaft*> nodes;
   nodes[node_id0] = &r0;
   nodes[node_id1] = &r1;
 
@@ -752,7 +716,7 @@ DOCTEST_TEST_CASE("Recv append entries logic" * doctest::test_suite("multiple"))
   r0.add_configuration(0, config0);
   r1.add_configuration(0, config0);
 
-  map<ccf::NodeId, TRaft*> nodes;
+  std::map<ccf::NodeId, TRaft*> nodes;
   nodes[node_id0] = &r0;
   nodes[node_id1] = &r1;
 
@@ -1001,7 +965,7 @@ DOCTEST_TEST_CASE("Exceed append entries limit")
   r0.add_configuration(0, config0);
   r1.add_configuration(0, config0);
 
-  map<ccf::NodeId, TRaft*> nodes;
+  std::map<ccf::NodeId, TRaft*> nodes;
   nodes[node_id0] = &r0;
   nodes[node_id1] = &r1;
 
