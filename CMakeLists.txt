@@ -506,10 +506,9 @@ if(BUILD_TESTS)
   )
 
   add_e2e_test(
-    NAME recovery_test
+    NAME recovery_test_cft
     PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/recovery.py
     CONSENSUS cft
-    ADDITIONAL_ARGS --recovery 3
   )
 
   add_e2e_test(
