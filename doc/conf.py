@@ -88,7 +88,7 @@ language = None
 exclude_patterns = []
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = "solarizeddark"
+pygments_style = "solarized_dark"
 
 
 # -- Options for HTML output -------------------------------------------------
