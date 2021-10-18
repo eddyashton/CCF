@@ -329,6 +329,11 @@ if(BUILD_TESTS)
     )
 
     add_unit_test(
+      index_test
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/index.cpp
+    )
+
+    add_unit_test(
       snapshot_test ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/snapshot.cpp
     )
     target_link_libraries(snapshot_test PRIVATE)
