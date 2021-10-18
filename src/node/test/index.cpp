@@ -9,40 +9,127 @@
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>
 
-using TIndex = ccf::historical::Index<std::set<size_t>>;
+template <typename T>
+T merger(const T& a, const T& b)
+{
+  T r;
+  std::merge(
+    a.begin(), a.end(), b.begin(), b.end(), std::inserter(r, r.begin()));
+  return r;
+}
 
-void print_index(const TIndex& i)
+template <typename T>
+T map_merger(const T& a, const T& b)
+{
+  T r;
+  auto out = std::inserter(r, r.begin());
+
+  {
+    auto a_begin = a.begin();
+    const auto a_end = a.end();
+    auto b_begin = b.begin();
+    const auto b_end = b.end();
+
+    for (; a_begin != a_end; ++out)
+    {
+      if (b_begin == b_end)
+      {
+        std::copy(a_begin, a_end, out);
+        break;
+      }
+      if (b_begin->first < a_begin->first)
+      {
+        *out = *b_begin;
+        ++b_begin;
+      }
+      else if (a_begin->first < b_begin->first)
+      {
+        *out = *a_begin;
+        ++a_begin;
+      }
+      else
+      {
+        *out = std::make_pair(
+          a_begin->first, merger(a_begin->second, b_begin->second));
+        ++a_begin;
+        ++b_begin;
+      }
+    }
+    std::copy(b_begin, b_end, out);
+  }
+
+  return r;
+}
+
+template <typename T>
+void print_index(const ccf::historical::Index<T>& i)
 {
   fmt::print("{} sub-range(s)\n", i.sub_ranges.size());
   for (const auto& sr : i.sub_ranges)
   {
-    fmt::print(
-      "  [{}, {}]: {}\n",
-      sr.range.min,
-      sr.range.max,
-      fmt::join(sr.result, ", "));
+    std::string result_s = "[Unformattable]";
+
+    if constexpr (std::is_same_v<T, std::set<size_t>>)
+    {
+      result_s = fmt::format("{}", fmt::join(sr.result, ", "));
+    }
+    if constexpr (std::is_same_v<T, std::map<std::string, std::set<size_t>>>)
+    {
+      result_s = "";
+      for (const auto& [k, vs] : sr.result)
+      {
+        result_s += fmt::format("\n    {} = {}", k, fmt::join(vs, ", "));
+      }
+    }
+
+    fmt::print("  [{}, {}]: {}\n", sr.range.min, sr.range.max, result_s);
   }
 }
 
-TEST_CASE("TODO")
+// TEST_CASE("TODO")
+// {
+//   using TResult = std::set<size_t>;
+//   ccf::historical::Index<TResult> i(merger<TResult>);
+
+//   i.extend_index({3, 6}, {5, 6});
+//   print_index(i);
+
+//   i.extend_index({10, 15}, {11, 12, 13});
+//   print_index(i);
+
+//   i.extend_index({1, 1}, {1});
+//   print_index(i);
+
+//   i.extend_index({5, 8}, {5, 6, 8});
+//   print_index(i);
+
+//   i.extend_index({9, 9}, {});
+//   print_index(i);
+
+//   i.extend_index({8, 11}, {8, 10, 11});
+//   print_index(i);
+// }
+
+TEST_CASE("TODO2")
 {
-  TIndex i;
+  using TResult = std::map<std::string, std::set<size_t>>;
+  ccf::historical::Index<TResult> i(map_merger<TResult>);
 
-  i.extend_index({3, 6}, {5, 6});
+  i.extend_index({3, 6}, {{"a", {3, 5}}, {"b", {6}}});
   print_index(i);
 
-  i.extend_index({10, 15}, {11, 12, 13});
+  i.extend_index({10, 15}, {{"a", {11, 12, 13}}});
   print_index(i);
 
-  i.extend_index({1, 1}, {1});
+  i.extend_index({1, 1}, {{"b", {1}}});
   print_index(i);
 
-  i.extend_index({5, 8}, {5, 6, 8});
+  i.extend_index({5, 8}, {{"a", {5, 6, 8}}});
   print_index(i);
 
   i.extend_index({9, 9}, {});
   print_index(i);
 
-  i.extend_index({8, 11}, {8, 10, 11});
+  i.extend_index({8, 11}, {{"a", {8, 10}}, {"b", {11}}});
   print_index(i);
 }

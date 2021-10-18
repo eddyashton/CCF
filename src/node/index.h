@@ -15,14 +15,9 @@ namespace ccf::historical
   template <typename Result>
   class Index
   {
-  public:
-    Result combine_results(const Result& a, const Result& b)
-    {
-      Result r;
-      std::merge(
-        a.begin(), a.end(), b.begin(), b.end(), std::inserter(r, r.begin()));
-      return r;
-    }
+  public: // TODO: Only public for ease-of-debugging
+    using CombineFn = std::function<Result(const Result& a, const Result& b)>;
+    CombineFn combine_results;
 
     struct PartialIndex
     {
@@ -37,6 +32,8 @@ namespace ccf::historical
     }
 
   public:
+    Index(const CombineFn& fn) : combine_results(fn) {}
+
     std::optional<Result> lookup_index(Range range) {}
 
     void extend_index(Range new_range, Result new_result)
