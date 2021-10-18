@@ -32,9 +32,23 @@ namespace ccf::historical
     }
 
   public:
-    Index(const CombineFn& fn) : combine_results(fn) {}
+    Index(const CombineFn& combine) : combine_results(combine) {}
 
-    std::optional<Result> lookup_index(Range range) {}
+    // NB: The result may cover a broader range than what is requested. It is
+    // the responsibility of the caller to truncate this to the target range
+    // where necessary
+    std::optional<Result> lookup(Range target_range)
+    {
+      for (const auto& [range, result] : sub_ranges)
+      {
+        if (range.min <= target_range.min && range.max >= target_range.max)
+        {
+          return result;
+        }
+      }
+
+      return std::nullopt;
+    }
 
     void extend_index(Range new_range, Result new_result)
     {

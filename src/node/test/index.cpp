@@ -62,27 +62,50 @@ T map_merger(const T& a, const T& b)
 }
 
 template <typename T>
+std::string format_result(const T& t)
+{
+  std::string result_s = "[Unformattable]";
+
+  if constexpr (std::is_same_v<T, std::set<size_t>>)
+  {
+    result_s = fmt::format("{}", fmt::join(t, ", "));
+  }
+  if constexpr (std::is_same_v<T, std::map<std::string, std::set<size_t>>>)
+  {
+    result_s = "";
+    for (const auto& [k, vs] : t)
+    {
+      result_s += fmt::format("\n    {} = {}", k, fmt::join(vs, ", "));
+    }
+  }
+
+  return result_s;
+}
+
+template <typename T>
 void print_index(const ccf::historical::Index<T>& i)
 {
   fmt::print("{} sub-range(s)\n", i.sub_ranges.size());
   for (const auto& sr : i.sub_ranges)
   {
-    std::string result_s = "[Unformattable]";
+    fmt::print(
+      "  [{}, {}]: {}\n", sr.range.min, sr.range.max, format_result(sr.result));
+  }
+}
 
-    if constexpr (std::is_same_v<T, std::set<size_t>>)
-    {
-      result_s = fmt::format("{}", fmt::join(sr.result, ", "));
-    }
-    if constexpr (std::is_same_v<T, std::map<std::string, std::set<size_t>>>)
-    {
-      result_s = "";
-      for (const auto& [k, vs] : sr.result)
-      {
-        result_s += fmt::format("\n    {} = {}", k, fmt::join(vs, ", "));
-      }
-    }
+template <typename T>
+void print_lookup(ccf::historical::Index<T>& i, const ccf::historical::Range& r)
+{
+  fmt::print("Result for [{}, {}]:\n", r.min, r.max);
 
-    fmt::print("  [{}, {}]: {}\n", sr.range.min, sr.range.max, result_s);
+  const auto t = i.lookup(r);
+  if (t.has_value())
+  {
+    fmt::print("{}\n", format_result(*t));
+  }
+  else
+  {
+    fmt::print("  No result!\n");
   }
 }
 
@@ -132,4 +155,12 @@ TEST_CASE("TODO2")
 
   i.extend_index({8, 11}, {{"a", {8, 10}}, {"b", {11}}});
   print_index(i);
+
+  print_lookup(i, {1, 1});
+  print_lookup(i, {8, 11});
+  print_lookup(i, {4, 9});
+  print_lookup(i, {1, 3});
+  print_lookup(i, {1, 2});
+  print_lookup(i, {2, 3});
+  print_lookup(i, {2, 2});
 }
