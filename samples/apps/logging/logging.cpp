@@ -156,6 +156,9 @@ namespace loggingapp
       get_public_params_schema(nlohmann::json::parse(j_get_public_in)),
       get_public_result_schema(nlohmann::json::parse(j_get_public_out))
     {
+      // TODO
+      // context.get_indexer().index_writes_by_key(PRIVATE_RECORDS);
+
       const ccf::AuthnPolicies auth_policies = {
         ccf::jwt_auth_policy, ccf::user_cert_auth_policy};
 
@@ -971,6 +974,18 @@ namespace loggingapp
           return std::hash<decltype(v)>()(v);
         };
 
+        // TODO
+        // const auto applicable_entries =
+        //   context.get_indexer().lookup_index_by_key(PRIVATE_RECORDS, id,
+        //   range_begin, range_end);
+        // if (!applicable_entries.has_value())
+        // {
+        //   // Return still-loading error response
+        // }
+
+        // auto stores =
+        //   historical_cache.get_stores_at(handle, applicable_entries.value());
+
         ccf::historical::RequestHandle handle =
           make_handle(range_begin, range_end, id);
 
@@ -999,7 +1014,6 @@ namespace loggingapp
         LoggingGetHistoricalRange::Out response;
         for (size_t i = 0; i < stores.size(); ++i)
         {
-          const auto store_seqno = range_begin + i;
           auto& store = stores[i];
 
           auto historical_tx = store->create_read_only_tx();
@@ -1010,12 +1024,12 @@ namespace loggingapp
           if (v.has_value())
           {
             LoggingGetHistoricalRange::Entry e;
-            e.seqno = store_seqno;
+            e.seqno = store->current_txid().version;
             e.id = id;
             e.msg = v.value();
             response.entries.push_back(e);
           }
-          // This response do not include any entry when the given key wasn't
+          // This response does not include any entry when the given key wasn't
           // modified at this seqno. It could instead indicate that the store
           // was checked with an empty tombstone object, but this approach gives
           // smaller responses
