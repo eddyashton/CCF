@@ -681,7 +681,6 @@ class LedgerChunk:
     def is_complete(self):
         return self._pos_offset > 0
 
-
 class Ledger:
     """
     Class used to iterate over all :py:class:`ccf.ledger.LedgerChunk` stored in a CCF ledger folder.

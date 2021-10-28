@@ -654,6 +654,12 @@ if(BUILD_TESTS)
   endif()
 
   add_e2e_test(
+    NAME temp_raft_test_cft
+    PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/temp_raft_test.py
+    CONSENSUS cft
+  )
+
+  add_e2e_test(
     NAME schema_test_cft
     PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/schema.py
     CONSENSUS cft

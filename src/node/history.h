@@ -541,7 +541,7 @@ namespace ccf
     {
       if (signature_timer)
       {
-        start_signature_emit_timer();
+        // start_signature_emit_timer();
       }
     }
 

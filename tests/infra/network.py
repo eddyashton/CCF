@@ -10,6 +10,7 @@ import infra.path
 import infra.proc
 import infra.node
 import infra.consortium
+import infra.partitions
 from ccf.ledger import NodeStatus, Ledger
 from ccf.tx_status import TxStatus
 from ccf.tx_id import TxID
