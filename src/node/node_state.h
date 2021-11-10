@@ -5,6 +5,7 @@
 #include "blit.h"
 #include "consensus/aft/raft_consensus.h"
 #include "consensus/ledger_enclave.h"
+#include "crypto/certs.h"
 #include "crypto/entropy.h"
 #include "crypto/pem.h"
 #include "crypto/symmetric_key.h"
@@ -12,6 +13,7 @@
 #include "ds/logger.h"
 #include "ds/net.h"
 #include "ds/state_machine.h"
+#include "enclave/reconfiguration_type.h"
 #include "enclave/rpc_sessions.h"
 #include "encryptor.h"
 #include "entities.h"
@@ -286,7 +288,12 @@ namespace ccf
         get_subject_alternative_names();
 
       js::register_class_ids();
-      self_signed_node_cert = create_self_signed_node_cert();
+      self_signed_node_cert = create_self_signed_cert(
+        node_sign_kp,
+        config.node_certificate_subject_identity,
+        config.startup_host_time,
+        config.initial_node_certificate_validity_period_days);
+
       accept_node_tls_connections();
       open_frontend(ActorsType::nodes);
 
@@ -320,13 +327,18 @@ namespace ccf
 
           if (network.consensus_type == ConsensusType::BFT)
           {
-            endorsed_node_cert = create_endorsed_node_cert();
+            endorsed_node_cert = create_endorsed_node_cert(
+              config.initial_node_certificate_validity_period_days);
             history->set_endorsed_certificate(endorsed_node_cert.value());
             accept_network_tls_connections();
             open_frontend(ActorsType::members);
           }
 
-          setup_consensus(ServiceStatus::OPENING, false, endorsed_node_cert);
+          setup_consensus(
+            ServiceStatus::OPENING,
+            config.genesis.reconfiguration_type,
+            false,
+            endorsed_node_cert);
 
           // Become the primary and force replication
           consensus->force_become_primary();
@@ -487,7 +499,8 @@ namespace ccf
               // from 2.x (CFT only). When joining an existing 1.x service,
               // self-sign own certificate and use it to endorse TLS
               // connections.
-              endorsed_node_cert = create_endorsed_node_cert();
+              endorsed_node_cert = create_endorsed_node_cert(
+                default_node_cert_validity_period_days);
               history->set_endorsed_certificate(endorsed_node_cert.value());
               n2n_channels_cert = endorsed_node_cert.value();
               open_frontend(ActorsType::members);
@@ -503,6 +516,8 @@ namespace ccf
             setup_consensus(
               resp.network_info->service_status.value_or(
                 ServiceStatus::OPENING),
+              resp.network_info->reconfiguration_type.value_or(
+                ReconfigurationType::ONE_TRANSACTION),
               resp.network_info->public_only,
               n2n_channels_cert);
             auto_refresh_jwt_keys();
@@ -900,7 +915,8 @@ namespace ccf
       auto tx = network.tables->create_read_only_tx();
       if (network.consensus_type == ConsensusType::BFT)
       {
-        endorsed_node_cert = create_endorsed_node_cert();
+        endorsed_node_cert = create_endorsed_node_cert(
+          config.initial_node_certificate_validity_period_days);
         history->set_endorsed_certificate(endorsed_node_cert.value());
         accept_network_tls_connections();
         open_frontend(ActorsType::members);
@@ -937,7 +953,11 @@ namespace ccf
         progress_tracker->set_node_id(self);
       }
 
-      setup_consensus(ServiceStatus::OPENING, true);
+      auto service_config = tx.ro(network.config)->get();
+      auto reconfiguration_type = service_config->reconfiguration_type.value_or(
+        ReconfigurationType::ONE_TRANSACTION);
+
+      setup_consensus(ServiceStatus::OPENING, reconfiguration_type, true);
       auto_refresh_jwt_keys();
 
       LOG_DEBUG_FMT(
@@ -1509,28 +1529,17 @@ namespace ccf
       }
     }
 
-    Pem create_self_signed_node_cert()
-    {
-      return node_sign_kp->self_sign(config.node_certificate_subject_identity);
-    }
-
-    Pem create_endorsed_node_cert()
+    crypto::Pem create_endorsed_node_cert(size_t validity_period_days)
     {
       // Only used by a 2.x node joining an existing 1.x service which will not
       // endorsed the identity of the new joiner.
-      auto nw = crypto::make_key_pair(network.identity->priv_key);
-      auto csr =
-        node_sign_kp->create_csr(config.node_certificate_subject_identity);
-      return nw->sign_csr(network.identity->cert, csr);
-    }
-
-    crypto::Pem generate_endorsed_certificate(
-      const crypto::Pem& subject_csr,
-      const crypto::Pem& endorser_private_key,
-      const crypto::Pem& endorser_cert) override
-    {
-      return crypto::make_key_pair(endorser_private_key)
-        ->sign_csr(endorser_cert, subject_csr);
+      return create_endorsed_cert(
+        node_sign_kp,
+        config.node_certificate_subject_identity,
+        config.startup_host_time,
+        validity_period_days,
+        network.identity->priv_key,
+        network.identity->cert);
     }
 
     void accept_node_tls_connections()
@@ -1587,14 +1596,12 @@ namespace ccf
           genesis_info.members_info.push_back(m_info);
         }
         genesis_info.constitution = config.genesis.constitution;
-        auto reconf_type = network.consensus_type == ConsensusType::BFT ?
-          ReconfigurationType::TWO_TRANSACTION :
-          ReconfigurationType::ONE_TRANSACTION;
 
         genesis_info.configuration = {
           config.genesis.recovery_threshold,
           network.consensus_type,
-          reconf_type};
+          config.genesis.reconfiguration_type,
+          config.genesis.max_allowed_node_cert_validity_days};
         create_params.genesis_info = genesis_info;
       }
 
@@ -1607,6 +1614,9 @@ namespace ccf
       create_params.public_encryption_key = node_encrypt_kp->public_key_pem();
       create_params.code_digest = node_code_id;
       create_params.node_info_network = config.node_info_network;
+      create_params.node_cert_valid_from = config.startup_host_time;
+      create_params.initial_node_cert_validity_period_days =
+        config.initial_node_certificate_validity_period_days;
 
       // Record self-signed certificate in create request if the node does not
       // require endorsement by the service (i.e. BFT)
@@ -1937,6 +1947,7 @@ namespace ccf
 
     void setup_consensus(
       ServiceStatus service_status,
+      ReconfigurationType reconfiguration_type,
       bool public_only = false,
       const std::optional<crypto::Pem>& endorsed_node_certificate_ =
         std::nullopt)
@@ -1950,18 +1961,22 @@ namespace ccf
         std::chrono::milliseconds(consensus_config.raft_election_timeout));
       auto shared_state = std::make_shared<aft::State>(self);
 
-      auto resharing_tracker =
+      auto resharing_tracker = nullptr;
+      if (consensus_config.consensus_type == ConsensusType::BFT)
+      {
         std::make_shared<ccf::SplitIdentityResharingTracker>(
           shared_state,
           rpc_map,
           node_sign_kp,
           self_signed_node_cert,
           endorsed_node_cert);
+      }
+
       auto node_client = std::make_shared<HTTPNodeClient>(
         rpc_map, node_sign_kp, self_signed_node_cert, endorsed_node_cert);
 
       kv::ReplicaState initial_state =
-        (network.consensus_type == ConsensusType::BFT &&
+        (reconfiguration_type == ReconfigurationType::TWO_TRANSACTION &&
          service_status == ServiceStatus::OPEN) ?
         kv::ReplicaState::Learner :
         kv::ReplicaState::Follower;
@@ -1985,7 +2000,8 @@ namespace ccf
         std::chrono::milliseconds(consensus_config.bft_view_change_timeout),
         sig_tx_interval,
         public_only,
-        initial_state);
+        initial_state,
+        reconfiguration_type);
 
       consensus = std::make_shared<RaftConsensusType>(
         std::move(raft), network.consensus_type);
@@ -2076,8 +2092,9 @@ namespace ccf
     void read_ledger_idx(consensus::Index idx)
     {
       RINGBUFFER_WRITE_MESSAGE(
-        consensus::ledger_get,
+        consensus::ledger_get_range,
         to_host,
+        idx,
         idx,
         consensus::LedgerRequestPurpose::Recovery);
     }

@@ -40,15 +40,20 @@ struct LedgerStubProxy_Mermaid : public aft::LedgerStubProxy
   void put_entry(
     const std::vector<uint8_t>& data,
     bool globally_committable,
-    bool force_chunk) override
+    bool force_chunk,
+    kv::Term term,
+    kv::Version index) override
   {
     RAFT_DRIVER_OUT << fmt::format(
-                         "  {}->>{}: [ledger] appending: {}",
+                         "  {}->>{}: [ledger] appending: {}.{}={}",
                          _id,
                          _id,
+                         term,
+                         index,
                          stringify(data))
                     << std::endl;
-    aft::LedgerStubProxy::put_entry(data, globally_committable, force_chunk);
+    aft::LedgerStubProxy::put_entry(
+      data, globally_committable, force_chunk, term, index);
   }
 
   void truncate(aft::Index idx) override
@@ -144,6 +149,7 @@ public:
         ms(10),
         ms(100),
         ms(100));
+      raft->start_ticking();
 
       _nodes.emplace(node_id, NodeDriver{kv, raft});
       configuration.try_emplace(node_id);
@@ -390,7 +396,7 @@ public:
 
           auto& sender_raft = _nodes.at(node_id).raft;
           const auto payload_opt =
-            sender_raft->ledger->get_append_entries_payload(ae, sender_raft);
+            sender_raft->ledger->get_append_entries_payload(ae);
 
           if (!payload_opt.has_value())
           {

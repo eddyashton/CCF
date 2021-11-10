@@ -7,8 +7,11 @@
 #include "ccf/http_query.h"
 #include "ccf/json_handler.h"
 #include "ccf/version.h"
+#include "consensus/aft/orc_requests.h"
+#include "crypto/certs.h"
 #include "crypto/csr.h"
 #include "crypto/hash.h"
+#include "enclave/reconfiguration_type.h"
 #include "frontend.h"
 #include "node/entities.h"
 #include "node/network_state.h"
@@ -139,16 +142,25 @@ namespace ccf
       return duplicate_node_id;
     }
 
+    bool is_taking_part_in_acking(NodeStatus node_status)
+    {
+      return node_status == NodeStatus::TRUSTED ||
+        node_status == NodeStatus::LEARNER ||
+        node_status == NodeStatus::RETIRING;
+    }
+
     auto add_node(
       kv::Tx& tx,
       const std::vector<uint8_t>& node_der,
       const JoinNetworkNodeToNode::In& in,
       NodeStatus node_status,
-      ServiceStatus service_status)
+      ServiceStatus service_status,
+      ReconfigurationType reconfiguration_type)
     {
       auto nodes = tx.rw(network.nodes);
       auto node_endorsed_certificates =
         tx.rw(network.node_endorsed_certificates);
+      auto config = tx.ro(network.config)->get();
 
       auto conflicting_node_id =
         check_conflicting_node_network(tx, in.node_info_network);
@@ -196,7 +208,7 @@ namespace ccf
       auto client_public_key_pem = crypto::public_key_pem_from_cert(node_der);
       if (in.certificate_signing_request.has_value())
       {
-        // Verify that client's public key matches the one specified in the CSR)
+        // Verify that client's public key matches the one specified in the CSR
         auto csr_public_key_pem = crypto::public_key_pem_from_csr(
           in.certificate_signing_request.value());
         if (client_public_key_pem != csr_public_key_pem)
@@ -227,14 +239,13 @@ namespace ccf
 
       nodes->put(joining_node_id, node_info);
 
-      kv::NetworkConfiguration nc =
-        get_latest_network_configuration(network, tx);
-      nc.nodes.insert(joining_node_id);
-
       if (
         node_status == NodeStatus::TRUSTED ||
         node_status == NodeStatus::LEARNER)
       {
+        kv::NetworkConfiguration nc =
+          get_latest_network_configuration(network, tx);
+        nc.nodes.insert(joining_node_id);
         add_new_network_reconfiguration(network, tx, nc);
       }
 
@@ -254,11 +265,17 @@ namespace ccf
           in.certificate_signing_request.has_value() &&
           this->network.consensus_type == ConsensusType::CFT)
         {
-          endorsed_certificate =
-            context.get_node_state().generate_endorsed_certificate(
-              in.certificate_signing_request.value(),
-              this->network.identity->priv_key,
-              this->network.identity->cert);
+          // For a pre-open service, extract the validity period of self-signed
+          // node certificate and use it verbatim in endorsed certificate
+          auto [valid_from, valid_to] =
+            crypto::make_verifier(node_der)->validity_period();
+          endorsed_certificate = crypto::create_endorsed_cert(
+            in.certificate_signing_request.value(),
+            valid_from,
+            valid_to,
+            this->network.identity->priv_key,
+            this->network.identity->cert);
+
           node_endorsed_certificates->put(
             joining_node_id, {endorsed_certificate.value()});
         }
@@ -267,6 +284,7 @@ namespace ccf
           context.get_node_state().is_part_of_public_network(),
           context.get_node_state().get_last_recovered_signed_idx(),
           this->network.consensus_type,
+          reconfiguration_type,
           this->network.ledger_secrets->get(tx),
           *this->network.identity.get(),
           service_status,
@@ -349,6 +367,12 @@ namespace ccf
             "No service is available to accept new node.");
         }
 
+        auto config = args.tx.ro(network.config);
+        auto service_config = config->get();
+        auto reconfiguration_type =
+          service_config->reconfiguration_type.value_or(
+            ReconfigurationType::ONE_TRANSACTION);
+
         if (active_service->status == ServiceStatus::OPENING)
         {
           // If the service is opening, new nodes are trusted straight away
@@ -365,6 +389,7 @@ namespace ccf
               context.get_node_state().is_part_of_public_network(),
               context.get_node_state().get_last_recovered_signed_idx(),
               this->network.consensus_type,
+              reconfiguration_type,
               this->network.ledger_secrets->get(
                 args.tx, existing_node_info->ledger_secret_seqno),
               *this->network.identity.get(),
@@ -412,7 +437,8 @@ namespace ccf
             args.rpc_ctx->session->caller_cert,
             in,
             joining_node_status,
-            active_service->status);
+            active_service->status,
+            reconfiguration_type);
         }
 
         // If the service is open, new nodes are first added as pending and
@@ -428,16 +454,16 @@ namespace ccf
 
           // If the node already exists, return network secrets if is already
           // trusted. Otherwise, only return its status
-          auto node_status = nodes->get(existing_node_info->node_id)->status;
+          auto node_info = nodes->get(existing_node_info->node_id);
+          auto node_status = node_info->status;
           rep.node_status = node_status;
-          if (
-            node_status == NodeStatus::TRUSTED ||
-            node_status == NodeStatus::LEARNER)
+          if (is_taking_part_in_acking(node_status))
           {
             rep.network_info = JoinNetworkNodeToNode::Out::NetworkInfo(
               context.get_node_state().is_part_of_public_network(),
               context.get_node_state().get_last_recovered_signed_idx(),
               this->network.consensus_type,
+              reconfiguration_type,
               this->network.ledger_secrets->get(
                 args.tx, existing_node_info->ledger_secret_seqno),
               *this->network.identity.get(),
@@ -456,7 +482,8 @@ namespace ccf
             return make_error(
               HTTP_STATUS_BAD_REQUEST,
               ccf::errors::InvalidNodeState,
-              "Joining node is not in expected state.");
+              fmt::format(
+                "Joining node is not in expected state ({}).", node_status));
           }
         }
         else
@@ -500,7 +527,8 @@ namespace ccf
             args.rpc_ctx->session->caller_cert,
             in,
             NodeStatus::PENDING,
-            active_service->status);
+            active_service->status,
+            reconfiguration_type);
         }
       };
       make_endpoint("/join", HTTP_POST, json_adapter(accept), no_auth_required)
@@ -1129,8 +1157,6 @@ namespace ccf
         // Genesis transaction (i.e. not after recovery)
         if (in.genesis_info.has_value())
         {
-          g.init_values();
-
           // Note that it is acceptable to start a network without any member
           // having a recovery share. The service will check that at least one
           // recovery member is added before the service is opened.
@@ -1161,8 +1187,10 @@ namespace ccf
             ctx.tx.rw(network.node_endorsed_certificates);
           endorsed_certificates->put(
             in.node_id,
-            context.get_node_state().generate_endorsed_certificate(
+            crypto::create_endorsed_cert(
               in.certificate_signing_request,
+              in.node_cert_valid_from,
+              in.initial_node_cert_validity_period_days,
               this->network.identity->priv_key,
               this->network.identity->cert));
         }
@@ -1331,16 +1359,6 @@ namespace ccf
 
       auto orc_handler = [this](auto& args, const nlohmann::json& params) {
         const auto in = params.get<ObservedReconfigurationCommit::In>();
-        LOG_DEBUG_FMT(
-          "ORC for configuration #{} from {}", in.reconfiguration_id, in.from);
-
-        if (consensus == nullptr)
-        {
-          return make_error(
-            HTTP_STATUS_INTERNAL_SERVER_ERROR,
-            ccf::errors::ConsensusTypeMismatch,
-            fmt::format("No consensus"));
-        }
 
         if (consensus->type() != ConsensusType::BFT)
         {
@@ -1368,34 +1386,41 @@ namespace ccf
             "Configurations: sufficient number of ORCs, updating nodes in "
             "configuration #{}",
             in.reconfiguration_id);
-          auto ncfgs = args.tx.ro(network.network_configurations);
+          auto ncfgs = args.tx.rw(network.network_configurations);
           auto nodes = args.tx.rw(network.nodes);
           auto nc = ncfgs->get(in.reconfiguration_id);
-          for (auto nid : nc->nodes)
-          {
-            auto node_info = nodes->get(nid);
-            if (!node_info.has_value())
-            {
-              return make_error(
-                HTTP_STATUS_INTERNAL_SERVER_ERROR,
-                ccf::errors::InternalError,
-                fmt::format("Missing node information for {}", nid));
-            }
 
-            if (node_info->status == NodeStatus::LEARNER)
-            {
-              node_info->status = NodeStatus::TRUSTED;
-              nodes->put(nid, *node_info);
-            }
-            else if (node_info->status == NodeStatus::RETIRING)
-            {
-              node_info->status = NodeStatus::RETIRED;
-              nodes->put(nid, *node_info);
-            }
+          if (!nc.has_value())
+          {
+            return make_error(
+              HTTP_STATUS_BAD_REQUEST,
+              ccf::errors::ResourceNotFound,
+              fmt::format(
+                "unknown reconfiguration id: {}", in.reconfiguration_id));
           }
+
+          nodes->foreach([&nodes, &nc](const auto& nid, const auto& node_info) {
+            if (
+              node_info.status == NodeStatus::RETIRING &&
+              nc->nodes.find(nid) == nc->nodes.end())
+            {
+              auto updated_info = node_info;
+              updated_info.status = NodeStatus::RETIRED;
+              nodes->put(nid, updated_info);
+            }
+            else if (
+              node_info.status == NodeStatus::LEARNER &&
+              nc->nodes.find(nid) != nc->nodes.end())
+            {
+              auto updated_info = node_info;
+              updated_info.status = NodeStatus::TRUSTED;
+              nodes->put(nid, updated_info);
+            }
+            return true;
+          });
         }
 
-        return make_success();
+        return make_success(true);
       };
 
       make_endpoint(

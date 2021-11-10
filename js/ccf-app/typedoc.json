@@ -1,6 +1,7 @@
 {
   "entryPoints": [
     "src/index.ts",
+    "src/consensus.ts",
     "src/converters.ts",
     "src/crypto.ts",
     "src/endpoints.ts",
@@ -10,7 +11,9 @@
     "src/polyfill.ts"
   ],
   "out": "html",
-  "theme": "./doc/theme",
+  "theme": "default",
   "categorizeByGroup": false,
-  "listInvalidSymbolLinks": true
+  "validation": {
+    "invalidLink": true
+  }
 }
