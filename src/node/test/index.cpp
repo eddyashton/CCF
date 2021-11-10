@@ -61,6 +61,7 @@ T map_merger(const T& a, const T& b)
   return r;
 }
 
+// These functions may be helpful for debugging
 template <typename T>
 std::string format_result(const T& t)
 {
@@ -109,58 +110,182 @@ void print_lookup(ccf::historical::Index<T>& i, const ccf::historical::Range& r)
   }
 }
 
-// TEST_CASE("TODO")
-// {
-//   using TResult = std::set<size_t>;
-//   ccf::historical::Index<TResult> i(merger<TResult>);
+TEST_CASE("Set-based index")
+{
+  using TResult = std::set<size_t>;
+  ccf::historical::Index<TResult> i(merger<TResult>);
 
-//   i.extend_index({3, 6}, {5, 6});
-//   print_index(i);
+  // NB: Resulting index has a hole at index 2, where nothing has been recorded
+  i.extend_index({3, 6}, {5, 6});
+  i.extend_index({10, 15}, {11, 12, 13});
+  i.extend_index({1, 1}, {1});
+  i.extend_index({5, 8}, {5, 6, 8});
+  i.extend_index({9, 9}, {});
+  i.extend_index({8, 11}, {8, 10, 11});
 
-//   i.extend_index({10, 15}, {11, 12, 13});
-//   print_index(i);
+  {
+    const auto res = i.lookup({2, 2});
+    REQUIRE_FALSE(res.has_value());
+  }
 
-//   i.extend_index({1, 1}, {1});
-//   print_index(i);
+  {
+    const auto res = i.lookup({2, 3});
+    REQUIRE_FALSE(res.has_value());
+  }
 
-//   i.extend_index({5, 8}, {5, 6, 8});
-//   print_index(i);
+  {
+    const auto res = i.lookup({3, 3});
+    REQUIRE(res.has_value());
+    REQUIRE_FALSE(res->contains(3));
+  }
 
-//   i.extend_index({9, 9}, {});
-//   print_index(i);
+  {
+    const auto res = i.lookup({4, 6});
+    REQUIRE(res.has_value());
+    REQUIRE_FALSE(res->contains(4));
+    REQUIRE(res->contains(5));
+    REQUIRE(res->contains(6));
+  }
 
-//   i.extend_index({8, 11}, {8, 10, 11});
-//   print_index(i);
-// }
+  {
+    const auto res = i.lookup({1, 1});
+    REQUIRE(res.has_value());
+    REQUIRE(res->contains(1));
+  }
 
-TEST_CASE("TODO2")
+  {
+    const auto res = i.lookup({1, 3});
+    REQUIRE_FALSE(res.has_value());
+  }
+
+  {
+    const auto res = i.lookup({9, 9});
+    REQUIRE(res.has_value());
+    REQUIRE_FALSE(res->contains(7));
+    REQUIRE(res->contains(8));
+    REQUIRE_FALSE(res->contains(9));
+  }
+
+  {
+    const auto res = i.lookup({7, 9});
+    REQUIRE(res.has_value());
+    REQUIRE_FALSE(res->contains(9));
+  }
+
+  {
+    const auto res = i.lookup({1, 15});
+    REQUIRE_FALSE(res.has_value());
+  }
+
+  {
+    const auto res = i.lookup({3, 15});
+    REQUIRE(res.has_value());
+
+    REQUIRE_FALSE(res->contains(3));
+    REQUIRE_FALSE(res->contains(4));
+    REQUIRE(res->contains(5));
+    REQUIRE(res->contains(6));
+    REQUIRE_FALSE(res->contains(7));
+    REQUIRE(res->contains(8));
+    REQUIRE_FALSE(res->contains(9));
+    REQUIRE(res->contains(10));
+    REQUIRE(res->contains(11));
+    REQUIRE(res->contains(12));
+    REQUIRE(res->contains(13));
+    REQUIRE_FALSE(res->contains(14));
+    REQUIRE_FALSE(res->contains(15));
+  }
+}
+
+TEST_CASE("Map-based index")
 {
   using TResult = std::map<std::string, std::set<size_t>>;
   ccf::historical::Index<TResult> i(map_merger<TResult>);
 
   i.extend_index({3, 6}, {{"a", {3, 5}}, {"b", {6}}});
-  print_index(i);
-
   i.extend_index({10, 15}, {{"a", {11, 12, 13}}});
-  print_index(i);
-
   i.extend_index({1, 1}, {{"b", {1}}});
-  print_index(i);
-
   i.extend_index({5, 8}, {{"a", {5, 6, 8}}});
-  print_index(i);
-
   i.extend_index({9, 9}, {});
-  print_index(i);
-
   i.extend_index({8, 11}, {{"a", {8, 10}}, {"b", {11}}});
-  print_index(i);
 
-  print_lookup(i, {1, 1});
-  print_lookup(i, {8, 11});
-  print_lookup(i, {4, 9});
-  print_lookup(i, {1, 3});
-  print_lookup(i, {1, 2});
-  print_lookup(i, {2, 3});
-  print_lookup(i, {2, 2});
+  {
+    const auto res = i.lookup({1, 1});
+    REQUIRE(res.has_value());
+    REQUIRE(res->find("a") == res->end());
+    auto b_it = res->find("b");
+    REQUIRE(b_it != res->end());
+    REQUIRE(b_it->second.size() == 1);
+    REQUIRE(*b_it->second.begin() == 1);
+  }
+
+  {
+    const auto res = i.lookup({8, 11});
+    REQUIRE(res.has_value());
+    auto a_it = res->find("a");
+    REQUIRE(a_it != res->end());
+    {
+      const auto& as = a_it->second;
+      REQUIRE(as.contains(8));
+      REQUIRE_FALSE(as.contains(9));
+      REQUIRE(as.contains(10));
+      REQUIRE(as.contains(11));
+    }
+    auto b_it = res->find("b");
+    REQUIRE(b_it != res->end());
+    {
+      const auto& bs = b_it->second;
+      REQUIRE_FALSE(bs.contains(8));
+      REQUIRE_FALSE(bs.contains(9));
+      REQUIRE_FALSE(bs.contains(10));
+      REQUIRE(bs.contains(11));
+    }
+  }
+
+  {
+    const auto res = i.lookup({4, 9});
+    REQUIRE(res.has_value());
+    auto a_it = res->find("a");
+    REQUIRE(a_it != res->end());
+    {
+      const auto& as = a_it->second;
+      REQUIRE_FALSE(as.contains(4));
+      REQUIRE(as.contains(5));
+      REQUIRE(as.contains(6));
+      REQUIRE_FALSE(as.contains(7));
+      REQUIRE(as.contains(8));
+      REQUIRE_FALSE(as.contains(9));
+    }
+    auto b_it = res->find("b");
+    REQUIRE(b_it != res->end());
+    {
+      const auto& bs = b_it->second;
+      REQUIRE_FALSE(bs.contains(4));
+      REQUIRE_FALSE(bs.contains(5));
+      REQUIRE(bs.contains(6));
+      REQUIRE_FALSE(bs.contains(7));
+      REQUIRE_FALSE(bs.contains(8));
+      REQUIRE_FALSE(bs.contains(9));
+    }
+  }
+
+  {
+    const auto res = i.lookup({1, 3});
+    REQUIRE_FALSE(res.has_value());
+  }
+
+  {
+    const auto res = i.lookup({1, 2});
+    REQUIRE_FALSE(res.has_value());
+  }
+
+  {
+    const auto res = i.lookup({2, 3});
+    REQUIRE_FALSE(res.has_value());
+  }
+
+  {
+    const auto res = i.lookup({2, 2});
+    REQUIRE_FALSE(res.has_value());
+  }
 }
