@@ -11,6 +11,46 @@ namespace asynchost
   class DNS
   {
   public:
+    static bool resolve_sync(
+      const std::string& host,
+      const std::string& service,
+      void* ud,
+      uv_getaddrinfo_cb cb)
+    {
+      struct addrinfo hints;
+      hints.ai_family = AF_UNSPEC;
+      hints.ai_socktype = SOCK_STREAM;
+      hints.ai_protocol = IPPROTO_TCP;
+      hints.ai_flags = 0;
+
+      auto resolver = new uv_getaddrinfo_t;
+      resolver->data = ud;
+
+      int rc;
+
+      if (
+        (rc = uv_getaddrinfo(
+           uv_default_loop(),
+           resolver,
+           nullptr,
+           host.c_str(),
+           service.c_str(),
+           &hints)) < 0)
+      {
+        LOG_FAIL_FMT(
+          "uv_getaddrinfo for host:service [{}:{}] failed with error {}",
+          host,
+          service,
+          uv_strerror(rc));
+        delete resolver;
+        return false;
+      }
+
+      cb(resolver, rc, &hints);
+
+      return true;
+    }
+
     static void sleep_rand(uv_work_t* req)
     {
       const auto sleep_time = 100 + (rand() % 500);
@@ -63,17 +103,16 @@ namespace asynchost
       delete req;
     }
 
-    static bool resolve(
+    static bool resolve_async(
       const std::string& host,
       const std::string& service,
       void* ud,
       uv_getaddrinfo_cb cb,
-      bool async)
+      uv_getaddrinfo_t*& resolver)
     {
-      auto resolver = new uv_getaddrinfo_t;
+      resolver = new uv_getaddrinfo_t;
       resolver->data = ud;
 
-      if (async)
       {
         uv_work_t* work_req = new uv_work_t;
         {
@@ -86,37 +125,6 @@ namespace asynchost
           work_req->data = req_data;
         }
         uv_queue_work(uv_default_loop(), work_req, sleep_rand, async_resolve);
-        return true;
-      }
-      else
-      {
-        struct addrinfo hints;
-        hints.ai_family = AF_UNSPEC;
-        hints.ai_socktype = SOCK_STREAM;
-        hints.ai_protocol = IPPROTO_TCP;
-        hints.ai_flags = 0;
-
-        int rc;
-
-        if (
-          (rc = uv_getaddrinfo(
-             uv_default_loop(),
-             resolver,
-             nullptr,
-             host.c_str(),
-             service.c_str(),
-             &hints)) < 0)
-        {
-          LOG_FAIL_FMT(
-            "uv_getaddrinfo for host:service [{}:{}] failed with error {}",
-            host,
-            service,
-            uv_strerror(rc));
-          delete resolver;
-          return false;
-        }
-
-        cb(resolver, rc, &hints);
       }
 
       return true;

@@ -109,6 +109,7 @@ namespace asynchost
     addrinfo* client_addr_base = nullptr;
     addrinfo* addr_base = nullptr;
     addrinfo* addr_current = nullptr;
+    uv_getaddrinfo_t* pending_dns_resolve = nullptr;
 
     bool service_assigned() const
     {
@@ -148,6 +149,11 @@ namespace asynchost
 
     ~TCPImpl()
     {
+      if (pending_dns_resolve != nullptr)
+      {
+        LOG_INFO_FMT("AAA Deleting {}", (size_t)pending_dns_resolve);
+        uv_cancel((uv_req_t*)pending_dns_resolve);
+      }
       if (addr_base != nullptr)
       {
         uv_freeaddrinfo(addr_base);
@@ -202,7 +208,7 @@ namespace asynchost
         }
         else
         {
-          resolve(this->host, this->service, true);
+          resolve_async(this->host, this->service);
         }
       }
     }
@@ -253,8 +259,8 @@ namespace asynchost
         }
 
         status = BINDING;
-        if (!DNS::resolve(
-              client_host.value(), "0", this, on_client_resolved, false))
+        if (!DNS::resolve_sync(
+              client_host.value(), "0", this, on_client_resolved))
         {
           LOG_DEBUG_FMT("Bind to '{}' failed", client_host.value());
           status = BINDING_FAILED;
@@ -264,7 +270,7 @@ namespace asynchost
       else
       {
         assert_status(FRESH, CONNECTING_RESOLVING);
-        return resolve(host, service, true);
+        return resolve_async(host, service);
       }
 
       return true;
@@ -287,7 +293,7 @@ namespace asynchost
           // Try again, starting with DNS.
           LOG_DEBUG_FMT("Reconnect from DNS");
           status = CONNECTING_RESOLVING;
-          return resolve(host, service, true);
+          return resolve_async(host, service);
         }
 
         case DISCONNECTED:
@@ -321,7 +327,7 @@ namespace asynchost
       const std::optional<std::string>& name = std::nullopt)
     {
       assert_status(FRESH, LISTENING_RESOLVING);
-      bool ret = resolve(host, service, false);
+      bool ret = resolve_sync(host, service);
       listen_name = name;
       return ret;
     }
@@ -564,8 +570,8 @@ namespace asynchost
       status = to;
     }
 
-    bool resolve(
-      const std::string& host, const std::string& service, bool async = true)
+    void reinitialise_resolve_state(
+      const std::string& host, const std::string& service)
     {
       this->host = host;
       this->service = service;
@@ -576,8 +582,34 @@ namespace asynchost
         addr_base = nullptr;
         addr_current = nullptr;
       }
+    }
 
-      if (!DNS::resolve(host, service, this, on_resolved, async))
+    bool resolve_sync(const std::string& host, const std::string& service)
+    {
+      reinitialise_resolve_state(host, service);
+      if (!DNS::resolve_sync(host, service, this, on_resolved))
+      {
+        LOG_DEBUG_FMT("Resolving '{}' failed", host);
+        status = RESOLVING_FAILED;
+        return false;
+      }
+
+      return true;
+    }
+
+    bool resolve_async(const std::string& host, const std::string& service)
+    {
+      if (pending_dns_resolve != nullptr)
+      {
+        LOG_FAIL_FMT(
+          "Called resolve while existing resolve request is still in-flight");
+        return false;
+      }
+
+      reinitialise_resolve_state(host, service);
+
+      if (!DNS::resolve_async(
+            host, service, this, on_resolved, pending_dns_resolve))
       {
         LOG_DEBUG_FMT("Resolving '{}' failed", host);
         status = RESOLVING_FAILED;
@@ -589,7 +621,17 @@ namespace asynchost
 
     static void on_resolved(uv_getaddrinfo_t* req, int rc, struct addrinfo*)
     {
-      static_cast<TCPImpl*>(req->data)->on_resolved(req, rc);
+      if (rc == UV_ECANCELED)
+      {
+        LOG_INFO_FMT(
+          "AAA: Dodging a bullet on {}, I know that's already cancelled!",
+          (size_t)req);
+        delete req;
+      }
+      else
+      {
+        static_cast<TCPImpl*>(req->data)->on_resolved(req, rc);
+      }
     }
 
     void on_resolved(uv_getaddrinfo_t* req, int rc)
@@ -603,6 +645,7 @@ namespace asynchost
         LOG_DEBUG_FMT("on_resolved: closing");
         uv_freeaddrinfo(req->addrinfo);
         delete req;
+        pending_dns_resolve = nullptr;
         return;
       }
 
@@ -640,6 +683,8 @@ namespace asynchost
       }
 
       delete req;
+      LOG_INFO_FMT("AAA Unsetting {}", (size_t)pending_dns_resolve);
+      pending_dns_resolve = nullptr;
     }
 
     static void on_accept(uv_stream_t* handle, int rc)
