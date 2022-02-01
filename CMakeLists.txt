@@ -743,7 +743,7 @@ if(BUILD_TESTS)
 
   set(RECONFIG_TEST_ARGS --ccf-version ${CCF_VERSION})
   if(ENABLE_2TX_RECONFIG)
-    list(APPEND RECONFIG_TEST_ARGS --include-2tx-reconfig)
+    # list(APPEND RECONFIG_TEST_ARGS --include-2tx-reconfig)
   endif()
   add_e2e_test(
     NAME reconfiguration_test_cft
