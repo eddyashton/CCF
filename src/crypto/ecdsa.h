@@ -30,10 +30,10 @@ namespace crypto
     (void)r.release();
     (void)s.release();
     auto der_size = i2d_ECDSA_SIG(sig, nullptr);
-    OpenSSL::CHECK0(der_size);
+    OpenSSL::CHECKNOT0(der_size);
     std::vector<uint8_t> der_sig(der_size);
     auto der_sig_buf = der_sig.data();
-    OpenSSL::CHECK0(i2d_ECDSA_SIG(sig, &der_sig_buf));
+    OpenSSL::CHECKNOT0(i2d_ECDSA_SIG(sig, &der_sig_buf));
     return der_sig;
   }
 }

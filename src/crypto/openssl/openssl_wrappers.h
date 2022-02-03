@@ -23,27 +23,41 @@ namespace crypto
     /*
      * Generic OpenSSL error handling
      */
-
-    /// Throws if rc is 1 and has error
-    inline void CHECK1(int rc)
+    namespace
     {
-      unsigned long ec = ERR_get_error();
-      if (rc != 1 && ec != 0)
+      inline void check_impl(bool rc_failure, char const* error_prefix)
       {
-        throw std::runtime_error(
-          fmt::format("OpenSSL error: {}", ERR_error_string(ec, NULL)));
+        unsigned long ec = ERR_get_error();
+        if (rc_failure || ec != 0)
+        {
+          throw std::runtime_error(fmt::format(
+            "OpenSSL {}: {}", error_prefix, ERR_error_string(ec, NULL)));
+        }
       }
     }
 
-    /// Throws if rc is 0 and has error
-    inline void CHECK0(int rc)
+    /// Throws if OpenSSL has error
+    inline void CHECK(char const* error_prefix = "error")
     {
-      unsigned long ec = ERR_get_error();
-      if (rc == 0 && ec != 0)
-      {
-        throw std::runtime_error(
-          fmt::format("OpenSSL error: {}", ERR_error_string(ec, NULL)));
-      }
+      check_impl(false, error_prefix);
+    }
+
+    /// Throws if rc is negative or has error
+    inline void CHECKNOTNEGATIVE(int rc, char const* error_prefix = "error")
+    {
+      check_impl(rc < 0, error_prefix);
+    }
+
+    /// Throws if rc is not 1 or has error
+    inline void CHECK1(int rc, char const* error_prefix = "error")
+    {
+      check_impl(rc != 1, error_prefix);
+    }
+
+    /// Throws if rc is 0 or has error
+    inline void CHECKNOT0(int rc, char const* error_prefix = "error")
+    {
+      check_impl(rc == 0, error_prefix);
     }
 
     /// Throws if ptr is null
