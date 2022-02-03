@@ -26,8 +26,9 @@ namespace tls
         Unique_BIO bio(ca_.p, ca_.n);
         if (!(ca = Unique_X509(bio, true)))
         {
-          throw std::logic_error(
-            "Could not parse CA: " + error_string(ERR_get_error()));
+          const auto msg = error_string(ERR_get_error());
+          ERR_clear_error();
+          throw std::logic_error("Could not parse CA: " + msg);
         }
       }
     }

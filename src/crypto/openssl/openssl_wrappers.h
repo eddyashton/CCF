@@ -2,6 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "ds/logger.h"
+
 #define FMT_HEADER_ONLY
 #include <crypto/pem.h>
 #include <fmt/format.h>
@@ -30,8 +32,14 @@ namespace crypto
         unsigned long ec = ERR_get_error();
         if (rc_failure || ec != 0)
         {
-          throw std::runtime_error(fmt::format(
-            "OpenSSL {}: {}", error_prefix, ERR_error_string(ec, NULL)));
+          auto msg = fmt::format("OpenSSL {}", error_prefix);
+          while (ec != 0)
+          {
+            msg += fmt::format("\n  {}", ERR_error_string(ec, NULL));
+            ec = ERR_get_error();
+          }
+          LOG_DEBUG_FMT(msg);
+          throw std::runtime_error(msg);
         }
       }
     }
@@ -61,12 +69,9 @@ namespace crypto
     }
 
     /// Throws if ptr is null
-    inline void CHECKNULL(void* ptr)
+    inline void CHECKNOTNULL(void* ptr, char const* error_prefix = "error")
     {
-      if (ptr == NULL)
-      {
-        throw std::runtime_error("OpenSSL error: missing object");
-      }
+      check_impl(ptr == NULL, error_prefix);
     }
 
     /// Returns the error string from an error code
@@ -96,14 +101,14 @@ namespace crypto
       /// C-tor with new pointer via T's c-tor
       Unique_SSL_OBJECT() : p(CTOR(), DTOR)
       {
-        CHECKNULL(p.get());
+        CHECKNOTNULL(p.get());
       }
       /// C-tor with pointer created in base class
       Unique_SSL_OBJECT(T* ptr, void (*dtor)(T*), bool check_null = true) :
         p(ptr, dtor)
       {
         if (check_null)
-          CHECKNULL(p.get());
+          CHECKNOTNULL(p.get());
       }
       /// Type cast to underlying pointer
       operator T*()

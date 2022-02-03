@@ -306,7 +306,7 @@ TEST_CASE("Wrap, unwrap with RSAKeyPair")
       auto rsa_kp = make_key_pair(curve); // EC Key
 
       REQUIRE_THROWS_AS(
-        make_rsa_public_key(rsa_kp->public_key_pem()), std::logic_error);
+        make_rsa_public_key(rsa_kp->public_key_pem()), std::runtime_error);
     }
   }
 

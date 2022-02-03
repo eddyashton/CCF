@@ -11,20 +11,17 @@ namespace crypto
 
   RSAPublicKey_OpenSSL::RSAPublicKey_OpenSSL(EVP_PKEY* c) : PublicKey_OpenSSL(c)
   {
-    if (!EVP_PKEY_get0_RSA(key))
-    {
-      throw std::logic_error("invalid RSA key");
-    }
+    OpenSSL::CHECKNOTNULL(
+      EVP_PKEY_get0_RSA(key), "EVP_PKEY_get0_RSA (from raw)");
   }
 
   RSAPublicKey_OpenSSL::RSAPublicKey_OpenSSL(const Pem& pem)
   {
     Unique_BIO mem(pem);
     key = PEM_read_bio_PUBKEY(mem, NULL, NULL, NULL);
-    if (!key || !EVP_PKEY_get0_RSA(key))
-    {
-      throw std::logic_error("invalid RSA key");
-    }
+    OpenSSL::CHECKNOTNULL(key, "PEM_read_bio_PUBKEY");
+    OpenSSL::CHECKNOTNULL(
+      EVP_PKEY_get0_RSA(key), "EVP_PKEY_get0_RSA (from Pem)");
   }
 
   RSAPublicKey_OpenSSL::RSAPublicKey_OpenSSL(const std::vector<uint8_t>& der)
@@ -39,6 +36,7 @@ namespace crypto
     {
       unsigned long ec = ERR_get_error();
       const char* msg = ERR_error_string(ec, NULL);
+      ERR_clear_error();
       throw std::runtime_error(fmt::format("OpenSSL error: {}", msg));
     }
 

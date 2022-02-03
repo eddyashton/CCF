@@ -15,11 +15,11 @@ namespace crypto
   {
     RSA* rsa = NULL;
     BIGNUM* big_exp = NULL;
-    OpenSSL::CHECKNULL(big_exp = BN_new());
+    OpenSSL::CHECKNOTNULL(big_exp = BN_new());
     OpenSSL::CHECK1(BN_set_word(big_exp, public_exponent));
-    OpenSSL::CHECKNULL(rsa = RSA_new());
+    OpenSSL::CHECKNOTNULL(rsa = RSA_new());
     OpenSSL::CHECK1(RSA_generate_key_ex(rsa, public_key_size, big_exp, NULL));
-    OpenSSL::CHECKNULL(key = EVP_PKEY_new());
+    OpenSSL::CHECKNOTNULL(key = EVP_PKEY_new());
     OpenSSL::CHECK1(EVP_PKEY_set1_RSA(key, rsa));
     BN_free(big_exp);
     RSA_free(rsa);

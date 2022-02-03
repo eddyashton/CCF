@@ -166,7 +166,7 @@ namespace crypto
     OpenSSL::CHECK1(X509_REQ_set_pubkey(req, key));
 
     X509_NAME* subj_name = NULL;
-    OpenSSL::CHECKNULL(subj_name = X509_NAME_new());
+    OpenSSL::CHECKNOTNULL(subj_name = X509_NAME_new());
 
     for (const auto& [k, v] : parse_name(subject_name))
     {
@@ -188,7 +188,7 @@ namespace crypto
       Unique_STACK_OF_X509_EXTENSIONS exts;
 
       X509_EXTENSION* ext = NULL;
-      OpenSSL::CHECKNULL(
+      OpenSSL::CHECKNOTNULL(
         ext = X509V3_EXT_conf_nid(
           NULL,
           NULL,
@@ -199,7 +199,7 @@ namespace crypto
     }
 
     if (key)
-      OpenSSL::CHECK1(X509_REQ_sign(req, key, EVP_sha512()));
+      OpenSSL::CHECKNOT0(X509_REQ_sign(req, key, EVP_sha512()));
 
     Unique_BIO mem;
     OpenSSL::CHECK1(PEM_write_bio_X509_REQ(mem, req));
@@ -234,7 +234,7 @@ namespace crypto
     unsigned char rndbytes[16];
     OpenSSL::CHECK1(RAND_bytes(rndbytes, sizeof(rndbytes)));
     BIGNUM* bn = NULL;
-    OpenSSL::CHECKNULL(bn = BN_new());
+    OpenSSL::CHECKNOTNULL(bn = BN_new());
     BN_bin2bn(rndbytes, sizeof(rndbytes), bn);
     ASN1_INTEGER* serial = ASN1_INTEGER_new();
     BN_to_ASN1_INTEGER(bn, serial);
@@ -246,7 +246,7 @@ namespace crypto
     if (!issuer_cert.empty())
     {
       Unique_BIO imem(issuer_cert);
-      OpenSSL::CHECKNULL(icrt = PEM_read_bio_X509(imem, NULL, NULL, NULL));
+      OpenSSL::CHECKNOTNULL(icrt = PEM_read_bio_X509(imem, NULL, NULL, NULL));
       OpenSSL::CHECK1(X509_set_issuer_name(crt, X509_get_subject_name(icrt)));
     }
     else
@@ -279,21 +279,21 @@ namespace crypto
 
     // Add basic constraints
     X509_EXTENSION* ext = NULL;
-    OpenSSL::CHECKNULL(
+    OpenSSL::CHECKNOTNULL(
       ext = X509V3_EXT_conf_nid(
         NULL, &v3ctx, NID_basic_constraints, ca ? "CA:TRUE" : "CA:FALSE"));
     OpenSSL::CHECK1(X509_add_ext(crt, ext, -1));
     X509_EXTENSION_free(ext);
 
     // Add subject key identifier
-    OpenSSL::CHECKNULL(
+    OpenSSL::CHECKNOTNULL(
       ext =
         X509V3_EXT_conf_nid(NULL, &v3ctx, NID_subject_key_identifier, "hash"));
     OpenSSL::CHECK1(X509_add_ext(crt, ext, -1));
     X509_EXTENSION_free(ext);
 
     // Add authority key identifier
-    OpenSSL::CHECKNULL(
+    OpenSSL::CHECKNOTNULL(
       ext = X509V3_EXT_conf_nid(
         NULL, &v3ctx, NID_authority_key_identifier, "keyid:always"));
     OpenSSL::CHECK1(X509_add_ext(crt, ext, -1));

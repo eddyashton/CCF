@@ -133,6 +133,7 @@ namespace crypto
       LOG_DEBUG_FMT(
         "OpenSSL signature verification failure: {}",
         ERR_error_string(ec, NULL));
+      ERR_clear_error();
     }
 
     return ok;

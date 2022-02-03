@@ -21,8 +21,9 @@ namespace crypto
     auto half_size = signature_size / 2;
     OpenSSL::Unique_BIGNUM r;
     OpenSSL::Unique_BIGNUM s;
-    OpenSSL::CHECKNULL(BN_bin2bn(signature.data(), half_size, r));
-    OpenSSL::CHECKNULL(BN_bin2bn(signature.data() + half_size, half_size, s));
+    OpenSSL::CHECKNOTNULL(BN_bin2bn(signature.data(), half_size, r));
+    OpenSSL::CHECKNOTNULL(
+      BN_bin2bn(signature.data() + half_size, half_size, s));
     OpenSSL::Unique_ECDSA_SIG sig;
     OpenSSL::CHECK1(ECDSA_SIG_set0(sig, r, s));
     // Ignore previous pointers, as they're now managed by ECDSA_SIG_set0
