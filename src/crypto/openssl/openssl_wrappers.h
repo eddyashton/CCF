@@ -55,7 +55,8 @@ namespace crypto
     }
 
     /// Throws if rc is negative or has error
-    inline void CHECKNOTNEGATIVE(int rc, char const* error_prefix = "error negative")
+    inline void CHECKNOTNEGATIVE(
+      int rc, char const* error_prefix = "error negative")
     {
       check_impl(rc < 0, error_prefix);
     }
@@ -73,7 +74,8 @@ namespace crypto
     }
 
     /// Throws if ptr is null
-    inline void CHECKNOTNULL(void* ptr, char const* error_prefix = "error not null")
+    inline void CHECKNOTNULL(
+      void* ptr, char const* error_prefix = "error not null")
     {
       check_impl(ptr == NULL, error_prefix);
     }
