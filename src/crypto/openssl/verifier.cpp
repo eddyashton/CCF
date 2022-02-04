@@ -57,13 +57,20 @@ namespace crypto
     {
       public_key = std::make_unique<PublicKey_OpenSSL>(pk);
     }
-    else if (EVP_PKEY_get0_RSA(pk))
-    {
-      public_key = std::make_unique<RSAPublicKey_OpenSSL>(pk);
-    }
     else
     {
-      throw std::logic_error("unsupported public key type");
+      ERR_clear_error();
+
+      if (EVP_PKEY_get0_RSA(pk))
+      {
+        public_key = std::make_unique<RSAPublicKey_OpenSSL>(pk);
+      }
+      else
+      {
+        ERR_clear_error();
+
+        throw std::logic_error("unsupported public key type");
+      }
     }
   }
 

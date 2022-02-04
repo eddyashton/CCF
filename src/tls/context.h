@@ -98,8 +98,9 @@ namespace tls
         return 0;
 
       int rc = SSL_do_handshake(ssl);
+
       // Success in OpenSSL is 1, MBed is 0
-      if (rc > 0)
+      if (rc == 1)
       {
         LOG_TRACE_FMT("Context::handshake() : Success");
         return 0;
@@ -108,16 +109,22 @@ namespace tls
       // Want read/write needs special return
       if (SSL_want_read(ssl))
       {
+        LOG_TRACE_FMT("Context::handshake() : Returning WANT_READ");
+        ERR_clear_error();
         return TLS_ERR_WANT_READ;
       }
       else if (SSL_want_write(ssl))
       {
+        LOG_TRACE_FMT("Context::handshake() : Returning WANT_WRITE");
+        ERR_clear_error();
         return TLS_ERR_WANT_WRITE;
       }
 
       // So does x509 validation
       if (!peer_cert_ok())
       {
+        LOG_TRACE_FMT("Context::handshake() : Returning X509_VERIFY");
+        ERR_clear_error();
         return TLS_ERR_X509_VERIFY;
       }
 
@@ -125,7 +132,11 @@ namespace tls
       LOG_TRACE_FMT("Context::handshake() : Error code {}", rc);
 
       // As an MBedTLS emulation, we return negative for errors.
-      return -SSL_get_error(ssl, rc);
+      rc = -SSL_get_error(ssl, rc);
+
+      ERR_clear_error();
+
+      return rc;
     }
 
     int read(uint8_t* buf, size_t len)

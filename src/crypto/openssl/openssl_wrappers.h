@@ -33,43 +33,47 @@ namespace crypto
         if (rc_failure || ec != 0)
         {
           auto msg = fmt::format("OpenSSL {}", error_prefix);
+          if (!rc_failure && ec != 0)
+          {
+            msg += " (this error may have come from an earlier call!)";
+          }
           while (ec != 0)
           {
             msg += fmt::format("\n  {}", ERR_error_string(ec, NULL));
             ec = ERR_get_error();
           }
-          LOG_DEBUG_FMT(msg);
+          LOG_FAIL_FMT("{}", msg);
           throw std::runtime_error(msg);
         }
       }
     }
 
     /// Throws if OpenSSL has error
-    inline void CHECK(char const* error_prefix = "error")
+    inline void CHECK(char const* error_prefix = "error empty")
     {
       check_impl(false, error_prefix);
     }
 
     /// Throws if rc is negative or has error
-    inline void CHECKNOTNEGATIVE(int rc, char const* error_prefix = "error")
+    inline void CHECKNOTNEGATIVE(int rc, char const* error_prefix = "error negative")
     {
       check_impl(rc < 0, error_prefix);
     }
 
     /// Throws if rc is not 1 or has error
-    inline void CHECK1(int rc, char const* error_prefix = "error")
+    inline void CHECK1(int rc, char const* error_prefix = "error not 1")
     {
       check_impl(rc != 1, error_prefix);
     }
 
     /// Throws if rc is 0 or has error
-    inline void CHECKNOT0(int rc, char const* error_prefix = "error")
+    inline void CHECKNOT0(int rc, char const* error_prefix = "error not 0")
     {
       check_impl(rc == 0, error_prefix);
     }
 
     /// Throws if ptr is null
-    inline void CHECKNOTNULL(void* ptr, char const* error_prefix = "error")
+    inline void CHECKNOTNULL(void* ptr, char const* error_prefix = "error not null")
     {
       check_impl(ptr == NULL, error_prefix);
     }
@@ -101,14 +105,14 @@ namespace crypto
       /// C-tor with new pointer via T's c-tor
       Unique_SSL_OBJECT() : p(CTOR(), DTOR)
       {
-        CHECKNOTNULL(p.get());
+        CHECKNOTNULL(p.get(), "CTOR");
       }
       /// C-tor with pointer created in base class
       Unique_SSL_OBJECT(T* ptr, void (*dtor)(T*), bool check_null = true) :
         p(ptr, dtor)
       {
         if (check_null)
-          CHECKNOTNULL(p.get());
+          CHECKNOTNULL(p.get(), "with p");
       }
       /// Type cast to underlying pointer
       operator T*()
