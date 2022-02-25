@@ -15,11 +15,21 @@ namespace ccf
   // Merkle tree) can use the `kv::RawCopySerialisedMap` type to maximise
   // performance.
   template <typename K, typename V>
-  using ServiceMap = kv::MapSerialisedWith<
-    K,
-    V,
-    kv::serialisers::BlitSerialiser,
-    kv::serialisers::JsonSerialiser>;
+  class ServiceMap : public kv::MapSerialisedWith<
+                       K,
+                       V,
+                       kv::serialisers::BlitSerialiser,
+                       kv::serialisers::JsonSerialiser>
+  {
+    using Base = kv::MapSerialisedWith<
+      K,
+      V,
+      kv::serialisers::BlitSerialiser,
+      kv::serialisers::JsonSerialiser>;
+
+  public:
+    using Base::Base;
+  };
 
   template <typename V>
   using ServiceValue = kv::ValueSerialisedWith<

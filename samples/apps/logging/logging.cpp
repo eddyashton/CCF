@@ -30,6 +30,11 @@ struct Foo
 
 using FooMap = kv::Map<Foo, Foo>; // TODO: Can we make this an error, if Foo
                                   // isn't serializable here?
+template class kv::MapSerialisedWith<
+  Foo,
+  Foo,
+  kv::serialisers::BlitSerialiser,
+  kv::serialisers::BlitSerialiser>;
 
 namespace loggingapp
 {
@@ -189,6 +194,10 @@ namespace loggingapp
 
       // SNIPPET_START: record
       auto record = [this](auto& ctx, nlohmann::json&& params) {
+        // auto hmmm =
+        //   ctx.tx.template ro<FooMap>("foo");
+        // hmmm->get({});
+
         auto members =
           ctx.tx.template ro<ccf::MemberInfo>(ccf::Tables::MEMBER_INFO);
 

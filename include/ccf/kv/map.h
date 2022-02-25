@@ -89,22 +89,55 @@ namespace kv
     template <typename>
     typename KSerialiser,
     template <typename> typename VSerialiser = KSerialiser>
-  using MapSerialisedWith = TypedMap<K, V, KSerialiser<K>, VSerialiser<V>>;
+  class MapSerialisedWith
+    : public TypedMap<K, V, KSerialiser<K>, VSerialiser<V>>
+  {
+    using Base = TypedMap<K, V, KSerialiser<K>, VSerialiser<V>>;
+
+  public:
+    using Base::Base;
+    using Handle = typename Base::Handle;
+  };
 
   template <typename K, typename V>
-  using JsonSerialisedMap =
-    MapSerialisedWith<K, V, kv::serialisers::JsonSerialiser>;
+  class JsonSerialisedMap
+    : public MapSerialisedWith<K, V, kv::serialisers::JsonSerialiser>
+  {
+    using Base = MapSerialisedWith<K, V, kv::serialisers::JsonSerialiser>;
+
+  public:
+    using Base::Base;
+    using Handle = typename Base::Handle;
+  };
 
   template <typename K, typename V>
-  using RawCopySerialisedMap = TypedMap<
-    K,
-    V,
-    kv::serialisers::BlitSerialiser<K>,
-    kv::serialisers::BlitSerialiser<V>>;
+  class RawCopySerialisedMap : public TypedMap<
+                                 K,
+                                 V,
+                                 kv::serialisers::BlitSerialiser<K>,
+                                 kv::serialisers::BlitSerialiser<V>>
+  {
+    using Base = TypedMap<
+      K,
+      V,
+      kv::serialisers::BlitSerialiser<K>,
+      kv::serialisers::BlitSerialiser<V>>;
+
+  public:
+    using Base::Base;
+    using Handle = typename Base::Handle;
+  };
 
   /** Short name for default-serialised maps, using JSON serialisers. Support
    * for custom types can be added through the DECLARE_JSON... macros.
    */
   template <typename K, typename V>
-  using Map = JsonSerialisedMap<K, V>;
+  class Map : public JsonSerialisedMap<K, V>
+  {
+    using Base = JsonSerialisedMap<K, V>;
+
+  public:
+    using Base::Base;
+    using Handle = typename Base::Handle;
+  };
 }

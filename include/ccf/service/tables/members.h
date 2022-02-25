@@ -76,6 +76,11 @@ namespace ccf
   DECLARE_JSON_OPTIONAL_FIELDS(MemberDetails, member_data)
 
   using MemberInfo = ServiceMap<MemberId, MemberDetails>;
+  template class ServiceMap<MemberId, MemberDetails>;
+
+  struct Foo {};
+  using FooMap = ServiceMap<Foo, Foo>;
+  template class ServiceMap<Foo, Foo>;
 
   using MemberCerts = kv::RawCopySerialisedMap<MemberId, crypto::Pem>;
   using MemberPublicEncryptionKeys =
