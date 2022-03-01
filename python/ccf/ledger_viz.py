@@ -14,7 +14,8 @@ class Liner:
     MAX_LENGTH = os.get_terminal_size().columns
 
     def flush(self):
-        print(self._line)
+        if self._len > 0:
+            print(self._line)
         self._line = ""
         self._len = 0
 
@@ -119,6 +120,11 @@ def main():
         action="store_true",
     )
     parser.add_argument(
+        "--split-chunks",
+        help="Write each chunk as a new section, prefixed by the chunk file name",
+        action="store_true",
+    )
+    parser.add_argument(
         "--insecure-skip-verification",
         help="INSECURE: skip ledger Merkle tree integrity verification",
         action="store_true",
@@ -137,6 +143,11 @@ def main():
     l.help()
     current_service_identity = None
     for chunk in ledger:
+        if args.split_chunks:
+            l.flush()
+            l.append(f"{chunk.filename()}:", "White")
+            l.flush()
+
         for tx in chunk:
             public = tx.get_public_domain().get_tables()
             has_private = tx.get_private_domain_size()
