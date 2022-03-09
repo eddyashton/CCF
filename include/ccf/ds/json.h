@@ -819,15 +819,14 @@ namespace std
 // Enum conversion, based on NLOHMANN_JSON_SERIALIZE_ENUM, but less permissive
 // (throws on unknown JSON values)
 #define DECLARE_JSON_ENUM(TYPE, ...) \
-  template <typename BasicJsonType> \
-  inline void to_json(BasicJsonType& j, const TYPE& e) \
+  inline void to_json(nlohmann::json& j, const TYPE& e) \
   { \
     static_assert(std::is_enum<TYPE>::value, #TYPE " must be an enum!"); \
-    static const std::pair<TYPE, BasicJsonType> m[] = __VA_ARGS__; \
+    static const std::pair<TYPE, nlohmann::json> m[] = __VA_ARGS__; \
     auto it = std::find_if( \
       std::begin(m), \
       std::end(m), \
-      [e](const std::pair<TYPE, BasicJsonType>& ej_pair) -> bool { \
+      [e](const std::pair<TYPE, nlohmann::json>& ej_pair) -> bool { \
         return ej_pair.first == e; \
       }); \
     if (it == std::end(m)) \
@@ -838,15 +837,14 @@ namespace std
     } \
     j = it->second; \
   } \
-  template <typename BasicJsonType> \
-  inline void from_json(const BasicJsonType& j, TYPE& e) \
+  inline void from_json(const nlohmann::json& j, TYPE& e) \
   { \
     static_assert(std::is_enum<TYPE>::value, #TYPE " must be an enum!"); \
-    static const std::pair<TYPE, BasicJsonType> m[] = __VA_ARGS__; \
+    static const std::pair<TYPE, nlohmann::json> m[] = __VA_ARGS__; \
     auto it = std::find_if( \
       std::begin(m), \
       std::end(m), \
-      [&j](const std::pair<TYPE, BasicJsonType>& ej_pair) -> bool { \
+      [&j](const std::pair<TYPE, nlohmann::json>& ej_pair) -> bool { \
         return ej_pair.second == j; \
       }); \
     if (it == std::end(m)) \
