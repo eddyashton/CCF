@@ -8,7 +8,6 @@
 
 #include <llhttp/llhttp.h>
 #include <nlohmann/json.hpp>
-#include <regex>
 #include <string>
 
 namespace ds
@@ -45,10 +44,16 @@ namespace ds
       // All the fixed fields declared above are objects that MUST use keys that
       // match the regular expression: ^[a-zA-Z0-9\.\-_]+$
       // So here we replace any non-matching characters with _
-      std::string result;
-      std::regex re("[^a-zA-Z0-9\\.\\-_]");
-      std::regex_replace(
-        std::back_inserter(result), s.begin(), s.end(), re, "_");
+      std::string result(s);
+      for (auto& c : result)
+      {
+        if (
+          !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') &&
+          !(c >= '0' && c <= '9') && !(c == '.' || c == '-' || c == '_'))
+        {
+          c = '_';
+        }
+      }
       return result;
     }
 
