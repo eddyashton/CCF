@@ -74,6 +74,18 @@ namespace ccf
 
   using LedgerSecretPtr = std::shared_ptr<LedgerSecret>;
 
+  inline std::string schema_name(const LedgerSecretPtr& p)
+  {
+    return schema_name(*p);
+  }
+
+  inline void fill_json_schema(
+    nlohmann::json& schema, const LedgerSecretPtr& p)
+  {
+    fill_json_schema(schema, *p);
+    // TODO
+  }
+
   inline LedgerSecretPtr make_ledger_secret()
   {
     return std::make_shared<LedgerSecret>(

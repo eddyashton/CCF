@@ -751,7 +751,7 @@ namespace nlohmann
   { \
     return #TYPE; \
   } \
-  void add_schema_components( \
+  inline void add_schema_components( \
     ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE& t) \
   { \
     PRE_ADD_SCHEMA; \
@@ -838,7 +838,7 @@ namespace nlohmann
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
     (POP1)(FILL_SCHEMA_REQUIRED, TYPE, ##__VA_ARGS__) \
   } \
-  void add_schema_components_required_fields( \
+  inline void add_schema_components_required_fields( \
     [[maybe_unused]] ds::openapi::SchemaHelper& doc, \
     nlohmann::json& j, \
     [[maybe_unused]] const TYPE& t) \
@@ -874,7 +874,7 @@ namespace nlohmann
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
     (POP2)(FILL_SCHEMA_REQUIRED_WITH_RENAMES, TYPE, ##__VA_ARGS__) \
   } \
-  void add_schema_components_required_fields( \
+  inline void add_schema_components_required_fields( \
     ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE& t) \
   { \
     j["type"] = "object"; \
@@ -897,7 +897,7 @@ namespace nlohmann
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
     (POP1)(FILL_SCHEMA_OPTIONAL, TYPE, ##__VA_ARGS__) \
   } \
-  void add_schema_components_optional_fields( \
+  inline void add_schema_components_optional_fields( \
     ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE&) \
   { \
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
@@ -922,7 +922,7 @@ namespace nlohmann
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
     (POP2)(FILL_SCHEMA_OPTIONAL_WITH_RENAMES, TYPE, ##__VA_ARGS__) \
   } \
-  void add_schema_components_optional_fields( \
+  inline void add_schema_components_optional_fields( \
     ds::openapi::SchemaHelper& doc, \
     nlohmann::json& j, \
     [[maybe_unused]] const TYPE& t) \
