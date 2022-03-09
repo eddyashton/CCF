@@ -24,87 +24,91 @@ public:
   }
 };
 
-// namespace std
-// {
-//   template <typename T>
-//   inline void to_json(nlohmann::json& j, const std::optional<T>& t)
-//   {
-//     if (t.has_value())
-//     {
-//       j = t.value();
-//     }
-//   }
+namespace nlohmann
+{
+  template <typename T>
+  struct adl_serializer<std::optional<T>>
+  {
+    static inline void to_json(nlohmann::json& j, const std::optional<T>& t)
+    {
+      if (t.has_value())
+      {
+        j = t.value();
+      }
+    }
 
-//   template <typename T>
-//   inline void from_json(const nlohmann::json& j, std::optional<T>& t)
-//   {
-//     if (!j.is_null())
-//     {
-//       t = j.get<T>();
-//     }
-//   }
+    static inline void from_json(const nlohmann::json& j, std::optional<T>& t)
+    {
+      if (!j.is_null())
+      {
+        t = j.get<T>();
+      }
+    }
+  };
 
-//   template <typename T>
-//   inline void to_json(nlohmann::json& j, const std::vector<T>& t)
-//   {
-//     if constexpr (std::is_same_v<T, uint8_t>)
-//     {
-//       j = crypto::b64_from_raw(t);
-//     }
-//     else
-//     {
-//       j = nlohmann::json::array();
-//       for (const auto& e : t)
-//       {
-//         j.push_back(e);
-//       }
-//     }
-//   }
+  template <typename T>
+  struct adl_serializer<std::vector<T>>
+  {
+    static inline void to_json(nlohmann::json& j, const std::vector<T>& t)
+    {
+      if constexpr (std::is_same_v<T, uint8_t>)
+      {
+        j = crypto::b64_from_raw(t);
+      }
+      else
+      {
+        j = nlohmann::json::array();
+        for (const auto& e : t)
+        {
+          j.push_back(e);
+        }
+      }
+    }
 
-//   template <typename T>
-//   inline void from_json(const nlohmann::json& j, std::vector<T>& t)
-//   {
-//     if constexpr (std::is_same_v<T, uint8_t>)
-//     {
-//       if (j.is_string())
-//       {
-//         try
-//         {
-//           t = crypto::raw_from_b64(j.get<std::string>());
-//           return;
-//         }
-//         catch (const std::exception& e)
-//         {
-//           throw JsonParseError(fmt::format(
-//             "Vector of bytes object \"{}\" is not valid base64", j.dump()));
-//         }
-//       }
-//     }
+    static inline void from_json(const nlohmann::json& j, std::vector<T>& t)
+    {
+      if constexpr (std::is_same_v<T, uint8_t>)
+      {
+        if (j.is_string())
+        {
+          try
+          {
+            t = crypto::raw_from_b64(j.get<std::string>());
+            return;
+          }
+          catch (const std::exception& e)
+          {
+            throw JsonParseError(fmt::format(
+              "Vector of bytes object \"{}\" is not valid base64", j.dump()));
+          }
+        }
+      }
 
-//     // Fall-through. So we can convert _from_ [1,2,3] to
-//     // std::vector<uint8_t>, but would prefer (and will produce in to_json) a
-//     // base64 string
+      // Fall-through. So we can convert _from_ [1,2,3] to
+      // std::vector<uint8_t>, but would prefer (and will produce in to_json) a
+      // base64 string
 
-//     if (!j.is_array())
-//     {
-//       throw JsonParseError(
-//         fmt::format("Vector object \"{}\" is not an array", j.dump()));
-//     }
+      if (!j.is_array())
+      {
+        throw JsonParseError(
+          fmt::format("Vector object \"{}\" is not an array", j.dump()));
+      }
 
-//     for (auto i = 0u; i < j.size(); ++i)
-//     {
-//       try
-//       {
-//         t.push_back(j.at(i).template get<T>());
-//       }
-//       catch (JsonParseError& jpe)
-//       {
-//         jpe.pointer_elements.push_back(std::to_string(i));
-//         throw;
-//       }
-//     }
-//   }
-// }
+      for (auto i = 0u; i < j.size(); ++i)
+      {
+        try
+        {
+          t.push_back(j.at(i).template get<T>());
+        }
+        catch (JsonParseError& jpe)
+        {
+          jpe.pointer_elements.push_back(std::to_string(i));
+          throw;
+        }
+      }
+    }
+  };
+}
 
 // FOREACH macro machinery for counting args
 
