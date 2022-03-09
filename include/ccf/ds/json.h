@@ -3,6 +3,7 @@
 #pragma once
 #include "ccf/crypto/base64.h"
 #include "ccf/ds/json_schema.h"
+#include "ccf/ds/openapi.h"
 
 #define FMT_HEADER_ONLY
 #include <cstdint>
@@ -470,7 +471,7 @@ namespace std
 #define ADD_SCHEMA_COMPONENTS_REQUIRED_WITH_RENAMES_FOR_JSON_NEXT( \
   TYPE, C_FIELD, JSON_FIELD) \
   j["properties"][JSON_FIELD] = \
-    doc.template add_schema_component<decltype(TYPE::C_FIELD)>(); \
+    doc.add_schema_component<decltype(TYPE::C_FIELD)>(); \
   j["required"].push_back(JSON_FIELD);
 #define ADD_SCHEMA_COMPONENTS_REQUIRED_WITH_RENAMES_FOR_JSON_FINAL( \
   TYPE, C_FIELD, JSON_FIELD) \
@@ -486,7 +487,7 @@ namespace std
 #define ADD_SCHEMA_COMPONENTS_OPTIONAL_WITH_RENAMES_FOR_JSON_NEXT( \
   TYPE, C_FIELD, JSON_FIELD) \
   j["properties"][JSON_FIELD] = \
-    doc.template add_schema_component<decltype(TYPE::C_FIELD)>();
+    doc.add_schema_component<decltype(TYPE::C_FIELD)>();
 #define ADD_SCHEMA_COMPONENTS_OPTIONAL_WITH_RENAMES_FOR_JSON_FINAL( \
   TYPE, C_FIELD, JSON_FIELD) \
   ADD_SCHEMA_COMPONENTS_OPTIONAL_WITH_RENAMES_FOR_JSON_NEXT( \
@@ -622,14 +623,12 @@ namespace std
   void to_json_optional_fields(nlohmann::json& j, const TYPE& t); \
   void from_json_required_fields(const nlohmann::json& j, TYPE& t); \
   void from_json_optional_fields(const nlohmann::json& j, TYPE& t); \
-  void fill_json_schema_required_fields(nlohmann::json& j, const TYPE*); \
-  void fill_json_schema_optional_fields(nlohmann::json& j, const TYPE*); \
-  template <typename T> \
+  void fill_json_schema_required_fields(nlohmann::json& j, const TYPE& t); \
+  void fill_json_schema_optional_fields(nlohmann::json& j, const TYPE& t); \
   void add_schema_components_required_fields( \
-    T& doc, nlohmann::json& j, const TYPE*); \
-  template <typename T> \
+    ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE& t); \
   void add_schema_components_optional_fields( \
-    T& doc, nlohmann::json& j, const TYPE*); \
+    ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE& t); \
   inline void to_json(nlohmann::json& j, const TYPE& t) \
   { \
     PRE_TO_JSON; \
@@ -652,8 +651,8 @@ namespace std
   { \
     return #TYPE; \
   } \
-  template <typename T> \
-  void add_schema_components(T& doc, nlohmann::json& j, const TYPE* t) \
+  void add_schema_components( \
+    ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE& t) \
   { \
     PRE_ADD_SCHEMA; \
     add_schema_components_required_fields(doc, j, t); \
@@ -739,9 +738,10 @@ namespace std
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
     (POP1)(FILL_SCHEMA_REQUIRED, TYPE, ##__VA_ARGS__) \
   } \
-  template <typename T> \
   void add_schema_components_required_fields( \
-    [[maybe_unused]] T& doc, nlohmann::json& j, [[maybe_unused]] const TYPE*) \
+    [[maybe_unused]] ds::openapi::SchemaHelper& doc, \
+    nlohmann::json& j, \
+    [[maybe_unused]] const TYPE& t) \
   { \
     j["type"] = "object"; \
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
@@ -774,9 +774,8 @@ namespace std
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
     (POP2)(FILL_SCHEMA_REQUIRED_WITH_RENAMES, TYPE, ##__VA_ARGS__) \
   } \
-  template <typename T> \
   void add_schema_components_required_fields( \
-    T& doc, nlohmann::json& j, const TYPE*) \
+    ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE& t) \
   { \
     j["type"] = "object"; \
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
@@ -798,9 +797,8 @@ namespace std
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
     (POP1)(FILL_SCHEMA_OPTIONAL, TYPE, ##__VA_ARGS__) \
   } \
-  template <typename T> \
   void add_schema_components_optional_fields( \
-    T& doc, nlohmann::json& j, const TYPE*) \
+    ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE&) \
   { \
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
     (POP1)(ADD_SCHEMA_COMPONENTS_OPTIONAL, TYPE, ##__VA_ARGS__); \
@@ -824,9 +822,10 @@ namespace std
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
     (POP2)(FILL_SCHEMA_OPTIONAL_WITH_RENAMES, TYPE, ##__VA_ARGS__) \
   } \
-  template <typename T> \
   void add_schema_components_optional_fields( \
-    T& doc, nlohmann::json& j, [[maybe_unused]] const TYPE*) \
+    ds::openapi::SchemaHelper& doc, \
+    nlohmann::json& j, \
+    [[maybe_unused]] const TYPE& t) \
   { \
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
     (POP2)(ADD_SCHEMA_COMPONENTS_OPTIONAL_WITH_RENAMES, TYPE, ##__VA_ARGS__); \
