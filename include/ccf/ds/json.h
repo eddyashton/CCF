@@ -128,6 +128,32 @@ namespace std
 
 namespace nlohmann
 {
+  namespace
+  {
+    template <typename T>
+    inline void vector_from_json(const nlohmann::json& j, std::vector<T>& t)
+    {
+      if (!j.is_array())
+      {
+        throw JsonParseError(
+          fmt::format("Vector object \"{}\" is not an array", j.dump()));
+      }
+
+      for (auto i = 0u; i < j.size(); ++i)
+      {
+        try
+        {
+          t.push_back(j.at(i).template get<T>());
+        }
+        catch (JsonParseError& jpe)
+        {
+          jpe.pointer_elements.push_back(std::to_string(i));
+          throw;
+        }
+      }
+    }
+  }
+
   template <typename T>
   struct adl_serializer<std::optional<T>>
   {
@@ -153,36 +179,41 @@ namespace nlohmann
   {
     static inline void to_json(nlohmann::json& j, const std::vector<T>& t)
     {
-      if constexpr (std::is_same_v<T, uint8_t>)
+      j = nlohmann::json::array();
+      for (const auto& e : t)
       {
-        j = crypto::b64_from_raw(t);
-      }
-      else
-      {
-        j = nlohmann::json::array();
-        for (const auto& e : t)
-        {
-          j.push_back(e);
-        }
+        j.push_back(e);
       }
     }
 
     static inline void from_json(const nlohmann::json& j, std::vector<T>& t)
     {
-      if constexpr (std::is_same_v<T, uint8_t>)
+      vector_from_json(j, t);
+    }
+  };
+
+  template <>
+  struct adl_serializer<std::vector<uint8_t>>
+  {
+    static inline void to_json(nlohmann::json& j, const std::vector<uint8_t>& t)
+    {
+      j = crypto::b64_from_raw(t);
+    }
+
+    static inline void from_json(
+      const nlohmann::json& j, std::vector<uint8_t>& t)
+    {
+      if (j.is_string())
       {
-        if (j.is_string())
+        try
         {
-          try
-          {
-            t = crypto::raw_from_b64(j.get<std::string>());
-            return;
-          }
-          catch (const std::exception& e)
-          {
-            throw JsonParseError(fmt::format(
-              "Vector of bytes object \"{}\" is not valid base64", j.dump()));
-          }
+          t = crypto::raw_from_b64(j.get<std::string>());
+          return;
+        }
+        catch (const std::exception& e)
+        {
+          throw JsonParseError(fmt::format(
+            "Vector of bytes object \"{}\" is not valid base64", j.dump()));
         }
       }
 
@@ -190,24 +221,7 @@ namespace nlohmann
       // std::vector<uint8_t>, but would prefer (and will produce in to_json) a
       // base64 string
 
-      if (!j.is_array())
-      {
-        throw JsonParseError(
-          fmt::format("Vector object \"{}\" is not an array", j.dump()));
-      }
-
-      for (auto i = 0u; i < j.size(); ++i)
-      {
-        try
-        {
-          t.push_back(j.at(i).template get<T>());
-        }
-        catch (JsonParseError& jpe)
-        {
-          jpe.pointer_elements.push_back(std::to_string(i));
-          throw;
-        }
-      }
+      vector_from_json(j, t);
     }
   };
 }
