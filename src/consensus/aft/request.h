@@ -77,7 +77,8 @@ namespace aft
   };
 
   DECLARE_JSON_TYPE(Request);
-  DECLARE_JSON_REQUIRED_FIELDS(Request, rid, caller_cert, raw, frame_format);
+  // TODO!
+  DECLARE_JSON_REQUIRED_FIELDS(Request, /*rid,*/ caller_cert, raw, frame_format);
 
   using RequestsMap = kv::RawCopySerialisedValue<Request>;
   namespace Tables

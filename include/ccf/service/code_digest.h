@@ -35,6 +35,18 @@ namespace ccf
     }
   }
 
+  inline std::string schema_name(const CodeDigest&)
+  {
+    return "CodeDigest";
+  }
+
+  inline void fill_json_schema(
+    nlohmann::json& schema, const CodeDigest&)
+  {
+    schema["type"] = "string";
+    // TODO
+  }
+
   enum class CodeStatus
   {
     ALLOWED_TO_JOIN = 0

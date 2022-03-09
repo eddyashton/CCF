@@ -48,6 +48,18 @@ namespace crypto
 
   void from_json(const nlohmann::json& j, Sha256Hash& hash);
 
+  inline std::string schema_name(const Sha256Hash&)
+  {
+    return "Sha256Digest";
+  }
+
+  inline void fill_json_schema(
+    nlohmann::json& schema, const Sha256Hash&)
+  {
+    schema["type"] = "string";
+    // TODO
+  }
+
   bool operator==(const Sha256Hash& lhs, const Sha256Hash& rhs);
 
   bool operator!=(const Sha256Hash& lhs, const Sha256Hash& rhs);

@@ -139,6 +139,18 @@ namespace ds
     s = j.get<std::string_view>();
   }
 
+  inline std::string schema_name(const SizeString&)
+  {
+    return "Size";
+  }
+
+  inline void fill_json_schema(
+    nlohmann::json& schema, const SizeString&)
+  {
+    schema["type"] = "string";
+    // TODO
+  }
+
   struct TimeString : UnitString
   {
     std::chrono::microseconds value;
@@ -180,5 +192,17 @@ namespace ds
   inline void from_json(const nlohmann::json& j, TimeString& s)
   {
     s = j.get<std::string_view>();
+  }
+
+  inline std::string schema_name(const TimeString&)
+  {
+    return "Time";
+  }
+
+  inline void fill_json_schema(
+    nlohmann::json& schema, const TimeString&)
+  {
+    schema["type"] = "string";
+    // TODO
   }
 }
