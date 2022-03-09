@@ -2,6 +2,7 @@
 // Licensed under the Apache 2.0 License.
 #include "ccf/ds/openapi.h"
 
+#include "ccf/ds/json.h"
 #include "ccf/http_consts.h"
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
@@ -231,8 +232,7 @@ namespace aaa
     return "FriendlyName";
   }
 
-  template <typename T>
-  void add_schema_components(T& doc, nlohmann::json& j, const FriendlyName&)
+  void add_schema_components(ds::openapi::SchemaHelper& doc, nlohmann::json& j, const FriendlyName&)
   {
     j["type"] = "string";
     j["pattern"] = "^.* \".*\" .*$";
