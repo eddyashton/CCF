@@ -40,6 +40,7 @@ namespace ds
 
     static inline std::string sanitise_components_key(const std::string_view& s)
     {
+      // TODO: Re-implement without regex
       // From the OpenAPI spec:
       // All the fixed fields declared above are objects that MUST use keys that
       // match the regular expression: ^[a-zA-Z0-9\.\-_]+$
