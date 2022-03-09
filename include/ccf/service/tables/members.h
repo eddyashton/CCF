@@ -119,11 +119,7 @@ namespace ccf
     {}
   };
   DECLARE_JSON_TYPE_WITH_BASE_AND_OPTIONAL_FIELDS(MemberAck, StateDigest)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter"
-#pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
   DECLARE_JSON_REQUIRED_FIELDS(MemberAck)
-#pragma clang diagnostic pop
   DECLARE_JSON_OPTIONAL_FIELDS(MemberAck, signed_req)
   using MemberAcks = ServiceMap<MemberId, MemberAck>;
   namespace Tables
