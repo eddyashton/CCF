@@ -47,8 +47,8 @@ struct Proxy_MermaidMixin : public Base
   {
     RAFT_DRIVER_OUT << fmt::format(
                          "  {}->>{}: [ledger] appending: {}.{}={}",
-                         _id,
-                         _id,
+                         Base::_id,
+                         Base::_id,
                          term,
                          index,
                          stringify(data))
@@ -59,7 +59,10 @@ struct Proxy_MermaidMixin : public Base
   void truncate(aft::Index idx) override
   {
     RAFT_DRIVER_OUT << fmt::format(
-                         "  {}->>{}: [ledger] truncating to {}", _id, _id, idx)
+                         "  {}->>{}: [ledger] truncating to {}",
+                         Base::_id,
+                         Base::_id,
+                         idx)
                     << std::endl;
     Base::truncate(idx);
   }
@@ -73,7 +76,10 @@ struct Store_MermaidMixin : public Base
   void compact(aft::Index idx) override
   {
     RAFT_DRIVER_OUT << fmt::format(
-                         "  {}->>{}: [KV] compacting to {}", _id, _id, idx)
+                         "  {}->>{}: [KV] compacting to {}",
+                         Base::_id,
+                         Base::_id,
+                         idx)
                     << std::endl;
     Base::compact(idx);
   }
@@ -82,8 +88,8 @@ struct Store_MermaidMixin : public Base
   {
     RAFT_DRIVER_OUT << fmt::format(
                          "  {}->>{}: [KV] rolling back to {}.{}, in term {}",
-                         _id,
-                         _id,
+                         Base::_id,
+                         Base::_id,
                          tx_id.term,
                          tx_id.version,
                          t)
@@ -94,16 +100,19 @@ struct Store_MermaidMixin : public Base
   void initialise_term(aft::Term t) override
   {
     RAFT_DRIVER_OUT << fmt::format(
-                         "  {}->>{}: [KV] initialising in term {}", _id, _id, t)
+                         "  {}->>{}: [KV] initialising in term {}",
+                         Base::_id,
+                         Base::_id,
+                         t)
                     << std::endl;
     Base::initialise_term(t);
   }
 };
 
 using ms = std::chrono::milliseconds;
-using TRaft =
-  aft::Aft<Proxy_MermaidMixin<LedgerStubProxy>, aft::StubSnapshotter>;
-using Store = Store_MermaidMixin<StoreStubProxy>;
+using MermaidStubProxy = Proxy_MermaidMixin<aft::LedgerStubProxy>;
+using TRaft = aft::Aft<MermaidStubProxy, aft::StubSnapshotter>;
+using Store = Store_MermaidMixin<aft::StoreStubProxy>;
 using Adaptor = aft::Adaptor<Store>;
 
 aft::ChannelStubProxy* channel_stub_proxy(const TRaft& r)
@@ -138,7 +147,7 @@ public:
       auto raft = std::make_shared<TRaft>(
         settings,
         std::make_unique<Adaptor>(kv),
-        std::make_unique<LedgerStubProxy_Mermaid>(node_id),
+        std::make_unique<MermaidStubProxy>(node_id),
         std::make_shared<aft::ChannelStubProxy>(),
         std::make_shared<aft::StubSnapshotter>(),
         std::make_shared<aft::State>(node_id),
@@ -546,7 +555,7 @@ public:
                     << std::endl;
     auto hooks = std::make_shared<kv::ConsensusHookPtrs>();
     // True means all these entries are committable
-    raft->replicate(kv::BatchVector{{idx, data, true, hooks}}, term);
+    raft->replicate(kv::BatchVector{{idx, data, false, hooks}}, term);
   }
 
   void disconnect(ccf::NodeId left, ccf::NodeId right)
