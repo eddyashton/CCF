@@ -437,6 +437,8 @@ DOCTEST_TEST_CASE("Multiple nodes late join" * doctest::test_suite("multiple"))
   auto r1c = channel_stub_proxy(r1);
   auto r2c = channel_stub_proxy(r2);
 
+  size_t dispatched_count;
+
   r0.start_ticking();
   r0.periodic(election_timeout * 2);
 
@@ -461,24 +463,22 @@ DOCTEST_TEST_CASE("Multiple nodes late join" * doctest::test_suite("multiple"))
   DOCTEST_REQUIRE(r0.replicate(kv::BatchVector{{1, data, true, hooks}}, 1));
   r0.periodic(request_timeout);
 
-  DOCTEST_REQUIRE(
-    1 ==
-    dispatch_all_and_DOCTEST_CHECK<aft::AppendEntries>(
-      nodes, node_id0, r0c->messages, [](const auto& msg) {
-        DOCTEST_REQUIRE(msg.idx == 1);
-        DOCTEST_REQUIRE(msg.term == 1);
-        DOCTEST_REQUIRE(msg.prev_idx == 0);
-        DOCTEST_REQUIRE(msg.prev_term == aft::ViewHistory::InvalidView);
-        DOCTEST_REQUIRE(msg.leader_commit_idx == 0);
-      }));
+  dispatched_count = dispatch_all_and_DOCTEST_CHECK<aft::AppendEntries>(
+    nodes, node_id0, r0c->messages, [](const auto& msg) {
+      DOCTEST_REQUIRE(msg.idx == 1);
+      DOCTEST_REQUIRE(msg.term == 1);
+      DOCTEST_REQUIRE(msg.prev_idx == 0);
+      DOCTEST_REQUIRE(msg.prev_term == aft::ViewHistory::InvalidView);
+      DOCTEST_REQUIRE(msg.leader_commit_idx == 0);
+    });
+  DOCTEST_REQUIRE(1 == dispatched_count);
 
-  DOCTEST_REQUIRE(
-    1 ==
-    dispatch_all_and_DOCTEST_CHECK<aft::AppendEntriesResponse>(
-      nodes, node_id1, r1c->messages, [](const auto& msg) {
-        DOCTEST_REQUIRE(msg.last_log_idx == 1);
-        DOCTEST_REQUIRE(msg.success == aft::AppendEntriesResponseType::OK);
-      }));
+  dispatched_count = dispatch_all_and_DOCTEST_CHECK<aft::AppendEntriesResponse>(
+    nodes, node_id1, r1c->messages, [](const auto& msg) {
+      DOCTEST_REQUIRE(msg.last_log_idx == 1);
+      DOCTEST_REQUIRE(msg.success == aft::AppendEntriesResponseType::OK);
+    });
+  DOCTEST_REQUIRE(1 == dispatched_count);
 
   DOCTEST_INFO("Node 2 joins the ensemble");
 
@@ -496,16 +496,15 @@ DOCTEST_TEST_CASE("Multiple nodes late join" * doctest::test_suite("multiple"))
   DOCTEST_REQUIRE(r2c->messages.size() == 0);
   DOCTEST_REQUIRE(r1c->messages.size() == 0);
 
-  DOCTEST_REQUIRE(
-    1 ==
-    dispatch_all_and_DOCTEST_CHECK<aft::AppendEntries>(
-      nodes, node_id0, r0c->messages, [](const auto& msg) {
-        DOCTEST_REQUIRE(msg.idx == 1);
-        DOCTEST_REQUIRE(msg.term == 1);
-        DOCTEST_REQUIRE(msg.prev_idx == 1);
-        DOCTEST_REQUIRE(msg.prev_term == 1);
-        DOCTEST_REQUIRE(msg.leader_commit_idx == 1);
-      }));
+  dispatched_count = dispatch_all_and_DOCTEST_CHECK<aft::AppendEntries>(
+    nodes, node_id0, r0c->messages, [](const auto& msg) {
+      DOCTEST_REQUIRE(msg.idx == 1);
+      DOCTEST_REQUIRE(msg.term == 1);
+      DOCTEST_REQUIRE(msg.prev_idx == 1);
+      DOCTEST_REQUIRE(msg.prev_term == 1);
+      DOCTEST_REQUIRE(msg.leader_commit_idx == 1);
+    });
+  DOCTEST_REQUIRE(1 == dispatched_count);
 }
 
 DOCTEST_TEST_CASE("Recv append entries logic" * doctest::test_suite("multiple"))
@@ -513,12 +512,12 @@ DOCTEST_TEST_CASE("Recv append entries logic" * doctest::test_suite("multiple"))
   ccf::NodeId node_id0 = kv::test::PrimaryNodeId;
   ccf::NodeId node_id1 = kv::test::FirstBackupNodeId;
 
-  auto kv_store0 = std::make_shared<SigStore>(node_id0);
-  auto kv_store1 = std::make_shared<SigStore>(node_id1);
+  auto kv_store0 = std::make_shared<Store>(node_id0);
+  auto kv_store1 = std::make_shared<Store>(node_id1);
 
   TRaft r0(
     raft_settings,
-    std::make_unique<SigAdaptor>(kv_store0),
+    std::make_unique<Adaptor>(kv_store0),
     std::make_unique<aft::LedgerStubProxy>(node_id0),
     std::make_shared<aft::ChannelStubProxy>(),
     std::make_shared<aft::StubSnapshotter>(),
@@ -527,7 +526,7 @@ DOCTEST_TEST_CASE("Recv append entries logic" * doctest::test_suite("multiple"))
     nullptr);
   TRaft r1(
     raft_settings,
-    std::make_unique<SigAdaptor>(kv_store1),
+    std::make_unique<Adaptor>(kv_store1),
     std::make_unique<aft::LedgerStubProxy>(node_id1),
     std::make_shared<aft::ChannelStubProxy>(),
     std::make_shared<aft::StubSnapshotter>(),

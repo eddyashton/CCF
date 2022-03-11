@@ -33,9 +33,10 @@ std::string stringify(const std::optional<std::vector<uint8_t>>& o)
   return "MISSING";
 }
 
-struct LedgerStubProxy_Mermaid : public aft::LedgerStubProxy
+template <typename Base>
+struct Proxy_MermaidMixin : public Base
 {
-  using LedgerStubProxy::LedgerStubProxy;
+  using Base::Base;
 
   void put_entry(
     const std::vector<uint8_t>& data,
@@ -52,8 +53,7 @@ struct LedgerStubProxy_Mermaid : public aft::LedgerStubProxy
                          index,
                          stringify(data))
                     << std::endl;
-    aft::LedgerStubProxy::put_entry(
-      data, globally_committable, force_chunk, term, index);
+    Base::put_entry(data, globally_committable, force_chunk, term, index);
   }
 
   void truncate(aft::Index idx) override
@@ -61,20 +61,21 @@ struct LedgerStubProxy_Mermaid : public aft::LedgerStubProxy
     RAFT_DRIVER_OUT << fmt::format(
                          "  {}->>{}: [ledger] truncating to {}", _id, _id, idx)
                     << std::endl;
-    aft::LedgerStubProxy::truncate(idx);
+    Base::truncate(idx);
   }
 };
 
-struct LoggingStubStoreSig_Mermaid : public aft::LoggingStubStoreSig
+template <typename Base>
+struct Store_MermaidMixin : public Base
 {
-  using LoggingStubStoreSig::LoggingStubStoreSig;
+  using Base::Base;
 
   void compact(aft::Index idx) override
   {
     RAFT_DRIVER_OUT << fmt::format(
                          "  {}->>{}: [KV] compacting to {}", _id, _id, idx)
                     << std::endl;
-    aft::LoggingStubStoreSig::compact(idx);
+    Base::compact(idx);
   }
 
   void rollback(const kv::TxID& tx_id, aft::Term t) override
@@ -87,7 +88,7 @@ struct LoggingStubStoreSig_Mermaid : public aft::LoggingStubStoreSig
                          tx_id.version,
                          t)
                     << std::endl;
-    aft::LoggingStubStoreSig::rollback(tx_id, t);
+    Base::rollback(tx_id, t);
   }
 
   void initialise_term(aft::Term t) override
@@ -95,20 +96,14 @@ struct LoggingStubStoreSig_Mermaid : public aft::LoggingStubStoreSig
     RAFT_DRIVER_OUT << fmt::format(
                          "  {}->>{}: [KV] initialising in term {}", _id, _id, t)
                     << std::endl;
-    aft::LoggingStubStoreSig::initialise_term(t);
+    Base::initialise_term(t);
   }
-
-  bool flag_enabled(kv::AbstractStore::Flag)
-  {
-    return false;
-  }
-
-  void unset_flag(kv::AbstractStore::Flag) {}
 };
 
 using ms = std::chrono::milliseconds;
-using TRaft = aft::Aft<LedgerStubProxy_Mermaid, aft::StubSnapshotter>;
-using Store = LoggingStubStoreSig_Mermaid;
+using TRaft =
+  aft::Aft<Proxy_MermaidMixin<LedgerStubProxy>, aft::StubSnapshotter>;
+using Store = Store_MermaidMixin<StoreStubProxy>;
 using Adaptor = aft::Adaptor<Store>;
 
 aft::ChannelStubProxy* channel_stub_proxy(const TRaft& r)

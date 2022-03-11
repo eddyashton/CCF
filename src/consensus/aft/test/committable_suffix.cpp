@@ -6,8 +6,22 @@
 #define DOCTEST_CONFIG_NO_SHORT_MACRO_NAMES
 #include <doctest/doctest.h>
 
-using AllSigsStore = aft::LoggingStubStoreSig;
-using AllSigsAdaptor = aft::Adaptor<AllSigsStore>;
+using TestStore = aft::StoreStubProxy;
+using TestAdaptor = aft::Adaptor<TestStore>;
+
+std::shared_ptr<std::vector<uint8_t>> make_ledger_entry(
+  const aft::Term term, const aft::Index idx)
+{
+  const auto s = fmt::format("Ledger entry @{}.{}", term, idx);
+  auto e = std::make_shared<std::vector<uint8_t>>(s.begin(), s.end());
+  e->insert(e->begin(), 0);
+
+  // Each entry is so large that it produces a single AppendEntries, there are
+  // never multiple combined into a single AppendEntries
+  e->resize(TRaft::append_entries_size_limit);
+
+  return e;
+}
 
 void keep_messages_for_multiple(
   const std::set<ccf::NodeId>& targets,
@@ -85,10 +99,10 @@ void keep_earliest_append_entries_for_each_target(
 
 #define TEST_DECLARE_NODE(N) \
   ccf::NodeId node_id##N(#N); \
-  auto store##N = std::make_shared<AllSigsStore>(node_id##N); \
+  auto store##N = std::make_shared<TestStore>(node_id##N); \
   TRaft r##N( \
     raft_settings, \
-    std::make_unique<AllSigsAdaptor>(store##N), \
+    std::make_unique<TestAdaptor>(store##N), \
     std::make_unique<aft::LedgerStubProxy>(node_id##N), \
     std::make_shared<aft::ChannelStubProxy>(), \
     std::make_shared<aft::StubSnapshotter>(), \

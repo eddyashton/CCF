@@ -25,10 +25,9 @@ namespace aft
 
     virtual void init(Index, Index) {}
 
-    virtual void put_entry(
+    static std::vector<uint8_t> create_serialised_entry(
       const std::vector<uint8_t>& original,
-      bool globally_committable,
-      bool force_chunk,
+      kv::ApplyResult apply_result,
       kv::Term term,
       kv::Version index)
     {
@@ -36,26 +35,45 @@ namespace aft
       // ledger entry as well as the View and Index that identify it. In
       // the real entries, they are nested in the payload and the IV. For
       // test purposes, we just prefix them manually (to mirror the
-      // deserialisation in LoggingStubStore::ExecutionWrapper). We also
+      // deserialisation in StoreStubProxy::ExecutionWrapper). We also
       // size-prefix, so in a buffer of multiple of these messages we can
       // extract each with get_entry
-      const size_t idx = ledger.size() + 1;
-      assert(idx == index);
-      auto additional_size = sizeof(size_t) + sizeof(term) + sizeof(index);
+      auto additional_size =
+        sizeof(size_t) + sizeof(apply_result) + sizeof(term) + sizeof(index);
       std::vector<uint8_t> combined(additional_size);
       {
         uint8_t* data = combined.data();
         serialized::write(
           data,
           additional_size,
-          (sizeof(term) + sizeof(index) + original.size()));
+          (sizeof(apply_result) + sizeof(term) + sizeof(index) +
+           original.size()));
+        serialized::write(data, additional_size, apply_result);
         serialized::write(data, additional_size, term);
         serialized::write(data, additional_size, index);
       }
 
       combined.insert(combined.end(), original.begin(), original.end());
 
-      ledger.push_back(combined);
+      return combined;
+    }
+
+    virtual void put_entry(
+      const std::vector<uint8_t>& original,
+      bool globally_committable,
+      bool force_chunk,
+      kv::Term term,
+      kv::Version index)
+    {
+      const size_t idx = ledger.size() + 1;
+      assert(idx == index);
+      const auto serialised = create_serialised_entry(
+        original,
+        globally_committable ? kv::ApplyResult::PASS_SIGNATURE :
+                               kv::ApplyResult::PASS,
+        term,
+        index);
+      ledger.push_back(serialised);
     }
 
     void skip_entry(const uint8_t*& data, size_t& size)
@@ -88,11 +106,12 @@ namespace aft
       auto data = get_entry_by_idx(idx);
       if (data.has_value())
       {
-        // Remove the View and Index that were written during put_entry
+        // Remove the ApplyResult, View and Index that were written during
+        // put_entry
         data->erase(
           data->begin(),
-          data->begin() + sizeof(size_t) + sizeof(kv::Term) +
-            sizeof(kv::Version));
+          data->begin() + sizeof(size_t) + sizeof(kv::ApplyResult) +
+            sizeof(kv::Term) + sizeof(kv::Version));
       }
 
       return data;
@@ -254,13 +273,13 @@ namespace aft
     }
   };
 
-  class LoggingStubStore
+  class StoreStubProxy
   {
   protected:
     ccf::NodeId _id;
 
   public:
-    LoggingStubStore(ccf::NodeId id) : _id(id) {}
+    StoreStubProxy(ccf::NodeId id) : _id(id) {}
 
     virtual void compact(Index i) {}
 
@@ -273,7 +292,6 @@ namespace aft
       return kv::NoVersion;
     }
 
-    template <kv::ApplyResult AR>
     class ExecutionWrapper : public kv::AbstractExecutionWrapper
     {
     private:
@@ -293,11 +311,10 @@ namespace aft
         const uint8_t* data = data_.data();
         auto size = data_.size();
 
+        result = serialized::read<kv::ApplyResult>(data, size);
         term = serialized::read<aft::Term>(data, size);
         index = serialized::read<kv::Version>(data, size);
         entry = serialized::read(data, size, size);
-
-        result = AR;
 
         if (expected_txid.has_value())
         {
@@ -366,31 +383,7 @@ namespace aft
       bool public_only = false,
       const std::optional<kv::TxID>& expected_txid = std::nullopt)
     {
-      return std::make_unique<ExecutionWrapper<kv::ApplyResult::PASS>>(
-        data, expected_txid);
-    }
-
-    bool flag_enabled(kv::AbstractStore::Flag)
-    {
-      return false;
-    }
-
-    void unset_flag(kv::AbstractStore::Flag) {}
-  };
-
-  class LoggingStubStoreSig : public LoggingStubStore
-  {
-  public:
-    LoggingStubStoreSig(ccf::NodeId id) : LoggingStubStore(id) {}
-
-    std::unique_ptr<kv::AbstractExecutionWrapper> deserialize(
-      const std::vector<uint8_t>& data,
-      ConsensusType consensus_type,
-      bool public_only = false,
-      const std::optional<kv::TxID>& expected_txid = std::nullopt) override
-    {
-      return std::make_unique<
-        ExecutionWrapper<kv::ApplyResult::PASS_SIGNATURE>>(data, expected_txid);
+      return std::make_unique<ExecutionWrapper>(data, expected_txid);
     }
 
     bool flag_enabled(kv::AbstractStore::Flag)
