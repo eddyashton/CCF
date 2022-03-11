@@ -69,6 +69,20 @@ suite_reconfiguration = [
 ]
 suites["reconfiguration"] = suite_reconfiguration
 
+suite_foo = [
+    e2e_logging.test,
+    recovery.test_recover_service,
+    reconfiguration.test_add_node,
+    election.test_kill_backup,
+    e2e_logging.test,
+    e2e_logging.test_large_messages,
+    e2e_logging.test_forwarding_frontends,
+    membership.test_update_recovery_shares,
+    e2e_logging.test_tx_statuses,
+    # e2e_logging.test_random_receipts,
+]
+suites["foo"] = suite_foo
+
 
 all_tests_suite = [
     # e2e_logging:

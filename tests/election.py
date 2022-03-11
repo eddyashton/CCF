@@ -19,6 +19,12 @@ from loguru import logger as LOG
 # as F > N/2).+
 
 
+def test_kill_backup_no_reqs(network, args):
+    _, backup = network.find_primary_and_any_backup()
+    backup.stop()
+    return network
+
+
 @reqs.description("Stop current primary and wait for a new one to be elected")
 def test_kill_primary_no_reqs(network, args):
     primary, _ = network.find_primary_and_any_backup()
@@ -41,6 +47,11 @@ def test_kill_primary_no_reqs(network, args):
 @reqs.can_kill_n_nodes(1)
 def test_kill_primary(network, args):
     return test_kill_primary_no_reqs(network, args)
+
+
+@reqs.can_kill_n_nodes(1)
+def test_kill_backup(network, args):
+    return test_kill_backup_no_reqs(network, args)
 
 
 def run(args):
