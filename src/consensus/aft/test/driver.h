@@ -530,7 +530,9 @@ public:
   }
 
   void replicate(
-    const std::string& term_s, std::shared_ptr<std::vector<uint8_t>> data)
+    const std::string& term_s,
+    std::shared_ptr<std::vector<uint8_t>> data,
+    bool signature)
   {
     const auto opt = find_primary_in_term(term_s);
     if (!opt.has_value())
@@ -555,7 +557,7 @@ public:
                     << std::endl;
     auto hooks = std::make_shared<kv::ConsensusHookPtrs>();
     // True means all these entries are committable
-    raft->replicate(kv::BatchVector{{idx, data, false, hooks}}, term);
+    raft->replicate(kv::BatchVector{{idx, data, signature, hooks}}, term);
   }
 
   void disconnect(ccf::NodeId left, ccf::NodeId right)

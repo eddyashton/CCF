@@ -23,14 +23,14 @@ def write_error_report(errors=None):
         errors = [(error[0], error[1].replace("\n", " <br> ")) for error in errors]
         scenario_len = max(len("Scenario"), *(len(error[0]) for error in errors))
         stderr_len = max(len("stderr"), *(len(error[1]) for error in errors))
-        print("???+ error \n")
+        print("### Errors \n")
         fmt_s = "   | {{:<{}}} | {{:<{}}} |\n".format(scenario_len, stderr_len)
         print(fmt_s.format("Scenario", "stderr"))
         print(fmt_s.format("-" * scenario_len, "-" * stderr_len))
         for error in errors:
             print(fmt_s.format(error[0], error[1]))
     else:
-        print("??? success \n")
+        print("### Success!")
 
 
 def strip_log_lines(text):
