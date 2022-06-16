@@ -5,13 +5,13 @@ function(add_san name)
   if(SAN)
     target_compile_options(
       ${name}
-      PRIVATE -fsanitize=undefined,address -fno-omit-frame-pointer
+      PRIVATE -fsanitize=address -fno-omit-frame-pointer
               -fno-sanitize-recover=all -fno-sanitize=function
               -fsanitize-blacklist=${CCF_DIR}/src/ubsan.suppressions
     )
     target_link_libraries(
       ${name}
-      PRIVATE -fsanitize=undefined,address -fno-omit-frame-pointer
+      PRIVATE -fsanitize=address -fno-omit-frame-pointer
               -fno-sanitize-recover=all -fno-sanitize=function
               -fsanitize-blacklist=${CCF_DIR}/src/ubsan.suppressions
     )
