@@ -240,8 +240,19 @@ int main(int argc, char** argv)
   // reconstruct oversized messages sent to the host
   oversized::FragmentReconstructor fr(bp.get_dispatcher());
 
+  // NB: These instances are constructed outside of the local scope below as
+  // they may create uv objects on the main loop, so should outlive the uv
+  // cleanup flushing loop at the end of main
   asynchost::ProcessLauncher process_launcher;
   process_launcher.register_message_handlers(bp.get_dispatcher());
+
+  asynchost::Ledger ledger(
+    config.ledger.directory,
+    writer_factory,
+    config.ledger.chunk_size,
+    asynchost::ledger_max_read_cache_files_default,
+    config.ledger.read_only_directories);
+  ledger.register_message_handlers(bp.get_dispatcher());
 
   {
     // provide regular ticks to the enclave
@@ -265,14 +276,6 @@ int main(int argc, char** argv)
 
     // graceful shutdown on sigterm
     asynchost::Sigterm sigterm(writer_factory);
-
-    asynchost::Ledger ledger(
-      config.ledger.directory,
-      writer_factory,
-      config.ledger.chunk_size,
-      asynchost::ledger_max_read_cache_files_default,
-      config.ledger.read_only_directories);
-    ledger.register_message_handlers(bp.get_dispatcher());
 
     asynchost::SnapshotManager snapshots(config.snapshots.directory, ledger);
     snapshots.register_message_handlers(bp.get_dispatcher());
