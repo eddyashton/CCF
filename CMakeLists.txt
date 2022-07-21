@@ -76,6 +76,12 @@ option(BUILD_TPCC "Build TPPC sample app and clients" OFF)
 # public headers in future
 add_compile_definitions(CCF_LOGGER_NO_DEPRECATE)
 
+include(CheckIPOSupported)
+check_ipo_supported() # fatal error if IPO is not supported
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+add_compile_options(-fsanitize=cfi -fvisibility=hidden)
+add_link_options(-fsanitize=cfi -fvisibility=hidden)
+
 # Build common library for CCF enclaves
 add_custom_target(ccf ALL)
 
