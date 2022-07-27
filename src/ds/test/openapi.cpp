@@ -200,7 +200,7 @@ namespace aaa
   }
 
   void add_schema_components(
-    ds::openapi::SchemaHelper& doc, nlohmann::json& j, const FriendlyName&)
+    ds::openapi::SchemaHelper& doc, nlohmann::json& j, const FriendlyName*)
   {
     j["type"] = "string";
     j["pattern"] = "^.* \".*\" .*$";
