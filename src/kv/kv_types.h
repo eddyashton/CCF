@@ -72,7 +72,7 @@ namespace kv
       return {term, version};
     }
 
-    bool operator==(const TxID& other)
+    bool operator==(const TxID& other) const
     {
       return term == other.term && version == other.version;
     }
@@ -128,13 +128,13 @@ namespace kv
     ni.port = p;
   }
 
-  inline std::string schema_name(const Configuration::NodeInfo&)
+  inline std::string schema_name(const Configuration::NodeInfo*)
   {
     return "Configuration__NodeInfo";
   }
 
   inline void fill_json_schema(
-    nlohmann::json& schema, const Configuration::NodeInfo&)
+    nlohmann::json& schema, const Configuration::NodeInfo*)
   {
     schema["type"] = "object";
     schema["required"] = nlohmann::json::array();
@@ -193,18 +193,37 @@ namespace kv
 
   struct ConsensusDetails
   {
+    struct Ack
+    {
+      ccf::SeqNo seqno;
+      size_t last_received_ms;
+    };
+
     std::vector<Configuration> configs = {};
-    std::unordered_map<ccf::NodeId, ccf::SeqNo> acks = {};
+    std::unordered_map<ccf::NodeId, Ack> acks = {};
     MembershipState membership_state;
-    std::optional<LeadershipState> leadership_state;
-    std::optional<RetirementPhase> retirement_phase;
-    std::optional<std::unordered_map<ccf::NodeId, ccf::SeqNo>> learners;
-    std::optional<ReconfigurationType> reconfiguration_type;
+    std::optional<LeadershipState> leadership_state = std::nullopt;
+    std::optional<RetirementPhase> retirement_phase = std::nullopt;
+    std::optional<std::unordered_map<ccf::NodeId, ccf::SeqNo>> learners =
+      std::nullopt;
+    std::optional<ReconfigurationType> reconfiguration_type = std::nullopt;
+    std::optional<ccf::NodeId> primary_id = std::nullopt;
+    ccf::View current_view = 0;
+    bool ticking = false;
   };
+
+  DECLARE_JSON_TYPE(ConsensusDetails::Ack);
+  DECLARE_JSON_REQUIRED_FIELDS(ConsensusDetails::Ack, seqno, last_received_ms);
 
   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(ConsensusDetails);
   DECLARE_JSON_REQUIRED_FIELDS(
-    ConsensusDetails, configs, acks, membership_state);
+    ConsensusDetails,
+    configs,
+    acks,
+    membership_state,
+    primary_id,
+    current_view,
+    ticking);
   DECLARE_JSON_OPTIONAL_FIELDS(
     ConsensusDetails,
     reconfiguration_type,
@@ -234,13 +253,6 @@ namespace kv
       const ccf::ResharingResult& result) = 0;
     virtual std::optional<Configuration::Nodes> orc(
       kv::ReconfigurationId rid, const NodeId& node_id) = 0;
-    virtual void record_signature(
-      kv::Version version,
-      const std::vector<uint8_t>& sig,
-      const NodeId& node_id,
-      const crypto::Pem& node_cert) = 0;
-    virtual void record_serialised_tree(
-      kv::Version version, const std::vector<uint8_t>& tree) = 0;
     virtual void update_parameters(ConsensusParameters& params) = 0;
   };
 
@@ -442,6 +454,7 @@ namespace kv
     virtual void set_term(kv::Term) = 0;
     virtual std::vector<uint8_t> serialise_tree(size_t from, size_t to) = 0;
     virtual void set_endorsed_certificate(const crypto::Pem& cert) = 0;
+    virtual void start_signature_emit_timer() = 0;
   };
 
   class Consensus : public ConfigurableConsensus
@@ -453,6 +466,14 @@ namespace kv
     virtual bool is_primary() = 0;
     virtual bool is_backup() = 0;
     virtual bool can_replicate() = 0;
+
+    enum class SignatureDisposition
+    {
+      CANT_REPLICATE,
+      CAN_SIGN,
+      SHOULD_SIGN,
+    };
+    virtual SignatureDisposition get_signature_disposition() = 0;
 
     virtual void force_become_primary() = 0;
     virtual void force_become_primary(
@@ -469,7 +490,7 @@ namespace kv
       ccf::SeqNo version, previous_version;
     };
 
-    virtual std::optional<SignableTxIndices> get_signable_txid() = 0;
+    virtual SignableTxIndices get_signable_txid() = 0;
 
     virtual ccf::View get_view(ccf::SeqNo seqno) = 0;
     virtual ccf::View get_view() = 0;
@@ -561,7 +582,8 @@ namespace kv
       std::vector<uint8_t>& serialised_header,
       std::vector<uint8_t>& cipher,
       const TxID& tx_id,
-      EntryType entry_type = EntryType::WriteSet) = 0;
+      EntryType entry_type = EntryType::WriteSet,
+      bool historical_hint = false) = 0;
     virtual bool decrypt(
       const std::vector<uint8_t>& cipher,
       const std::vector<uint8_t>& additional_data,
@@ -579,8 +601,18 @@ namespace kv
     virtual crypto::HashBytes get_commit_nonce(
       const TxID& tx_id, bool historical_hint = false) = 0;
   };
-
   using EncryptorPtr = std::shared_ptr<AbstractTxEncryptor>;
+
+  class AbstractSnapshotter
+  {
+  public:
+    virtual ~AbstractSnapshotter(){};
+
+    virtual bool record_committable(kv::Version v) = 0;
+    virtual void commit(kv::Version v, bool generate_snapshot) = 0;
+    virtual void rollback(kv::Version v) = 0;
+  };
+  using SnapshotterPtr = std::shared_ptr<AbstractSnapshotter>;
 
   class AbstractChangeSet
   {
@@ -732,8 +764,10 @@ namespace kv
       ConsensusHookPtrs& hooks,
       std::vector<Version>* view_history = nullptr,
       bool public_only = false) = 0;
+    virtual bool must_force_ledger_chunk(Version version) = 0;
+    virtual bool must_force_ledger_chunk_unsafe(Version version) = 0;
 
-    virtual size_t commit_gap() = 0;
+    virtual size_t committable_gap() = 0;
 
     enum class Flag : uint8_t
     {

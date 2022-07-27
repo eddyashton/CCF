@@ -6,12 +6,12 @@
 #include "ccf/ds/logger.h"
 #include "ccf/historical_queries_interface.h"
 #include "ccf/js_plugin.h"
+#include "ccf/node/host_processes_interface.h"
 #include "ccf/rpc_context.h"
 #include "ccf/tx.h"
 #include "kv/kv_types.h"
 #include "node/network_state.h"
 #include "node/rpc/gov_effects_interface.h"
-#include "node/rpc/host_processes_interface.h"
 #include "node/rpc/node_interface.h"
 
 #include <memory>
@@ -21,6 +21,7 @@
 namespace ccf::js
 {
   extern JSClassID kv_class_id;
+  extern JSClassID kv_read_only_class_id;
   extern JSClassID kv_map_handle_class_id;
   extern JSClassID body_class_id;
   extern JSClassID node_class_id;
@@ -31,6 +32,8 @@ namespace ccf::js
 
   extern JSClassDef kv_class_def;
   extern JSClassExoticMethods kv_exotic_methods;
+  extern JSClassDef kv_read_only_class_def;
+  extern JSClassExoticMethods kv_read_only_exotic_methods;
   extern JSClassDef kv_map_handle_class_def;
   extern JSClassDef body_class_def;
   extern JSClassDef node_class_def;
@@ -46,14 +49,18 @@ namespace ccf::js
   struct TxContext
   {
     kv::Tx* tx = nullptr;
-    TxAccess access = js::TxAccess::APP;
+  };
+
+  struct ReadOnlyTxContext
+  {
+    kv::ReadOnlyTx* tx = nullptr;
   };
 
   struct HistoricalStateContext
   {
     ccf::historical::StatePtr state;
-    kv::CommittableTx tx;
-    TxContext tx_ctx;
+    kv::ReadOnlyTx tx;
+    ReadOnlyTxContext tx_ctx;
   };
 
 #pragma clang diagnostic push
@@ -168,10 +175,10 @@ namespace ccf::js
   void register_request_body_class(JSContext* ctx);
   void populate_global(
     TxContext* txctx,
-    TxContext* historical_txctx,
-    enclave::RpcContext* rpc_ctx,
+    ReadOnlyTxContext* historical_txctx,
+    ccf::RpcContext* rpc_ctx,
     const std::optional<ccf::TxID>& transaction_id,
-    ccf::TxReceiptPtr receipt,
+    ccf::TxReceiptImplPtr receipt,
     ccf::AbstractGovernanceEffects* gov_effects,
     ccf::AbstractHostProcesses* host_processes,
     ccf::NetworkState* network_state,
@@ -242,10 +249,11 @@ namespace ccf::js
   class Context
   {
     JSContext* ctx;
-    bool ok_to_free = true;
 
   public:
-    Context(JSRuntime* rt)
+    const TxAccess access;
+
+    Context(JSRuntime* rt, TxAccess acc) : access(acc)
     {
       ctx = JS_NewContext(rt);
       if (ctx == nullptr)
@@ -255,18 +263,9 @@ namespace ccf::js
       JS_SetContextOpaque(ctx, this);
     }
 
-    Context(JSContext* other)
-    {
-      ctx = other;
-      ok_to_free = false;
-    }
-
     ~Context()
     {
-      if (ok_to_free)
-      {
-        JS_FreeContext(ctx);
-      }
+      JS_FreeContext(ctx);
     }
 
     operator JSContext*() const

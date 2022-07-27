@@ -9,8 +9,9 @@
 #include "node/rpc/node_frontend.h"
 
 #define FMT_HEADER_ONLY
+#include "ccf/ds/pal.h"
+
 #include <fmt/format.h>
-#include <mutex>
 
 namespace ccf
 {
@@ -20,8 +21,8 @@ namespace ccf
     size_t refresh_interval_s;
     NetworkState& network;
     std::shared_ptr<kv::Consensus> consensus;
-    std::shared_ptr<enclave::RPCSessions> rpcsessions;
-    std::shared_ptr<enclave::RPCMap> rpc_map;
+    std::shared_ptr<ccf::RPCSessions> rpcsessions;
+    std::shared_ptr<ccf::RPCMap> rpc_map;
     crypto::KeyPairPtr node_sign_kp;
     crypto::Pem node_cert;
     std::atomic_size_t attempts;
@@ -31,8 +32,8 @@ namespace ccf
       size_t refresh_interval_s,
       NetworkState& network,
       const std::shared_ptr<kv::Consensus>& consensus,
-      const std::shared_ptr<enclave::RPCSessions>& rpcsessions,
-      const std::shared_ptr<enclave::RPCMap>& rpc_map,
+      const std::shared_ptr<ccf::RPCSessions>& rpcsessions,
+      const std::shared_ptr<ccf::RPCMap>& rpc_map,
       const crypto::KeyPairPtr& node_sign_kp,
       const crypto::Pem& node_cert) :
       refresh_interval_s(refresh_interval_s),
@@ -118,9 +119,9 @@ namespace ccf
 
       auto packed = request.build_request();
 
-      auto node_session = std::make_shared<enclave::SessionContext>(
-        enclave::InvalidSessionId, node_cert.raw());
-      auto ctx = enclave::make_rpc_context(node_session, packed);
+      auto node_session = std::make_shared<ccf::SessionContext>(
+        ccf::InvalidSessionId, node_cert.raw());
+      auto ctx = ccf::make_rpc_context(node_session, packed);
 
       const auto actor_opt = http::extract_actor(*ctx);
       if (!actor_opt.has_value())
@@ -265,7 +266,7 @@ namespace ccf
         });
       http::Request r(jwks_url.path, HTTP_GET);
       r.set_header(http::headers::HOST, std::string(jwks_url.host));
-      http_client->send_request(r.build_request());
+      http_client->send_request(r);
     }
 
     void refresh_jwt_keys()
@@ -333,7 +334,7 @@ namespace ccf
           });
         http::Request r(metadata_url.path, HTTP_GET);
         r.set_header(http::headers::HOST, std::string(metadata_url.host));
-        http_client->send_request(r.build_request());
+        http_client->send_request(r);
         return true;
       });
     }

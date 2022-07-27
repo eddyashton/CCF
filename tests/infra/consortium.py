@@ -17,6 +17,7 @@ from infra.proposal import ProposalState
 import shutil
 import tempfile
 import glob
+import datetime
 
 from cryptography import x509
 import cryptography.hazmat.backends as crypto_backends
@@ -61,7 +62,6 @@ class Consortium:
         self.key_generator = key_generator
         self.share_script = share_script
         self.consensus = consensus
-        self.members = []
         self.recovery_threshold = None
         self.authenticate_session = authenticate_session
         self.reconfiguration_type = reconfiguration_type
@@ -145,7 +145,10 @@ class Consortium:
             args = {}
             for k, v in kwargs.items():
                 if v is not None:
-                    args[k] = v
+                    if isinstance(v, datetime.datetime):
+                        args[k] = str(v)
+                    else:
+                        args[k] = v
             action["args"] = args
 
         proposal_body = {"actions": [action]}
@@ -268,7 +271,7 @@ class Consortium:
         )
 
     def vote_using_majority(
-        self, remote_node, proposal, ballot, wait_for_global_commit=True, timeout=3
+        self, remote_node, proposal, ballot, wait_for_commit=True, timeout=3
     ):
         response = None
 
@@ -298,7 +301,7 @@ class Consortium:
             view = response.view
 
         # Wait for proposal completion to be committed, even if no votes are issued
-        if wait_for_global_commit:
+        if wait_for_commit:
             with remote_node.client() as c:
                 infra.commit.wait_for_commit(c, seqno, view, timeout=timeout)
 
@@ -344,7 +347,7 @@ class Consortium:
             remote_node,
             proposal,
             careful_vote,
-            wait_for_global_commit=True,
+            wait_for_commit=True,
             timeout=timeout,
         )
 
@@ -382,12 +385,20 @@ class Consortium:
         proposal = self.get_any_active_member().propose(remote_node, proposal)
         return self.vote_using_majority(remote_node, proposal, careful_vote)
 
+    def get_service_identity(self):
+        return slurp_file(os.path.join(self.common_dir, "service_cert.pem"))
+
     def add_users_and_transition_service_to_open(self, remote_node, users):
         proposal = {"actions": []}
         for user_id in users:
             cert = slurp_file(self.user_cert_path(user_id))
             proposal["actions"].append({"name": "set_user", "args": {"cert": cert}})
-        proposal["actions"].append({"name": "transition_service_to_open"})
+
+        args = {}
+        if remote_node.version_after("ccf-2.0.0-rc3"):
+            args = {"args": {"next_service_identity": self.get_service_identity()}}
+        proposal["actions"].append({"name": "transition_service_to_open", **args})
+
         proposal = self.get_any_active_member().propose(remote_node, proposal)
         return self.vote_using_majority(
             remote_node,
@@ -568,7 +579,7 @@ class Consortium:
         proposal = self.get_any_active_member().propose(remote_node, proposal_body)
         return self.vote_using_majority(remote_node, proposal, careful_vote)
 
-    def transition_service_to_open(self, remote_node):
+    def transition_service_to_open(self, remote_node, previous_service_identity=None):
         """
         Assuming a network in state OPENING, this functions creates a new
         proposal and make members vote to transition the network to state
@@ -580,10 +591,20 @@ class Consortium:
             if r.body.json()["state"] == infra.node.State.PART_OF_NETWORK.value:
                 is_recovery = False
 
-        proposal_body, careful_vote = self.make_proposal("transition_service_to_open")
+        args = {}
+        if remote_node.version_after("ccf-2.0.0-rc3"):
+            args = {
+                "previous_service_identity": previous_service_identity,
+                "next_service_identity": self.get_service_identity(),
+            }
+
+        proposal_body, careful_vote = self.make_proposal(
+            "transition_service_to_open", **args
+        )
+
         proposal = self.get_any_active_member().propose(remote_node, proposal_body)
         self.vote_using_majority(
-            remote_node, proposal, careful_vote, wait_for_global_commit=True
+            remote_node, proposal, careful_vote, wait_for_commit=True
         )
         # If the node was already in state "PartOfNetwork", the open network
         # proposal should open the service
@@ -631,6 +652,15 @@ class Consortium:
         proposal = self.get_any_active_member().propose(remote_node, proposal_body)
         return self.vote_using_majority(remote_node, proposal, careful_vote)
 
+    def set_node_data(self, remote_node, node_service_id, node_data):
+        proposal, careful_vote = self.make_proposal(
+            "set_node_data",
+            node_id=node_service_id,
+            node_data=node_data,
+        )
+        proposal = self.get_any_active_member().propose(remote_node, proposal)
+        return self.vote_using_majority(remote_node, proposal, careful_vote)
+
     def set_node_certificate_validity(
         self, remote_node, node_to_renew, valid_from, validity_period_days
     ):
@@ -671,26 +701,38 @@ class Consortium:
         proposal = self.get_any_active_member().propose(remote_node, proposal_body)
         return self.vote_using_majority(remote_node, proposal, careful_vote)
 
-    def check_for_service(self, remote_node, status):
+    def check_for_service(self, remote_node, status, recovery_count=None):
         """
         Check the certificate associated with current CCF service signing key has been recorded in
         the KV store with the appropriate status.
         """
         with remote_node.client() as c:
-            r = c.get("/node/network")
-            current_status = r.body.json()["service_status"]
-            current_cert = r.body.json()["service_certificate"]
+            r = c.get("/node/network").body.json()
+            current_status = r["service_status"]
+            current_cert = r["service_certificate"]
+            if remote_node.version_after("ccf-2.0.3"):
+                current_recovery_count = r["recovery_count"]
+            else:
+                assert "recovery_count" not in r
 
             expected_cert = slurp_file(
                 os.path.join(self.common_dir, "service_cert.pem")
             )
 
+            # Certs previously contained a terminating null byte. Strip it for comparison.
+            current_cert = current_cert.strip("\x00")
+            expected_cert = expected_cert.strip("\x00")
+
             assert (
-                current_cert == expected_cert[:-1]
+                current_cert == expected_cert
             ), "Current service certificate did not match with service_cert.pem"
             assert (
                 current_status == status.value
             ), f"Service status {current_status} (expected {status.value})"
+            if remote_node.version_after("ccf-2.0.3"):
+                assert (
+                    recovery_count is None or current_recovery_count == recovery_count
+                ), f"Current recovery count {current_recovery_count} is not expected {recovery_count}"
 
     def submit_2tx_migration_proposal(self, remote_node, timeout=10):
         proposal_body = {

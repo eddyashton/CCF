@@ -10,7 +10,7 @@
 #include "node/history.h"
 #include "node/ledger_secrets.h"
 #include "node/rpc/node_interface.h"
-#include "node/tx_receipt.h"
+#include "node/tx_receipt_impl.h"
 #include "service/tables/node_signature.h"
 
 #include <list>
@@ -132,7 +132,7 @@ namespace ccf::historical
       ccf::ClaimsDigest claims_digest = {};
       kv::StorePtr store = nullptr;
       bool is_signature = false;
-      TxReceiptPtr receipt = nullptr;
+      TxReceiptImplPtr receipt = nullptr;
       ccf::TxID transaction_id;
       bool has_commit_evidence = false;
 
@@ -332,7 +332,7 @@ namespace ccf::historical
                 {
                   auto proof = tree.get_proof(seqno);
                   details->transaction_id = {sig->view, seqno};
-                  details->receipt = std::make_shared<TxReceipt>(
+                  details->receipt = std::make_shared<TxReceiptImpl>(
                     sig->sig,
                     proof.get_root(),
                     proof.get_path(),
@@ -419,7 +419,7 @@ namespace ccf::historical
                       {
                         auto proof = tree.get_proof(new_seqno);
                         new_details->transaction_id = {sig->view, new_seqno};
-                        new_details->receipt = std::make_shared<TxReceipt>(
+                        new_details->receipt = std::make_shared<TxReceiptImpl>(
                           sig->sig,
                           proof.get_root(),
                           proof.get_path(),
@@ -466,7 +466,7 @@ namespace ccf::historical
                     {
                       auto proof = tree.get_proof(new_seqno);
                       new_details->transaction_id = {sig->view, new_seqno};
-                      new_details->receipt = std::make_shared<TxReceipt>(
+                      new_details->receipt = std::make_shared<TxReceiptImpl>(
                         sig->sig,
                         proof.get_root(),
                         proof.get_path(),
@@ -502,7 +502,7 @@ namespace ccf::historical
     };
 
     // Guard all access to internal state with this lock
-    std::mutex requests_lock;
+    ccf::Pal::Mutex requests_lock;
 
     // Track all things currently requested by external callers
     std::map<CompoundHandle, Request> requests;
@@ -665,7 +665,7 @@ namespace ccf::historical
             const auto sig = get_signature(details->store);
             assert(sig.has_value());
             details->transaction_id = {sig->view, sig->seqno};
-            details->receipt = std::make_shared<TxReceipt>(
+            details->receipt = std::make_shared<TxReceiptImpl>(
               sig->sig, sig->root.h, nullptr, sig->node, sig->cert);
           }
 
@@ -741,7 +741,13 @@ namespace ccf::historical
       ExpiryDuration seconds_until_expiry,
       bool include_receipts)
     {
-      std::lock_guard<std::mutex> guard(requests_lock);
+      if (seqnos.empty())
+      {
+        throw std::logic_error(
+          "Invalid range for historical query: Cannot request empty range");
+      }
+
+      std::lock_guard<ccf::Pal::Mutex> guard(requests_lock);
 
       const auto ms_until_expiry =
         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -841,10 +847,10 @@ namespace ccf::historical
       }
     }
 
-    std::vector<kv::StorePtr> states_to_stores(
+    std::vector<kv::ReadOnlyStorePtr> states_to_stores(
       const std::vector<StatePtr>& states)
     {
-      std::vector<kv::StorePtr> stores;
+      std::vector<kv::ReadOnlyStorePtr> stores;
       for (size_t i = 0; i < states.size(); i++)
       {
         stores.push_back(states[i]->store);
@@ -865,7 +871,7 @@ namespace ccf::historical
         std::make_shared<ccf::NodeEncryptor>(historical_ledger_secrets))
     {}
 
-    kv::StorePtr get_store_at(
+    kv::ReadOnlyStorePtr get_store_at(
       const CompoundHandle& handle,
       ccf::SeqNo seqno,
       ExpiryDuration seconds_until_expiry)
@@ -879,7 +885,8 @@ namespace ccf::historical
       return range[0];
     }
 
-    kv::StorePtr get_store_at(const CompoundHandle& handle, ccf::SeqNo seqno)
+    kv::ReadOnlyStorePtr get_store_at(
+      const CompoundHandle& handle, ccf::SeqNo seqno)
     {
       return get_store_at(handle, seqno, default_expiry_duration);
     }
@@ -903,7 +910,7 @@ namespace ccf::historical
       return get_state_at(handle, seqno, default_expiry_duration);
     }
 
-    std::vector<kv::StorePtr> get_store_range(
+    std::vector<kv::ReadOnlyStorePtr> get_store_range(
       const CompoundHandle& handle,
       ccf::SeqNo start_seqno,
       ccf::SeqNo end_seqno,
@@ -916,7 +923,7 @@ namespace ccf::historical
         false));
     }
 
-    std::vector<kv::StorePtr> get_store_range(
+    std::vector<kv::ReadOnlyStorePtr> get_store_range(
       const CompoundHandle& handle,
       ccf::SeqNo start_seqno,
       ccf::SeqNo end_seqno)
@@ -947,7 +954,7 @@ namespace ccf::historical
         handle, start_seqno, end_seqno, default_expiry_duration);
     }
 
-    std::vector<kv::StorePtr> get_stores_for(
+    std::vector<kv::ReadOnlyStorePtr> get_stores_for(
       const CompoundHandle& handle,
       const SeqNoCollection& seqnos,
       ExpiryDuration seconds_until_expiry)
@@ -956,7 +963,7 @@ namespace ccf::historical
         get_states_internal(handle, seqnos, seconds_until_expiry, false));
     }
 
-    std::vector<kv::StorePtr> get_stores_for(
+    std::vector<kv::ReadOnlyStorePtr> get_stores_for(
       const CompoundHandle& handle, const SeqNoCollection& seqnos)
     {
       return get_stores_for(handle, seqnos, default_expiry_duration);
@@ -987,7 +994,7 @@ namespace ccf::historical
 
     bool drop_cached_states(const CompoundHandle& handle)
     {
-      std::lock_guard<std::mutex> guard(requests_lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(requests_lock);
       const auto erased_count = requests.erase(handle);
       return erased_count > 0;
     }
@@ -999,7 +1006,7 @@ namespace ccf::historical
 
     bool handle_ledger_entry(ccf::SeqNo seqno, const uint8_t* data, size_t size)
     {
-      std::lock_guard<std::mutex> guard(requests_lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(requests_lock);
       const auto it = pending_fetches.find(seqno);
       if (it == pending_fetches.end())
       {
@@ -1119,7 +1126,7 @@ namespace ccf::historical
 
     void handle_no_entry_range(ccf::SeqNo from_seqno, ccf::SeqNo to_seqno)
     {
-      std::lock_guard<std::mutex> guard(requests_lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(requests_lock);
 
       for (auto seqno = from_seqno; seqno <= to_seqno; ++seqno)
       {
@@ -1208,7 +1215,7 @@ namespace ccf::historical
 
     void tick(const std::chrono::milliseconds& elapsed_ms)
     {
-      std::lock_guard<std::mutex> guard(requests_lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(requests_lock);
       auto it = requests.begin();
       while (it != requests.end())
       {
@@ -1239,7 +1246,7 @@ namespace ccf::historical
     StateCache(Ts&&... ts) : StateCacheImpl(std::forward<Ts>(ts)...)
     {}
 
-    kv::StorePtr get_store_at(
+    kv::ReadOnlyStorePtr get_store_at(
       RequestHandle handle,
       ccf::SeqNo seqno,
       ExpiryDuration seconds_until_expiry) override
@@ -1248,7 +1255,8 @@ namespace ccf::historical
         make_compound_handle(handle), seqno, seconds_until_expiry);
     }
 
-    kv::StorePtr get_store_at(RequestHandle handle, ccf::SeqNo seqno) override
+    kv::ReadOnlyStorePtr get_store_at(
+      RequestHandle handle, ccf::SeqNo seqno) override
     {
       return StateCacheImpl::get_store_at(make_compound_handle(handle), seqno);
     }
@@ -1267,7 +1275,7 @@ namespace ccf::historical
       return StateCacheImpl::get_state_at(make_compound_handle(handle), seqno);
     }
 
-    std::vector<kv::StorePtr> get_store_range(
+    std::vector<kv::ReadOnlyStorePtr> get_store_range(
       RequestHandle handle,
       ccf::SeqNo start_seqno,
       ccf::SeqNo end_seqno,
@@ -1280,7 +1288,7 @@ namespace ccf::historical
         seconds_until_expiry);
     }
 
-    std::vector<kv::StorePtr> get_store_range(
+    std::vector<kv::ReadOnlyStorePtr> get_store_range(
       RequestHandle handle,
       ccf::SeqNo start_seqno,
       ccf::SeqNo end_seqno) override
@@ -1311,7 +1319,7 @@ namespace ccf::historical
         make_compound_handle(handle), start_seqno, end_seqno);
     }
 
-    std::vector<kv::StorePtr> get_stores_for(
+    std::vector<kv::ReadOnlyStorePtr> get_stores_for(
       RequestHandle handle,
       const SeqNoCollection& seqnos,
       ExpiryDuration seconds_until_expiry) override
@@ -1320,7 +1328,7 @@ namespace ccf::historical
         make_compound_handle(handle), seqnos, seconds_until_expiry);
     }
 
-    std::vector<kv::StorePtr> get_stores_for(
+    std::vector<kv::ReadOnlyStorePtr> get_stores_for(
       RequestHandle handle, const SeqNoCollection& seqnos) override
     {
       return StateCacheImpl::get_stores_for(

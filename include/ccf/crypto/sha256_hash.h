@@ -40,7 +40,7 @@ namespace crypto
     std::string hex_str() const;
 
     static Sha256Hash from_hex_string(const std::string& str);
-    static Sha256Hash from_span(const std::span<uint8_t, SIZE>& sp);
+    static Sha256Hash from_span(const std::span<const uint8_t, SIZE>& sp);
     static Sha256Hash from_representation(const Representation& r);
   };
 
@@ -48,17 +48,9 @@ namespace crypto
 
   void from_json(const nlohmann::json& j, Sha256Hash& hash);
 
-  inline std::string schema_name(const Sha256Hash&)
-  {
-    return "Sha256Digest";
-  }
+  std::string schema_name(const Sha256Hash*);
 
-  inline void fill_json_schema(
-    nlohmann::json& schema, const Sha256Hash&)
-  {
-    schema["type"] = "string";
-    // TODO
-  }
+  void fill_json_schema(nlohmann::json& schema, const Sha256Hash*);
 
   bool operator==(const Sha256Hash& lhs, const Sha256Hash& rhs);
 

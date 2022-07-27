@@ -6,6 +6,8 @@
 #include "ccf/crypto/pem.h"
 #include "ccf/crypto/public_key.h"
 
+#include <chrono>
+
 namespace crypto
 {
   class Verifier
@@ -185,11 +187,13 @@ namespace crypto
      * @param trusted_certs Vector of trusted certificates
      * @param chain Vector of ordered untrusted certificates used to
      *  build a chain to trusted certificates
+     * @param ignore_time Flag to disable certificate expiry checks
      * @return true if the verification is successfull
      */
     virtual bool verify_certificate(
       const std::vector<const Pem*>& trusted_certs,
-      const std::vector<const Pem*>& chain = {}) = 0;
+      const std::vector<const Pem*>& chain = {},
+      bool ignore_time = false) = 0;
 
     /** Indicates whether the certificate (held intenally) is self-signed */
     virtual bool is_self_signed() const = 0;
@@ -199,6 +203,15 @@ namespace crypto
 
     /** The validity period of the certificate */
     virtual std::pair<std::string, std::string> validity_period() const = 0;
+
+    /** The number of seconds of the validity period of the
+     * certificate remaining */
+    virtual size_t remaining_seconds(
+      const std::chrono::system_clock::time_point& now) const = 0;
+
+    /** The percentage of the validity period of the certificate remaining */
+    virtual double remaining_percentage(
+      const std::chrono::system_clock::time_point& now) const = 0;
 
     /** The subject name of the certificate */
     virtual std::string subject() const = 0;

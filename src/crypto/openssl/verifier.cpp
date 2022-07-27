@@ -10,7 +10,9 @@
 #include "x509_time.h"
 
 #include <openssl/evp.h>
+#include <openssl/ossl_typ.h>
 #include <openssl/x509.h>
+#include <openssl/x509_vfy.h>
 
 namespace crypto
 {
@@ -92,7 +94,8 @@ namespace crypto
 
   bool Verifier_OpenSSL::verify_certificate(
     const std::vector<const Pem*>& trusted_certs,
-    const std::vector<const Pem*>& chain)
+    const std::vector<const Pem*>& chain,
+    bool ignore_time)
   {
     Unique_X509_STORE store;
     Unique_X509_STORE_CTX store_ctx;
@@ -118,6 +121,15 @@ namespace crypto
     CHECK1(X509_STORE_set_flags(store, X509_V_FLAG_PARTIAL_CHAIN));
 
     CHECK1(X509_STORE_CTX_init(store_ctx, store, cert, chain_stack));
+
+    if (ignore_time)
+    {
+      X509_VERIFY_PARAM* param = X509_VERIFY_PARAM_new();
+      X509_VERIFY_PARAM_set_flags(param, X509_V_FLAG_NO_CHECK_TIME);
+      X509_VERIFY_PARAM_set_depth(param, 1);
+      X509_STORE_CTX_set0_param(store_ctx, param);
+    }
+
     auto valid = X509_verify_cert(store_ctx) == 1;
     if (!valid)
     {
@@ -167,5 +179,30 @@ namespace crypto
     BUF_MEM* bptr;
     BIO_get_mem_ptr(mem, &bptr);
     return std::string(bptr->data, bptr->length);
+  }
+
+  size_t Verifier_OpenSSL::remaining_seconds(
+    const std::chrono::system_clock::time_point& now) const
+  {
+    auto [from, to] = validity_period();
+    auto tp_to = ds::time_point_from_string(to);
+    return std::chrono::duration_cast<std::chrono::seconds>(tp_to - now)
+             .count() +
+      1;
+  }
+
+  double Verifier_OpenSSL::remaining_percentage(
+    const std::chrono::system_clock::time_point& now) const
+  {
+    auto [from, to] = validity_period();
+    auto tp_from = ds::time_point_from_string(from);
+    auto tp_to = ds::time_point_from_string(to);
+    auto total_sec =
+      std::chrono::duration_cast<std::chrono::seconds>(tp_to - tp_from)
+        .count() +
+      1;
+    auto rem_sec =
+      std::chrono::duration_cast<std::chrono::seconds>(tp_to - now).count() + 1;
+    return rem_sec / (double)total_sec;
   }
 }

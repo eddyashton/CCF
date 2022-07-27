@@ -3,8 +3,8 @@
 
 #pragma once
 
+#include "ccf/ds/unit_strings.h"
 #include "common/configuration.h"
-#include "ds/unit_strings.h"
 
 #include <optional>
 #include <string>
@@ -59,6 +59,8 @@ namespace host
     ds::TimeString slow_io_logging_threshold = {"10ms"};
     std::optional<std::string> node_client_interface = std::nullopt;
     ds::TimeString client_connection_timeout = {"2000ms"};
+    std::optional<std::string> node_data_json_file = std::nullopt;
+    std::optional<std::string> service_data_json_file = std::nullopt;
 
     struct OutputFiles
     {
@@ -87,6 +89,7 @@ namespace host
     {
       std::string directory = "snapshots";
       size_t tx_count = 10'000;
+      std::optional<std::string> read_only_directory = std::nullopt;
 
       bool operator==(const Snapshots&) const = default;
     };
@@ -139,6 +142,7 @@ namespace host
       struct Recover
       {
         size_t initial_service_certificate_validity_days = 1;
+        std::string previous_service_identity_file;
         bool operator==(const Recover&) const = default;
       };
       Recover recover = {};
@@ -165,7 +169,8 @@ namespace host
 
   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(CCHostConfig::Snapshots);
   DECLARE_JSON_REQUIRED_FIELDS(CCHostConfig::Snapshots);
-  DECLARE_JSON_OPTIONAL_FIELDS(CCHostConfig::Snapshots, directory, tx_count);
+  DECLARE_JSON_OPTIONAL_FIELDS(
+    CCHostConfig::Snapshots, directory, tx_count, read_only_directory);
 
   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(CCHostConfig::Logging);
   DECLARE_JSON_REQUIRED_FIELDS(CCHostConfig::Logging);
@@ -191,7 +196,9 @@ namespace host
   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(CCHostConfig::Command::Recover);
   DECLARE_JSON_REQUIRED_FIELDS(CCHostConfig::Command::Recover);
   DECLARE_JSON_OPTIONAL_FIELDS(
-    CCHostConfig::Command::Recover, initial_service_certificate_validity_days);
+    CCHostConfig::Command::Recover,
+    initial_service_certificate_validity_days,
+    previous_service_identity_file);
 
   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(CCHostConfig::Command);
   DECLARE_JSON_REQUIRED_FIELDS(CCHostConfig::Command, type);
@@ -206,6 +213,8 @@ namespace host
     slow_io_logging_threshold,
     node_client_interface,
     client_connection_timeout,
+    node_data_json_file,
+    service_data_json_file,
     output_files,
     ledger,
     snapshots,

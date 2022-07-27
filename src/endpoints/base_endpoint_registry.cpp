@@ -274,7 +274,7 @@ namespace ccf
 
   ApiResult BaseEndpointRegistry::get_untrusted_host_time_v1(::timespec& time)
   {
-    const std::chrono::microseconds now_us = enclave::get_enclave_time();
+    const std::chrono::microseconds now_us = ccf::get_enclave_time();
 
     constexpr auto us_per_s = 1'000'000;
     time.tv_sec = now_us.count() / us_per_s;
@@ -287,7 +287,7 @@ namespace ccf
     EndpointMetrics& endpoint_metrics)
   {
     endpoint_metrics.metrics.clear();
-    std::lock_guard<std::mutex> guard(metrics_lock);
+    std::lock_guard<ccf::Pal::Mutex> guard(metrics_lock);
     for (const auto& [path, verb_metrics] : metrics)
     {
       for (const auto& [verb, metric] : verb_metrics)

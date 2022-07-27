@@ -41,6 +41,13 @@ Application Endpoint Registration
    :project: CCF
    :members:
 
+RPC Context
+-----------
+
+.. doxygenclass:: ccf::RpcContext
+   :project: CCF
+   :members: get_session_context, get_request_body, get_request_query, get_request_path_params, get_request_verb, get_request_path, get_request_headers, get_request_header, get_request_url, set_claims_digest
+
 Authentication
 --------------
 
@@ -91,11 +98,12 @@ Supporting Types
    
 .. doxygenenum:: ccf::ApiResult
    :project: CCF
+  
 
 Historical Queries
 ------------------
 
-.. doxygenfunction:: ccf::historical::adapter_v2
+.. doxygenfunction:: ccf::historical::adapter_v3
    :project: CCF
 
 .. doxygenclass:: ccf::historical::AbstractStateCache
@@ -103,6 +111,21 @@ Historical Queries
    :members: set_default_expiry_duration, get_state_at, get_store_at, get_store_range, drop_cached_states
 
 .. doxygenstruct:: ccf::historical::State
+   :project: CCF
+   :members:
+
+.. doxygenclass:: ccf::Receipt
+   :project: CCF
+   :members:
+
+Indexing
+--------
+
+.. doxygenclass:: ccf::indexing::Strategy
+   :project: CCF
+   :members:
+
+.. doxygenclass:: ccf::indexing::strategies::SeqnosByKey_Bucketed_Untyped
    :project: CCF
    :members:
 

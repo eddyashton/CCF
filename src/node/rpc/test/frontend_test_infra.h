@@ -31,8 +31,8 @@ using TResponse = http::SimpleResponseProcessor::Response;
 // used throughout
 constexpr size_t certificate_validity_period_days = 365;
 using namespace std::literals;
-auto valid_from = crypto::OpenSSL::to_x509_time_string(
-  std::chrono::system_clock::to_time_t(std::chrono::system_clock::now() - 24h));
+auto valid_from =
+  ds::to_x509_time_string(std::chrono::system_clock::now() - 24h);
 auto valid_to = crypto::compute_cert_valid_to_string(
   valid_from, certificate_validity_period_days);
 
@@ -73,6 +73,12 @@ void check_error(const TResponse& r, http_status expected)
   DOCTEST_CHECK(r.status == expected);
 }
 
+void check_error_message(const TResponse& r, const std::string& msg)
+{
+  const std::string body_s(r.body.begin(), r.body.end());
+  CHECK(body_s.find(msg) != std::string::npos);
+}
+
 std::vector<uint8_t> create_request(
   const json& params, const string& method_name, llhttp_method verb = HTTP_POST)
 {
@@ -110,9 +116,9 @@ auto frontend_process(
   const std::vector<uint8_t>& serialized_request,
   const crypto::Pem& caller)
 {
-  auto session = std::make_shared<enclave::SessionContext>(
-    enclave::InvalidSessionId, crypto::make_verifier(caller)->cert_der());
-  auto rpc_ctx = enclave::make_rpc_context(session, serialized_request);
+  auto session = std::make_shared<ccf::SessionContext>(
+    ccf::InvalidSessionId, crypto::make_verifier(caller)->cert_der());
+  auto rpc_ctx = ccf::make_rpc_context(session, serialized_request);
   http::extract_actor(*rpc_ctx);
   auto serialized_response = frontend.process(rpc_ctx);
 
@@ -167,6 +173,15 @@ auto init_frontend(
   return MemberRpcFrontend(network, context, share_manager);
 }
 
+std::unique_ptr<ccf::NetworkIdentity> make_test_network_ident()
+{
+  using namespace std::literals;
+  const auto valid_from =
+    ds::to_x509_time_string(std::chrono::system_clock::now() - 24h);
+  return std::make_unique<ReplicatedNetworkIdentity>(
+    crypto::service_identity_curve_choice, valid_from, 2);
+}
+
 void init_network(NetworkState& network)
 {
   network.tables->set_encryptor(encryptor);
@@ -175,4 +190,5 @@ void init_network(NetworkState& network)
   network.tables->set_history(history);
   auto consensus = std::make_shared<kv::test::PrimaryStubConsensus>();
   network.tables->set_consensus(consensus);
+  network.identity = make_test_network_ident();
 }

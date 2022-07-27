@@ -4,11 +4,12 @@
 #include "ccf/crypto/key_wrap.h"
 #include "ccf/crypto/rsa_key_pair.h"
 #include "ccf/historical_queries_adapter.h"
+#include "ccf/node/host_processes_interface.h"
 #include "ccf/version.h"
 #include "js/wrap.h"
 #include "kv/untyped_map.h"
 #include "named_auth_policies.h"
-#include "node/rpc/host_processes_interface.h"
+#include "node/rpc/rpc_context_impl.h"
 #include "service/tables/endpoints.h"
 
 #include <memory>
@@ -244,17 +245,17 @@ namespace ccfapp
               consensus, view, seqno, error_reason);
           };
 
-        ccf::historical::adapter_v2(
+        ccf::historical::adapter_v3(
           [this, endpoint](
             ccf::endpoints::EndpointContext& endpoint_ctx,
             ccf::historical::StatePtr state) {
-            auto tx = state->store->create_tx();
+            auto tx = state->store->create_read_only_tx();
             auto tx_id = state->transaction_id;
             auto receipt = state->receipt;
             assert(receipt);
             do_execute_request(endpoint, endpoint_ctx, &tx, tx_id, receipt);
           },
-          context.get_historical_state(),
+          context,
           is_tx_committed)(endpoint_ctx);
       }
       else
@@ -267,9 +268,9 @@ namespace ccfapp
     void do_execute_request(
       const JSDynamicEndpoint* endpoint,
       ccf::endpoints::EndpointContext& endpoint_ctx,
-      kv::Tx* historical_tx,
+      kv::ReadOnlyTx* historical_tx,
       const std::optional<ccf::TxID>& transaction_id,
-      ccf::TxReceiptPtr receipt)
+      ccf::TxReceiptImplPtr receipt)
     {
       js::Runtime rt;
       rt.add_ccf_classdefs();
@@ -277,9 +278,9 @@ namespace ccfapp
       JS_SetModuleLoaderFunc(
         rt, nullptr, js::js_app_module_loader, &endpoint_ctx.tx);
 
-      js::Context ctx(rt);
-      js::TxContext txctx{&endpoint_ctx.tx, js::TxAccess::APP};
-      js::TxContext historical_txctx{historical_tx, js::TxAccess::APP};
+      js::Context ctx(rt, js::TxAccess::APP);
+      js::TxContext txctx{&endpoint_ctx.tx};
+      js::ReadOnlyTxContext historical_txctx{historical_tx};
 
       js::register_request_body_class(ctx);
       js::populate_global(
@@ -489,7 +490,7 @@ namespace ccfapp
     }
 
     ccf::endpoints::EndpointDefinitionPtr find_endpoint(
-      kv::Tx& tx, enclave::RpcContext& rpc_ctx) override
+      kv::Tx& tx, ccf::RpcContext& rpc_ctx) override
     {
       const auto method = rpc_ctx.get_method();
       const auto verb = rpc_ctx.get_request_verb();
@@ -523,7 +524,7 @@ namespace ccfapp
             if (key.verb == other_key.verb)
             {
               const auto opt_spec =
-                ccf::endpoints::parse_path_template(other_key.uri_path);
+                ccf::endpoints::PathTemplateSpec::parse(other_key.uri_path);
               if (opt_spec.has_value())
               {
                 const auto& template_spec = opt_spec.value();
@@ -535,10 +536,15 @@ namespace ccfapp
                 {
                   if (matches.empty())
                   {
+                    auto ctx_impl = static_cast<ccf::RpcContextImpl*>(&rpc_ctx);
+                    if (ctx_impl == nullptr)
+                    {
+                      throw std::logic_error("Unexpected type of RpcContext");
+                    }
                     // Populate the request_path_params while we have the match,
                     // though this will be discarded on error if we later find
                     // multiple matches
-                    auto& path_params = rpc_ctx.get_request_path_params();
+                    auto& path_params = ctx_impl->path_params;
                     for (size_t i = 0;
                          i < template_spec.template_component_names.size();
                          ++i)
@@ -577,7 +583,7 @@ namespace ccfapp
     }
 
     std::set<RESTVerb> get_allowed_verbs(
-      kv::Tx& tx, const enclave::RpcContext& rpc_ctx) override
+      kv::Tx& tx, const ccf::RpcContext& rpc_ctx) override
     {
       const auto method = rpc_ctx.get_method();
 
@@ -588,7 +594,8 @@ namespace ccfapp
         tx.ro<ccf::endpoints::EndpointsMap>(ccf::endpoints::Tables::ENDPOINTS);
 
       endpoints->foreach_key([this, &verbs, &method](const auto& key) {
-        const auto opt_spec = ccf::endpoints::parse_path_template(key.uri_path);
+        const auto opt_spec =
+          ccf::endpoints::PathTemplateSpec::parse(key.uri_path);
         if (opt_spec.has_value())
         {
           const auto& template_spec = opt_spec.value();

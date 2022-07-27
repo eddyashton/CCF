@@ -3,12 +3,14 @@
 #pragma once
 #include "ccf/app_interface.h"
 #include "ccf/ds/logger.h"
+#include "ccf/ds/pal.h"
 #include "ds/oversized.h"
 #include "enclave_time.h"
 #include "indexing/enclave_lfs_access.h"
 #include "indexing/historical_transaction_fetcher.h"
 #include "interface.h"
 #include "js/wrap.h"
+#include "node/acme_challenge_frontend.h"
 #include "node/historical_queries.h"
 #include "node/network_state.h"
 #include "node/node_state.h"
@@ -17,17 +19,18 @@
 #include "node/rpc/gov_effects.h"
 #include "node/rpc/host_processes.h"
 #include "node/rpc/member_frontend.h"
+#include "node/rpc/network_identity_subsystem.h"
 #include "node/rpc/node_frontend.h"
 #include "node/rpc/node_operation.h"
 #include "node/rpc/user_frontend.h"
-#include "oe_init.h"
 #include "ringbuffer_logger.h"
 #include "rpc_map.h"
 #include "rpc_sessions.h"
+#include "verify.h"
 
 #include <openssl/engine.h>
 
-namespace enclave
+namespace ccf
 {
   class Enclave
   {
@@ -69,7 +72,6 @@ namespace enclave
 
   public:
     Enclave(
-      const EnclaveConfig& ec,
       std::unique_ptr<ringbuffer::Circuit> circuit_,
       std::unique_ptr<ringbuffer::WriterFactory> basic_writer_factory_,
       std::unique_ptr<oversized::WriterFactory> writer_factory_,
@@ -87,7 +89,8 @@ namespace enclave
       rpc_map(std::make_shared<RPCMap>()),
       rpcsessions(std::make_shared<RPCSessions>(*writer_factory, rpc_map))
     {
-      ccf::initialize_oe();
+      ccf::Pal::initialize_enclave();
+      ccf::initialize_verifiers();
 
       // From
       // https://software.intel.com/content/www/us/en/develop/articles/how-to-use-the-rdrand-engine-in-openssl-for-random-number-generation.html
@@ -136,6 +139,13 @@ namespace enclave
       context->install_subsystem(
         std::make_shared<ccf::GovernanceEffects>(*node));
 
+      context->install_subsystem(
+        std::make_shared<ccf::NetworkIdentitySubsystem>(
+          *node, network.identity));
+
+      context->install_subsystem(
+        std::make_shared<ccf::NodeConfigurationSubsystem>(*node));
+
       LOG_TRACE_FMT("Creating RPC actors / ffi");
       rpc_map->register_frontend<ccf::ActorsType::members>(
         std::make_unique<ccf::MemberRpcFrontend>(
@@ -143,10 +153,13 @@ namespace enclave
 
       rpc_map->register_frontend<ccf::ActorsType::users>(
         std::make_unique<ccf::UserRpcFrontend>(
-          network, ccfapp::make_user_endpoints(*context)));
+          network, ccfapp::make_user_endpoints(*context), *context));
 
       rpc_map->register_frontend<ccf::ActorsType::nodes>(
         std::make_unique<ccf::NodeRpcFrontend>(network, *context));
+
+      rpc_map->register_frontend<ccf::ActorsType::well_known>(
+        std::make_unique<ccf::ACMERpcFrontend>(network, *context));
 
       ccf::js::register_ffi_plugins(ccfapp::get_js_plugins());
 
@@ -169,7 +182,8 @@ namespace enclave
         ENGINE_free(rdrand_engine);
       }
       LOG_TRACE_FMT("Shutting down enclave");
-      ccf::shutdown_oe();
+      ccf::shutdown_verifiers();
+      ccf::Pal::shutdown_enclave();
     }
 
     CreateNodeStatus create_new_node(
@@ -212,7 +226,7 @@ namespace enclave
           r.self_signed_node_cert.size());
         return CreateNodeStatus::InternalError;
       }
-      ::memcpy(
+      Pal::safe_memcpy(
         node_cert,
         r.self_signed_node_cert.data(),
         r.self_signed_node_cert.size());
@@ -230,7 +244,8 @@ namespace enclave
             r.service_cert.size());
           return CreateNodeStatus::InternalError;
         }
-        ::memcpy(service_cert, r.service_cert.data(), r.service_cert.size());
+        Pal::safe_memcpy(
+          service_cert, r.service_cert.data(), r.service_cert.size());
         *service_cert_len = r.service_cert.size();
       }
 
@@ -257,7 +272,7 @@ namespace enclave
             threading::ThreadMessaging::thread_messaging.set_finished();
           });
 
-        last_tick_time = enclave::get_enclave_time();
+        last_tick_time = ccf::get_enclave_time();
 
         DISPATCHER_SET_MESSAGE_HANDLER(
           bp,
@@ -268,7 +283,7 @@ namespace enclave
             RINGBUFFER_WRITE_MESSAGE(
               AdminMessage::work_stats, to_host, j.dump());
 
-            const auto time_now = enclave::get_enclave_time();
+            const auto time_now = ccf::get_enclave_time();
             ringbuffer_logger->set_time(time_now);
 
             const auto elapsed_ms =
@@ -310,24 +325,15 @@ namespace enclave
             {
               case consensus::LedgerRequestPurpose::Recovery:
               {
-                if (from_seqno != to_seqno)
-                {
-                  LOG_FAIL_FMT(
-                    "Unexpected range for Recovery response "
-                    "ledger_entry_range: {}->{} "
-                    "(expected single ledger entry)",
-                    from_seqno,
-                    to_seqno);
-                }
                 if (
                   node->is_reading_public_ledger() ||
                   node->is_verifying_snapshot())
                 {
-                  node->recover_public_ledger_entry(body);
+                  node->recover_public_ledger_entries(body);
                 }
                 else if (node->is_reading_private_ledger())
                 {
-                  node->recover_private_ledger_entry(body);
+                  node->recover_private_ledger_entries(body);
                 }
                 else
                 {
@@ -435,7 +441,7 @@ namespace enclave
           // messages were executed, idle
           if (read == 0 && thread_msg == 0)
           {
-            const auto time_now = enclave::get_enclave_time();
+            const auto time_now = ccf::get_enclave_time();
             static std::chrono::microseconds idling_start_time;
 
             if (consecutive_idles == 0)

@@ -51,6 +51,8 @@ namespace ccf
     ERROR(RequestNotSigned)
     ERROR(UnsupportedHttpVerb)
     ERROR(UnsupportedContentType)
+    ERROR(RequestBodyTooLarge)
+    ERROR(RequestHeaderTooLarge)
 
     // CCF-specific errors
     // client-facing:
@@ -80,7 +82,7 @@ namespace ccf
     ERROR(InvalidQuote)
     ERROR(InvalidNodeState)
     ERROR(NodeAlreadyExists)
-    ERROR(StartupSnapshotIsOld)
+    ERROR(StartupSeqnoIsOld)
     ERROR(CSRPublicKeyInvalid)
 
     ERROR(ResharingAlreadyCompleted)

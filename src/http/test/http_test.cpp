@@ -106,28 +106,24 @@ DOCTEST_TEST_CASE("Parsing fuzzing")
 {
   std::vector<uint8_t> r;
 
-  http::SimpleRequestProcessor sp;
-  http::RequestParser p(sp);
-
 #define ADD_HTTP_METHOD(NUM, NAME, STRING) HTTP_##NAME,
   std::vector<llhttp_method> all_methods{HTTP_ALL_METHOD_MAP(ADD_HTTP_METHOD)};
-#undef HTTP_METHOD_GEN
+#undef ADD_HTTP_METHOD
 
   for (auto method : all_methods)
   {
     const auto orig_req = http::build_request(method, r);
 
-    for (auto i = 0; i < orig_req.size(); ++i)
+    std::vector<char> replacements = {'\0', '\1'};
+    for (auto i : {0, 1, 2})
     {
-      std::vector<char> replacements;
-      replacements.push_back('\0');
-      replacements.push_back('\1');
-      replacements.push_back((i + 128) % 256);
       for (auto c : replacements)
       {
         auto req = orig_req;
         req[i] = c;
 
+        http::SimpleRequestProcessor sp;
+        http::RequestParser p(sp);
         DOCTEST_CHECK_THROWS(p.execute(req.data(), req.size()));
         DOCTEST_CHECK(sp.received.empty());
       }
@@ -272,7 +268,8 @@ DOCTEST_TEST_CASE("URL parsing")
   const auto& m = sp.received.front();
   DOCTEST_CHECK(m.method == HTTP_POST);
   DOCTEST_CHECK(m.body == body);
-  const auto [path_, query_, fragment_] = http::split_url_path(m.url);
+  std::string path_, query_, fragment_;
+  std::tie(path_, query_, fragment_) = http::split_url_path(m.url);
   DOCTEST_CHECK(path_ == path);
   DOCTEST_CHECK(query_.find("balance=42") != std::string::npos);
   DOCTEST_CHECK(query_.find("id=100") != std::string::npos);
@@ -367,7 +364,8 @@ DOCTEST_TEST_CASE("Escaping")
     DOCTEST_CHECK(!sp.received.empty());
     const auto& m = sp.received.front();
     DOCTEST_CHECK(m.method == HTTP_GET);
-    const auto [path_, query_, fragment_] = http::split_url_path(m.url);
+    std::string path_, query_, fragment_;
+    std::tie(path_, query_, fragment_) = http::split_url_path(m.url);
     DOCTEST_CHECK(path_ == "/foo/bar");
     DOCTEST_CHECK(
       http::url_decode(query_) ==
@@ -390,7 +388,8 @@ DOCTEST_TEST_CASE("Escaping")
     DOCTEST_CHECK(!sp.received.empty());
     const auto& m = sp.received.front();
     DOCTEST_CHECK(m.method == HTTP_GET);
-    const auto [path_, query_, fragment_] = http::split_url_path(m.url);
+    std::string path_, query_, fragment_;
+    std::tie(path_, query_, fragment_) = http::split_url_path(m.url);
     DOCTEST_CHECK(path_ == "/hello%20world");
     DOCTEST_CHECK(
       http::url_decode(query_) ==
@@ -572,7 +571,8 @@ struct SignedRequestProcessor : public http::SimpleRequestProcessor
     llhttp_method method,
     const std::string_view& url,
     http::HeaderMap&& headers,
-    std::vector<uint8_t>&& body) override
+    std::vector<uint8_t>&& body,
+    int32_t stream_id = 0) override
   {
     const auto signed_req = http::HttpSignatureVerifier::parse(
       llhttp_method_name(method), url, headers, body);
@@ -583,7 +583,7 @@ struct SignedRequestProcessor : public http::SimpleRequestProcessor
     }
 
     http::SimpleRequestProcessor::handle_request(
-      method, url, std::move(headers), std::move(body));
+      method, url, std::move(headers), std::move(body), stream_id);
   }
 };
 

@@ -58,6 +58,9 @@ namespace ccf
       crypto::Pem service_certificate;
       std::optional<ccf::View> current_view;
       std::optional<NodeId> primary_id;
+      size_t recovery_count;
+      nlohmann::json service_data;
+      std::optional<ccf::TxID> current_service_create_txid;
     };
   };
 
@@ -69,6 +72,8 @@ namespace ccf
       NodeStatus status;
       bool primary;
       ccf::NodeInfoNetwork::RpcInterfaces rpc_interfaces;
+      nlohmann::json node_data;
+      ccf::SeqNo last_written;
     };
 
     using Out = NodeInfo;

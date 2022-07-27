@@ -8,12 +8,12 @@
 #include "ccf/app_interface.h"
 #include "ccf/common_auth_policies.h"
 #include "ccf/crypto/verifier.h"
+#include "ccf/ds/hash.h"
 #include "ccf/historical_queries_adapter.h"
 #include "ccf/http_query.h"
 #include "ccf/indexing/strategies/seqnos_by_key_bucketed.h"
 #include "ccf/json_handler.h"
 #include "ccf/version.h"
-#include "kv/store.h"
 
 #include <charconv>
 #define FMT_HEADER_ONLY
@@ -35,8 +35,10 @@ namespace loggingapp
   static constexpr auto PUBLIC_FIRST_WRITES = "public:first_write_version";
   static constexpr auto FIRST_WRITES = "first_write_version";
 
+  // SNIPPET_START: indexing_strategy_definition
   using RecordsIndexingStrategy = ccf::indexing::LazyStrategy<
     ccf::indexing::strategies::SeqnosByKey_Bucketed<RecordsMap>>;
+  // SNIPPET_END: indexing_strategy_definition
 
   // SNIPPET_START: custom_identity
   struct CustomIdentity : public ccf::AuthnIdentity
@@ -52,7 +54,7 @@ namespace loggingapp
   public:
     std::unique_ptr<ccf::AuthnIdentity> authenticate(
       kv::ReadOnlyTx&,
-      const std::shared_ptr<enclave::RpcContext>& ctx,
+      const std::shared_ptr<ccf::RpcContext>& ctx,
       std::string& error_reason) override
     {
       const auto& headers = ctx->get_request_headers();
@@ -140,14 +142,17 @@ namespace loggingapp
     std::shared_ptr<RecordsIndexingStrategy> index_per_public_key = nullptr;
 
     static void update_first_write(
-      kv::Tx& tx, size_t id, bool is_private = true)
+      kv::Tx& tx,
+      size_t id,
+      bool is_private = true,
+      const optional<std::string>& scope = std::nullopt)
     {
       auto first_writes =
         tx.rw<FirstWritesMap>(is_private ? FIRST_WRITES : PUBLIC_FIRST_WRITES);
       if (!first_writes->has(id))
       {
-        auto records =
-          tx.ro<RecordsMap>(is_private ? PRIVATE_RECORDS : PUBLIC_RECORDS);
+        auto records = tx.ro<RecordsMap>(
+          is_private ? private_records(scope) : public_records(scope));
         const auto prev_version = records->get_version_of_previous_write(id);
         if (prev_version.has_value())
         {
@@ -175,6 +180,55 @@ namespace loggingapp
       return std::nullopt;
     }
 
+    static std::optional<std::string> get_scope(auto& ctx)
+    {
+      const auto parsed_query =
+        http::parse_query(ctx.rpc_ctx->get_request_query());
+      std::string error_string;
+      return http::get_query_value_opt<std::string>(
+        parsed_query, "scope", error_string);
+    }
+
+    static std::string private_records(auto& ctx)
+    {
+      return private_records(get_scope(ctx));
+    }
+
+    static std::string public_records(auto& ctx)
+    {
+      return public_records(get_scope(ctx));
+    }
+
+    static std::string private_records(const std::optional<std::string>& scope)
+    {
+      return scope.has_value() ? fmt::format("{}-{}", PRIVATE_RECORDS, *scope) :
+                                 PRIVATE_RECORDS;
+    }
+
+    static std::string public_records(const std::optional<std::string>& scope)
+    {
+      return scope.has_value() ? fmt::format("{}-{}", PUBLIC_RECORDS, *scope) :
+                                 PUBLIC_RECORDS;
+    }
+
+    // Wrap all endpoints with trace logging of their invocation
+    ccf::endpoints::Endpoint make_endpoint(
+      const std::string& method,
+      ccf::RESTVerb verb,
+      const ccf::endpoints::EndpointFunction& f,
+      const ccf::AuthnPolicies& ap) override
+    {
+      return ccf::UserEndpointRegistry::make_endpoint(
+        method,
+        verb,
+        [method, verb, f](ccf::endpoints::EndpointContext& args) {
+          CCF_APP_TRACE("BEGIN {} {}", verb.c_str(), method);
+          f(args);
+          CCF_APP_TRACE("END   {} {}", verb.c_str(), method);
+        },
+        ap);
+    }
+
   public:
     LoggerHandlers(ccfapp::AbstractNodeContext& context) :
       ccf::UserEndpointRegistry(context),
@@ -188,7 +242,7 @@ namespace loggingapp
         "This CCF sample app implements a simple logging application, securely "
         "recording messages at client-specified IDs. It demonstrates most of "
         "the features available to CCF apps.";
-      openapi_info.document_version = "1.9.0";
+      openapi_info.document_version = "1.9.4";
 
       index_per_public_key = std::make_shared<RecordsIndexingStrategy>(
         PUBLIC_RECORDS, context, 10000, 20);
@@ -212,9 +266,10 @@ namespace loggingapp
         }
 
         // SNIPPET: private_table_access
-        auto records_handle = ctx.tx.template rw<RecordsMap>(PRIVATE_RECORDS);
+        auto records_handle =
+          ctx.tx.template rw<RecordsMap>(private_records(ctx));
         records_handle->put(in.id, in.msg);
-        update_first_write(ctx.tx, in.id);
+        update_first_write(ctx.tx, in.id, true, get_scope(ctx));
         return ccf::make_success(true);
       };
       // SNIPPET_END: record
@@ -242,7 +297,8 @@ namespace loggingapp
             std::move(error_reason));
         }
 
-        auto records_handle = ctx.tx.template ro<RecordsMap>(PRIVATE_RECORDS);
+        auto records_handle =
+          ctx.tx.template ro<RecordsMap>(private_records(ctx));
         auto record = records_handle->get(id);
 
         if (record.has_value())
@@ -283,9 +339,10 @@ namespace loggingapp
             std::move(error_reason));
         }
 
-        auto records_handle = ctx.tx.template rw<RecordsMap>(PRIVATE_RECORDS);
+        auto records_handle =
+          ctx.tx.template rw<RecordsMap>(private_records(ctx));
         auto removed = records_handle->remove(id);
-        update_first_write(ctx.tx, id);
+        update_first_write(ctx.tx, id, true, get_scope(ctx));
 
         return ccf::make_success(LoggingRemove::Out{removed});
       };
@@ -296,9 +353,10 @@ namespace loggingapp
         .install();
 
       auto clear = [this](auto& ctx, nlohmann::json&&) {
-        auto records_handle = ctx.tx.template rw<RecordsMap>(PRIVATE_RECORDS);
+        auto records_handle =
+          ctx.tx.template rw<RecordsMap>(private_records(ctx));
         records_handle->foreach([&ctx](const auto& id, const auto&) {
-          update_first_write(ctx.tx, id);
+          update_first_write(ctx.tx, id, true, get_scope(ctx));
           return true;
         });
         records_handle->clear();
@@ -313,7 +371,8 @@ namespace loggingapp
         .install();
 
       auto count = [this](auto& ctx, nlohmann::json&&) {
-        auto records_handle = ctx.tx.template ro<RecordsMap>(PRIVATE_RECORDS);
+        auto records_handle =
+          ctx.tx.template ro<RecordsMap>(private_records(ctx));
         return ccf::make_success(records_handle->size());
       };
       make_endpoint(
@@ -334,15 +393,18 @@ namespace loggingapp
         }
 
         // SNIPPET: public_table_access
-        auto records_handle = ctx.tx.template rw<RecordsMap>(PUBLIC_RECORDS);
-        records_handle->put(params["id"], in.msg);
-        update_first_write(ctx.tx, in.id, false);
+        auto records_handle =
+          ctx.tx.template rw<RecordsMap>(public_records(ctx));
+        const auto id = params["id"].get<size_t>();
+        records_handle->put(id, in.msg);
+        update_first_write(ctx.tx, in.id, false, get_scope(ctx));
         // SNIPPET_START: set_claims_digest
         if (in.record_claim)
         {
           ctx.rpc_ctx->set_claims_digest(ccf::ClaimsDigest::Digest(in.msg));
         }
         // SNIPPET_END: set_claims_digest
+        CCF_APP_INFO("Storing {} = {}", id, in.msg);
         return ccf::make_success(true);
       };
       // SNIPPET_END: record_public
@@ -371,12 +433,16 @@ namespace loggingapp
         }
 
         auto public_records_handle =
-          ctx.tx.template ro<RecordsMap>(PUBLIC_RECORDS);
+          ctx.tx.template ro<RecordsMap>(public_records(ctx));
         auto record = public_records_handle->get(id);
 
         if (record.has_value())
+        {
+          CCF_APP_INFO("Fetching {} = {}", id, record.value());
           return ccf::make_success(LoggingGet::Out{record.value()});
+        }
 
+        CCF_APP_INFO("Fetching - no entry for {}", id);
         return ccf::make_error(
           HTTP_STATUS_BAD_REQUEST,
           ccf::errors::ResourceNotFound,
@@ -407,9 +473,10 @@ namespace loggingapp
             std::move(error_reason));
         }
 
-        auto records_handle = ctx.tx.template rw<RecordsMap>(PUBLIC_RECORDS);
+        auto records_handle =
+          ctx.tx.template rw<RecordsMap>(public_records(ctx));
         auto removed = records_handle->remove(id);
-        update_first_write(ctx.tx, id, false);
+        update_first_write(ctx.tx, id, false, get_scope(ctx));
 
         return ccf::make_success(LoggingRemove::Out{removed});
       };
@@ -424,9 +491,9 @@ namespace loggingapp
 
       auto clear_public = [this](auto& ctx, nlohmann::json&&) {
         auto public_records_handle =
-          ctx.tx.template rw<RecordsMap>(PUBLIC_RECORDS);
+          ctx.tx.template rw<RecordsMap>(public_records(ctx));
         public_records_handle->foreach([&ctx](const auto& id, const auto&) {
-          update_first_write(ctx.tx, id, false);
+          update_first_write(ctx.tx, id, false, get_scope(ctx));
           return true;
         });
         public_records_handle->clear();
@@ -442,7 +509,7 @@ namespace loggingapp
 
       auto count_public = [this](auto& ctx, nlohmann::json&&) {
         auto public_records_handle =
-          ctx.tx.template ro<RecordsMap>(PUBLIC_RECORDS);
+          ctx.tx.template ro<RecordsMap>(public_records(ctx));
         return ccf::make_success(public_records_handle->size());
       };
       make_endpoint(
@@ -471,7 +538,8 @@ namespace loggingapp
         std::shared_ptr<crypto::Verifier> verifier;
         try
         {
-          const auto& cert_data = ctx.rpc_ctx->session->caller_cert;
+          const auto& cert_data =
+            ctx.rpc_ctx->get_session_context()->caller_cert;
           verifier = crypto::make_verifier(cert_data);
         }
         catch (const std::exception& ex)
@@ -485,9 +553,10 @@ namespace loggingapp
 
         const auto log_line =
           fmt::format("{}: {}", verifier->subject(), in.msg);
-        auto records_handle = ctx.tx.template rw<RecordsMap>(PRIVATE_RECORDS);
+        auto records_handle =
+          ctx.tx.template rw<RecordsMap>(private_records(ctx));
         records_handle->put(in.id, log_line);
-        update_first_write(ctx.tx, in.id);
+        update_first_write(ctx.tx, in.id, true, get_scope(ctx));
 
         ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
         ctx.rpc_ctx->set_response_header(
@@ -514,9 +583,10 @@ namespace loggingapp
         }
 
         const auto log_line = fmt::format("Anonymous: {}", in.msg);
-        auto records_handle = ctx.tx.template rw<RecordsMap>(PRIVATE_RECORDS);
+        auto records_handle =
+          ctx.tx.template rw<RecordsMap>(private_records(ctx));
         records_handle->put(in.id, log_line);
-        update_first_write(ctx.tx, in.id);
+        update_first_write(ctx.tx, in.id, true, get_scope(ctx));
         return ccf::make_success(true);
       };
       make_endpoint(
@@ -739,9 +809,10 @@ namespace loggingapp
         const std::vector<uint8_t>& content = ctx.rpc_ctx->get_request_body();
         const std::string log_line(content.begin(), content.end());
 
-        auto records_handle = ctx.tx.template rw<RecordsMap>(PRIVATE_RECORDS);
+        auto records_handle =
+          ctx.tx.template rw<RecordsMap>(private_records(ctx));
         records_handle->put(id, log_line);
-        update_first_write(ctx.tx, id);
+        update_first_write(ctx.tx, id, true, get_scope(ctx));
 
         ctx.rpc_ctx->set_response_status(HTTP_STATUS_OK);
       };
@@ -773,7 +844,7 @@ namespace loggingapp
 
         auto historical_tx = historical_state->store->create_read_only_tx();
         auto records_handle =
-          historical_tx.template ro<RecordsMap>(PRIVATE_RECORDS);
+          historical_tx.template ro<RecordsMap>(private_records(ctx));
         const auto v = records_handle->get(id);
 
         if (v.has_value())
@@ -797,14 +868,11 @@ namespace loggingapp
       make_endpoint(
         "/log/private/historical",
         HTTP_GET,
-        ccf::historical::adapter_v2(
-          get_historical, context.get_historical_state(), is_tx_committed),
+        ccf::historical::adapter_v3(get_historical, context, is_tx_committed),
         auth_policies)
         .set_auto_schema<void, LoggingGetHistorical::Out>()
         .add_query_parameter<size_t>("id")
         .set_forwarding_required(ccf::endpoints::ForwardingRequired::Never)
-        .set_execute_outside_consensus(
-          ccf::endpoints::ExecuteOutsideConsensus::Locally)
         .install();
       // SNIPPET_END: get_historical
 
@@ -832,7 +900,7 @@ namespace loggingapp
 
           auto historical_tx = historical_state->store->create_read_only_tx();
           auto records_handle =
-            historical_tx.template ro<RecordsMap>(PRIVATE_RECORDS);
+            historical_tx.template ro<RecordsMap>(private_records(ctx));
           const auto v = records_handle->get(id);
 
           if (v.has_value())
@@ -840,7 +908,7 @@ namespace loggingapp
             LoggingGetReceipt::Out out;
             out.msg = v.value();
             assert(historical_state->receipt);
-            out.receipt = ccf::describe_receipt(historical_state->receipt);
+            out.receipt = ccf::describe_receipt_v1(*historical_state->receipt);
             ccf::jsonhandler::set_response(std::move(out), ctx.rpc_ctx, pack);
           }
           else
@@ -851,16 +919,12 @@ namespace loggingapp
       make_endpoint(
         "/log/private/historical_receipt",
         HTTP_GET,
-        ccf::historical::adapter_v2(
-          get_historical_with_receipt,
-          context.get_historical_state(),
-          is_tx_committed),
+        ccf::historical::adapter_v3(
+          get_historical_with_receipt, context, is_tx_committed),
         auth_policies)
         .set_auto_schema<void, LoggingGetReceipt::Out>()
         .add_query_parameter<size_t>("id")
         .set_forwarding_required(ccf::endpoints::ForwardingRequired::Never)
-        .set_execute_outside_consensus(
-          ccf::endpoints::ExecuteOutsideConsensus::Locally)
         .install();
       // SNIPPET_END: get_historical_with_receipt
 
@@ -887,7 +951,7 @@ namespace loggingapp
 
           auto historical_tx = historical_state->store->create_read_only_tx();
           auto records_handle =
-            historical_tx.template ro<RecordsMap>(PUBLIC_RECORDS);
+            historical_tx.template ro<RecordsMap>(public_records(ctx));
           const auto v = records_handle->get(id);
 
           if (v.has_value())
@@ -896,10 +960,12 @@ namespace loggingapp
             out.msg = v.value();
             assert(historical_state->receipt);
             // SNIPPET_START: claims_digest_in_receipt
-            out.receipt = ccf::describe_receipt(historical_state->receipt);
             // Claims are expanded as out.msg, so the claims digest is removed
             // from the receipt to force verification to re-compute it.
-            out.receipt.leaf_components->claims_digest = std::nullopt;
+            auto full_receipt =
+              ccf::describe_receipt_v1(*historical_state->receipt);
+            out.receipt = full_receipt;
+            out.receipt["leaf_components"].erase("claims_digest");
             // SNIPPET_END: claims_digest_in_receipt
             ccf::jsonhandler::set_response(std::move(out), ctx.rpc_ctx, pack);
           }
@@ -911,16 +977,12 @@ namespace loggingapp
       make_endpoint(
         "/log/public/historical_receipt",
         HTTP_GET,
-        ccf::historical::adapter_v2(
-          get_historical_with_receipt_and_claims,
-          context.get_historical_state(),
-          is_tx_committed),
+        ccf::historical::adapter_v3(
+          get_historical_with_receipt_and_claims, context, is_tx_committed),
         auth_policies)
         .set_auto_schema<void, LoggingGetReceipt::Out>()
         .add_query_parameter<size_t>("id")
         .set_forwarding_required(ccf::endpoints::ForwardingRequired::Never)
-        .set_execute_outside_consensus(
-          ccf::endpoints::ExecuteOutsideConsensus::Locally)
         .install();
       // SNIPPET_END: get_historical_with_receipt
 
@@ -962,7 +1024,7 @@ namespace loggingapp
             // It's possible there's been a single write but no subsequent
             // transaction to write this to the FirstWritesMap - check version
             // of previous write
-            auto records = ctx.tx.ro<RecordsMap>(PUBLIC_RECORDS);
+            auto records = ctx.tx.ro<RecordsMap>(public_records(ctx));
             const auto last_written_version =
               records->get_version_of_previous_write(id);
             if (last_written_version.has_value())
@@ -991,7 +1053,7 @@ namespace loggingapp
         {
           // If no end point is specified, use the last time this ID was
           // written to
-          auto records = ctx.tx.ro<RecordsMap>(PUBLIC_RECORDS);
+          auto records = ctx.tx.ro<RecordsMap>(public_records(ctx));
           const auto last_written_version =
             records->get_version_of_previous_write(id);
           if (last_written_version.has_value())
@@ -1090,9 +1152,11 @@ namespace loggingapp
         const auto range_end =
           std::min(to_seqno, range_begin + max_seqno_per_page);
 
+        // SNIPPET_START: indexing_strategy_use
         const auto interesting_seqnos =
           index_per_public_key->get_write_txs_in_range(
             id, range_begin, range_end);
+        // SNIPPET_END: indexing_strategy_use
         if (!interesting_seqnos.has_value())
         {
           ctx.rpc_ctx->set_response_status(HTTP_STATUS_ACCEPTED);
@@ -1110,12 +1174,10 @@ namespace loggingapp
         // requests from different users will collide, and overwrite each
         // other's progress!
         auto make_handle = [](size_t begin, size_t end, size_t id) {
-          auto size = sizeof(begin) + sizeof(end) + sizeof(id);
+          size_t raw[] = {begin, end, id};
+          auto size = sizeof(raw);
           std::vector<uint8_t> v(size);
-          auto data = v.data();
-          serialized::write(data, size, begin);
-          serialized::write(data, size, end);
-          serialized::write(data, size, id);
+          memcpy(v.data(), (const uint8_t*)raw, size);
           return std::hash<decltype(v)>()(v);
         };
 
@@ -1125,23 +1187,33 @@ namespace loggingapp
         // Fetch the requested range
         auto& historical_cache = context.get_historical_state();
 
-        auto stores =
-          historical_cache.get_stores_for(handle, interesting_seqnos.value());
-        if (stores.empty())
+        std::vector<kv::ReadOnlyStorePtr> stores;
+        if (!interesting_seqnos->empty())
         {
-          ctx.rpc_ctx->set_response_status(HTTP_STATUS_ACCEPTED);
-          static constexpr size_t retry_after_seconds = 3;
-          ctx.rpc_ctx->set_response_header(
-            http::headers::RETRY_AFTER, retry_after_seconds);
-          ctx.rpc_ctx->set_response_header(
-            http::headers::CONTENT_TYPE, http::headervalues::contenttype::TEXT);
-          ctx.rpc_ctx->set_response_body(fmt::format(
-            "Historical transactions from {} to {} are not yet "
-            "available, fetching now",
-            range_begin,
-            range_end));
-          return;
+          stores =
+            historical_cache.get_stores_for(handle, interesting_seqnos.value());
+          if (stores.empty())
+          {
+            // Empty response indicates these stores are still being fetched.
+            // Return a retry response
+            ctx.rpc_ctx->set_response_status(HTTP_STATUS_ACCEPTED);
+            static constexpr size_t retry_after_seconds = 3;
+            ctx.rpc_ctx->set_response_header(
+              http::headers::RETRY_AFTER, retry_after_seconds);
+            ctx.rpc_ctx->set_response_header(
+              http::headers::CONTENT_TYPE,
+              http::headervalues::contenttype::TEXT);
+            ctx.rpc_ctx->set_response_body(fmt::format(
+              "Historical transactions from {} to {} are not yet "
+              "available, fetching now",
+              range_begin,
+              range_end));
+            return;
+          }
         }
+        // else the index authoritatvely tells us there are _no_ interesting
+        // seqnos in this range, so we have no stores to process, but can return
+        // a complete result
 
         // Process the fetched Stores
         LoggingGetHistoricalRange::Out response;
@@ -1149,18 +1221,18 @@ namespace loggingapp
         {
           auto historical_tx = store->create_read_only_tx();
           auto records_handle =
-            historical_tx.template ro<RecordsMap>(PUBLIC_RECORDS);
+            historical_tx.template ro<RecordsMap>(public_records(ctx));
           const auto v = records_handle->get(id);
 
           if (v.has_value())
           {
             LoggingGetHistoricalRange::Entry e;
-            e.seqno = store->current_txid().version;
+            e.seqno = store->get_txid().seqno;
             e.id = id;
             e.msg = v.value();
             response.entries.push_back(e);
           }
-          // This response do not include any entry when the given key wasn't
+          // This response does not include any entry when the given key wasn't
           // modified at this seqno. It could instead indicate that the store
           // was checked with an empty tombstone object, but this approach gives
           // smaller responses
@@ -1224,8 +1296,6 @@ namespace loggingapp
           "to_seqno", ccf::endpoints::QueryParamPresence::OptionalParameter)
         .add_query_parameter<size_t>("id")
         .set_forwarding_required(ccf::endpoints::ForwardingRequired::Never)
-        .set_execute_outside_consensus(
-          ccf::endpoints::ExecuteOutsideConsensus::Locally)
         .install();
 
       static constexpr auto get_historical_sparse_path =
@@ -1312,12 +1382,10 @@ namespace loggingapp
         // requests from different users will collide, and overwrite each
         // other's progress!
         auto make_handle = [](size_t begin, size_t end, size_t id) {
-          auto size = sizeof(begin) + sizeof(end) + sizeof(id);
+          size_t raw[] = {begin, end, id};
+          auto size = sizeof(raw);
           std::vector<uint8_t> v(size);
-          auto data = v.data();
-          serialized::write(data, size, begin);
-          serialized::write(data, size, end);
-          serialized::write(data, size, id);
+          memcpy(v.data(), (const uint8_t*)raw, size);
           return std::hash<decltype(v)>()(v);
         };
 
@@ -1356,13 +1424,13 @@ namespace loggingapp
         {
           auto historical_tx = store->create_read_only_tx();
           auto records_handle =
-            historical_tx.template ro<RecordsMap>(PRIVATE_RECORDS);
+            historical_tx.template ro<RecordsMap>(private_records(ctx));
           const auto v = records_handle->get(id);
 
           if (v.has_value())
           {
             LoggingGetHistoricalRange::Entry e;
-            e.seqno = store->current_txid().version;
+            e.seqno = store->get_txid().seqno;
             e.id = id;
             e.msg = v.value();
             response.entries.push_back(e);
@@ -1394,8 +1462,6 @@ namespace loggingapp
         .add_query_parameter<std::string>("seqnos")
         .add_query_parameter<size_t>("id")
         .set_forwarding_required(ccf::endpoints::ForwardingRequired::Never)
-        .set_execute_outside_consensus(
-          ccf::endpoints::ExecuteOutsideConsensus::Locally)
         .install();
 
       auto record_admin_only = [this](
@@ -1442,9 +1508,9 @@ namespace loggingapp
             "Cannot record an empty log message.");
         }
 
-        auto view = ctx.tx.template rw<RecordsMap>(PRIVATE_RECORDS);
+        auto view = ctx.tx.template rw<RecordsMap>(private_records(ctx));
         view->put(in.id, in.msg);
-        update_first_write(ctx.tx, in.id);
+        update_first_write(ctx.tx, in.id, true, get_scope(ctx));
         return ccf::make_success(true);
       };
       make_endpoint(

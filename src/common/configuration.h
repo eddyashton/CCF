@@ -4,13 +4,14 @@
 #pragma once
 
 #include "ccf/crypto/curve.h"
+#include "ccf/crypto/pem.h"
 #include "ccf/ds/logger.h"
+#include "ccf/ds/unit_strings.h"
 #include "ccf/service/node_info_network.h"
 #include "ccf/service/tables/members.h"
 #include "common/enclave_interface_types.h"
 #include "consensus/consensus_types.h"
 #include "ds/oversized.h"
-#include "ds/unit_strings.h"
 #include "enclave/consensus_type.h"
 #include "enclave/reconfiguration_type.h"
 #include "service/tables/config.h"
@@ -21,7 +22,6 @@
 
 namespace logger
 {
-#ifdef VERBOSE_LOGGING
   DECLARE_JSON_ENUM(
     Level,
     {{Level::TRACE, "Trace"},
@@ -29,11 +29,6 @@ namespace logger
      {Level::INFO, "Info"},
      {Level::FAIL, "Fail"},
      {Level::FATAL, "Fatal"}});
-#else
-  DECLARE_JSON_ENUM(
-    Level,
-    {{Level::INFO, "Info"}, {Level::FAIL, "Fail"}, {Level::FATAL, "Fatal"}});
-#endif
 }
 
 DECLARE_JSON_ENUM(
@@ -131,6 +126,9 @@ struct StartupConfig : CCFConfig
 
   // Only if starting or recovering
   size_t initial_service_certificate_validity_days = 1;
+  nlohmann::json service_data = nullptr;
+
+  nlohmann::json node_data = nullptr;
 
   struct Start
   {
@@ -149,6 +147,13 @@ struct StartupConfig : CCFConfig
     std::vector<uint8_t> service_cert = {};
   };
   Join join = {};
+
+  struct Recover
+  {
+    std::optional<std::vector<uint8_t>> previous_service_identity =
+      std::nullopt;
+  };
+  Recover recover = {};
 };
 
 DECLARE_JSON_TYPE(StartupConfig::Start);
@@ -159,6 +164,9 @@ DECLARE_JSON_TYPE(StartupConfig::Join);
 DECLARE_JSON_REQUIRED_FIELDS(
   StartupConfig::Join, target_rpc_address, retry_timeout, service_cert);
 
+DECLARE_JSON_TYPE(StartupConfig::Recover);
+DECLARE_JSON_REQUIRED_FIELDS(StartupConfig::Recover, previous_service_identity);
+
 DECLARE_JSON_TYPE_WITH_BASE_AND_OPTIONAL_FIELDS(StartupConfig, CCFConfig);
 DECLARE_JSON_REQUIRED_FIELDS(
   StartupConfig,
@@ -166,7 +174,10 @@ DECLARE_JSON_REQUIRED_FIELDS(
   startup_host_time,
   snapshot_tx_interval,
   initial_service_certificate_validity_days,
+  service_data,
+  node_data,
   start,
-  join);
+  join,
+  recover);
 DECLARE_JSON_OPTIONAL_FIELDS(
   StartupConfig, startup_snapshot_evidence_seqno_for_1_x);

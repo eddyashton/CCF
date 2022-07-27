@@ -4,21 +4,22 @@
 
 #include "ccf/crypto/pem.h"
 #include "consensus/aft/raft_types.h"
-#include "enclave/rpc_sessions.h"
+#include "enclave/rpc_map.h"
+#include "http/http_builder.h"
 
 namespace ccf
 {
   class NodeClient
   {
   protected:
-    std::shared_ptr<enclave::RPCMap> rpc_map;
+    std::shared_ptr<ccf::RPCMap> rpc_map;
     crypto::KeyPairPtr node_sign_kp;
     const crypto::Pem& self_signed_node_cert;
     const std::optional<crypto::Pem>& endorsed_node_cert = std::nullopt;
 
   public:
     NodeClient(
-      std::shared_ptr<enclave::RPCMap> rpc_map_,
+      std::shared_ptr<ccf::RPCMap> rpc_map_,
       crypto::KeyPairPtr node_sign_kp_,
       const crypto::Pem& self_signed_node_cert_,
       const std::optional<crypto::Pem>& endorsed_node_cert_) :

@@ -33,18 +33,65 @@ from hashlib import sha256
 import e2e_common_endpoints
 from types import MappingProxyType
 
+
 from loguru import logger as LOG
 
 
+def show_cert(name, cert):
+    from OpenSSL.crypto import dump_certificate, FILETYPE_TEXT
+
+    dc = dump_certificate(FILETYPE_TEXT, cert).decode("unicode_escape")
+    LOG.info(f"{name} cert: {dc}")
+
+
+def verify_endorsements_openssl(service_cert, receipt):
+    from OpenSSL.crypto import (
+        load_certificate,
+        FILETYPE_PEM,
+        X509,
+        X509Store,
+        X509StoreContext,
+    )
+
+    store = X509Store()
+
+    # pyopenssl does not support X509_V_FLAG_NO_CHECK_TIME. For recovery of expired
+    # services and historical receipt, we want to ignore the validity time. 0x200000
+    # is the bitmask for this option in more recent versions of OpenSSL.
+    X509_V_FLAG_NO_CHECK_TIME = 0x200000
+    store.set_flags(X509_V_FLAG_NO_CHECK_TIME)
+
+    store.add_cert(X509.from_cryptography(service_cert))
+    chain = None
+    if "service_endorsements" in receipt:
+        chain = []
+        for endo in receipt["service_endorsements"]:
+            chain.append(load_certificate(FILETYPE_PEM, endo.encode()))
+    node_cert_pem = receipt["cert"].encode()
+    ctx = X509StoreContext(store, load_certificate(FILETYPE_PEM, node_cert_pem), chain)
+    ctx.verify_certificate()  # (throws on error)
+
+
 def verify_receipt(
-    receipt, service_cert, check_endorsement=True, claims=None, generic=True
+    receipt, service_cert, claims=None, generic=True, skip_endorsement_check=False
 ):
     """
     Raises an exception on failure
     """
+
     node_cert = load_pem_x509_certificate(receipt["cert"].encode(), default_backend())
-    if check_endorsement:
-        ccf.receipt.check_endorsement(node_cert, service_cert)
+
+    if not skip_endorsement_check:
+        service_endorsements = []
+        if "service_endorsements" in receipt:
+            service_endorsements = [
+                load_pem_x509_certificate(endo.encode(), default_backend())
+                for endo in receipt["service_endorsements"]
+            ]
+        ccf.receipt.check_endorsements(node_cert, service_cert, service_endorsements)
+
+        verify_endorsements_openssl(service_cert, receipt)
+
     if claims is not None:
         assert "leaf_components" in receipt
         assert "commit_evidence" in receipt["leaf_components"]
@@ -65,28 +112,23 @@ def verify_receipt(
             .hex()
         )
     else:
-        if "leaf" in receipt:
-            leaf = receipt["leaf"]
-        else:
-            assert "leaf_components" in receipt
-            assert "write_set_digest" in receipt["leaf_components"]
-            write_set_digest = bytes.fromhex(
-                receipt["leaf_components"]["write_set_digest"]
-            )
-            assert "commit_evidence" in receipt["leaf_components"]
-            commit_evidence_digest = sha256(
-                receipt["leaf_components"]["commit_evidence"].encode()
-            ).digest()
-            claims_digest = (
-                bytes.fromhex(receipt["leaf_components"]["claims_digest"])
-                if "claims_digest" in receipt["leaf_components"]
-                else b""
-            )
-            leaf = (
-                sha256(write_set_digest + commit_evidence_digest + claims_digest)
-                .digest()
-                .hex()
-            )
+        assert "leaf_components" in receipt, receipt
+        assert "write_set_digest" in receipt["leaf_components"]
+        write_set_digest = bytes.fromhex(receipt["leaf_components"]["write_set_digest"])
+        assert "commit_evidence" in receipt["leaf_components"]
+        commit_evidence_digest = sha256(
+            receipt["leaf_components"]["commit_evidence"].encode()
+        ).digest()
+        claims_digest = (
+            bytes.fromhex(receipt["leaf_components"]["claims_digest"])
+            if "claims_digest" in receipt["leaf_components"]
+            else b""
+        )
+        leaf = (
+            sha256(write_set_digest + commit_evidence_digest + claims_digest)
+            .digest()
+            .hex()
+        )
     root = ccf.receipt.root(leaf, receipt["proof"])
     ccf.receipt.verify(root, receipt["signature"], node_cert)
 
@@ -94,6 +136,8 @@ def verify_receipt(
 @reqs.description("Running transactions against logging app")
 @reqs.supports_methods("/app/log/private", "/app/log/public")
 @reqs.at_least_n_nodes(2)
+@reqs.no_http2()
+@app.scoped_txs(verify=False)
 def test(network, args):
     network.txs.issue(
         network=network,
@@ -122,6 +166,12 @@ def test_illegal(network, args):
         keyfile=os.path.join(network.common_dir, "user0_privk.pem"),
     )
 
+    def get_main_interface_metrics():
+        with primary.client() as c:
+            return c.get("/node/metrics").body.json()["sessions"]["interfaces"][
+                infra.interfaces.PRIMARY_RPC_INTERFACE
+            ]
+
     def send_raw_content(content):
         # Send malformed HTTP traffic and check the connection is closed
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -135,10 +185,16 @@ def test_illegal(network, args):
         response.begin()
         return response
 
+    additional_parsing_errors = 0
+
     def send_bad_raw_content(content):
+        nonlocal additional_parsing_errors
         response = send_raw_content(content)
         response_body = response.read()
         LOG.warning(response_body)
+        # If request parsing error, the interface metrics should report it
+        if response_body.startswith(b"Unable to parse data as a HTTP request."):
+            additional_parsing_errors += 1
         if response.status == http.HTTPStatus.BAD_REQUEST:
             assert content in response_body, response_body
         else:
@@ -147,6 +203,7 @@ def test_illegal(network, args):
                 response_body,
             )
 
+    initial_parsing_errors = get_main_interface_metrics()["errors"]["parsing"]
     send_bad_raw_content(b"\x01")
     send_bad_raw_content(b"\x01\x02\x03\x04")
     send_bad_raw_content(b"NOTAVERB ")
@@ -156,7 +213,16 @@ def test_illegal(network, args):
     send_bad_raw_content(b"POST /node/\xff HTTP/2.0\r\n\r\n")
 
     for _ in range(40):
-        content = bytes(random.randint(0, 255) for _ in range(random.randrange(1, 40)))
+        content = bytes(random.randint(0, 255) for _ in range(random.randrange(1, 2)))
+        # If we've accidentally produced something that might look like a valid HTTP request prefix, mangle it further
+        first_byte = content[0]
+        if (
+            first_byte >= ord("A")
+            and first_byte <= ord("Z")
+            or first_byte == ord("\r")
+            or first_byte == ord("\n")
+        ):
+            content = b"\00" + content
         send_bad_raw_content(content)
 
     def send_corrupt_variations(content):
@@ -164,6 +230,11 @@ def test_illegal(network, args):
             for replacement in (b"\x00", b"\x01", bytes([(content[i] + 128) % 256])):
                 corrupt_content = content[:i] + replacement + content[i + 1 :]
                 send_bad_raw_content(corrupt_content)
+
+    assert (
+        get_main_interface_metrics()["errors"]["parsing"]
+        == initial_parsing_errors + additional_parsing_errors
+    )
 
     good_content = b"GET /node/state HTTP/1.1\r\n\r\n"
     response = send_raw_content(good_content)
@@ -197,46 +268,65 @@ def test_protocols(network, args):
     url = f"{primary_root}/node/state"
     ca_path = os.path.join(network.common_dir, "service_cert.pem")
 
-    common_options = [url, "-sS", "--cacert", ca_path]
+    common_options = [
+        url,
+        "-sS",
+        "--cacert",
+        ca_path,
+        "-w",
+        "\\n%{http_code}\\n%{http_version}",
+    ]
 
-    # Check that websocket upgrade request is ignored
+    def parse_result_out(r):
+        assert r.returncode == 0, r.returncode
+        body = r.stdout.decode()
+        return body.rsplit("\n", 2)
+
+    # Call without any extra args to get golden response
     res = infra.proc.ccall(
         "curl",
-        "--no-buffer",
-        "-H",
-        "Connection: Upgrade",
-        "-H",
-        "Upgrade: websocket",
-        "-w",
-        "\n%{http_code}",
         *common_options,
     )
-    assert res.returncode == 0, res.returncode
-    body = res.stdout.decode()
-    status_code = body.splitlines()[-1]
-    assert status_code == "200", body
-    expected_response_body = body[: body.rfind("\n")]
+    expected_response_body, status_code, http_version = parse_result_out(res)
+    assert status_code == "200", status_code
+    assert http_version == "1.1", http_version
 
-    # Test additional HTTP versions with curl
-    for (protocol, expected_error) in (
-        ("", None),
-        ("--http1.0", None),
-        ("--http1.1", None),
-        ("--http2", None),  # Upgrade request is ignored
-        ("--http2-prior-knowledge", "Error in the HTTP2 framing layer"),
-        ("--http3", "the installed libcurl version doesn't support this"),
-    ):
-        res = infra.proc.ccall("curl", protocol, *common_options)
-        if expected_error is None:
-            assert res.returncode == 0, res.returncode
-            out = res.stdout.decode()
+    # Test additional protocols with curl
+    for protocol, expected_result in {
+        # HTTP/1.x requests succeed, as HTTP/1.1
+        "--http1.0": {"http_status": "200", "http_version": "1.1"},
+        "--http1.1": {"http_status": "200", "http_version": "1.1"},
+        # WebSockets upgrade request is ignored
+        "websockets": {"extra_args": [], "http_status": "200", "http_version": "1.1"},
+        # TLS handshake negotiates HTTP/1.1
+        "--http2": {"http_status": "200", "http_version": "1.1"},
+        "--http2-prior-knowledge": {"http_status": "200", "http_version": "1.1"},
+        # HTTP3 is not supported by curl _or_ CCF
+        "--http3": {
+            "errors": [
+                "the installed libcurl version doesn't support this",
+                "option --http3: is unknown",
+            ]
+        },
+    }.items():
+        cmd = ["curl", *common_options]
+        if "extra_args" in expected_result:
+            cmd.extend(expected_result["extra_args"])
+        else:
+            cmd.append(protocol)
+        res = infra.proc.ccall(*cmd)
+        if "errors" not in expected_result:
+            response_body, status_code, http_version = parse_result_out(res)
             assert (
-                out == expected_response_body
-            ), f"{out}\n !=\n{expected_response_body}"
+                response_body == expected_response_body
+            ), f"{response_body}\n !=\n{expected_response_body}"
+            assert status_code == "200", status_code
+            assert http_version == "1.1", http_version
         else:
             assert res.returncode != 0, res.returncode
             err = res.stderr.decode()
-            assert expected_error in err, err
+            expected_errors = expected_result["errors"]
+            assert any(expected_error in err for expected_error in expected_errors), err
 
     # Valid transactions are still accepted
     network.txs.issue(
@@ -249,33 +339,6 @@ def test_protocols(network, args):
         on_backup=True,
     )
     network.txs.verify()
-
-    return network
-
-
-@reqs.description("Write/Read large messages on primary")
-@reqs.supports_methods("/app/log/private")
-def test_large_messages(network, args):
-    primary, _ = network.find_primary()
-
-    with primary.client() as nc:
-        check_commit = infra.checker.Checker(nc)
-        check = infra.checker.Checker()
-
-        with primary.client("user0") as c:
-            # TLS libraries usually have 16K intrernal buffers, so we start at
-            # 1K and move up to 1M and make sure they can cope with it.
-            # Starting below 16K also helps identify problems (by seeing some
-            # pass but not others, and finding where does it fail).
-            log_id = network.txs.find_max_log_id() + 1
-            for p in range(10, 20) if args.consensus == "CFT" else range(10, 13):
-                long_msg = "X" * (2**p)
-                check_commit(
-                    c.post("/app/log/private", {"id": log_id, "msg": long_msg}),
-                    result=True,
-                )
-                check(c.get(f"/app/log/private?id={log_id}"), result={"msg": long_msg})
-                log_id += 1
 
     return network
 
@@ -304,6 +367,7 @@ def test_remove(network, args):
 
 @reqs.description("Write/Read/Clear messages on primary")
 @reqs.supports_methods("/app/log/private/all", "/app/log/public/all")
+@app.scoped_txs()
 def test_clear(network, args):
     primary, _ = network.find_primary()
 
@@ -311,7 +375,7 @@ def test_clear(network, args):
         check_commit = infra.checker.Checker(nc)
         check = infra.checker.Checker()
 
-        start_log_id = network.txs.find_max_log_id() + 1
+        start_log_id = 7
         with primary.client("user0") as c:
             log_ids = list(range(start_log_id, start_log_id + 10))
             msg = "Will be deleted"
@@ -349,6 +413,7 @@ def test_clear(network, args):
 
 @reqs.description("Count messages on primary")
 @reqs.supports_methods("/app/log/private/count", "/app/log/public/count")
+@app.scoped_txs()
 def test_record_count(network, args):
     primary, _ = network.find_primary()
 
@@ -370,7 +435,7 @@ def test_record_count(network, args):
                 count = get_count(resource)
 
                 # Add several new IDs
-                start_log_id = network.txs.find_max_log_id() + 1
+                start_log_id = 7
                 for i in range(10):
                     log_id = start_log_id + i
                     check_commit(
@@ -399,38 +464,52 @@ def test_record_count(network, args):
 @reqs.description("Write/Read with cert prefix")
 @reqs.supports_methods("/app/log/private/prefix_cert", "/app/log/private")
 def test_cert_prefix(network, args):
-    primary, _ = network.find_primary()
-
+    msg = "This message will be prefixed"
+    log_id = 7
     for user in network.users:
-        with primary.client(user.local_id) as c:
-            log_id = network.txs.find_max_log_id() + 1
-            msg = "This message will be prefixed"
-            c.post("/app/log/private/prefix_cert", {"id": log_id, "msg": msg})
-            r = c.get(f"/app/log/private?id={log_id}")
-            assert f"CN={user.local_id}" in r.body.json()["msg"], r
+        network.txs.issue(
+            network,
+            idx=log_id,
+            msg=msg,
+            send_public=False,
+            url_suffix="prefix_cert",
+            user=user.local_id,
+        )
+        r = network.txs.request(log_id, priv=True, user=user.local_id)
+        prefixed_msg = f"CN={user.local_id}: {msg}"
+        network.txs.priv[log_id][-1]["msg"] = prefixed_msg
+        assert prefixed_msg in r.body.json()["msg"], r
 
     return network
 
 
 @reqs.description("Write as anonymous caller")
 @reqs.supports_methods("/app/log/private/anonymous", "/app/log/private")
+@app.scoped_txs()
 def test_anonymous_caller(network, args):
-    primary, _ = network.find_primary()
-
     # Create a new user but do not record its identity
     network.create_user("user5", args.participants_curve, record=False)
 
-    log_id = network.txs.find_max_log_id() + 1
+    log_id = 7
     msg = "This message is anonymous"
-    with primary.client("user5") as c:
-        r = c.post("/app/log/private/anonymous", {"id": log_id, "msg": msg})
-        assert r.body.json() == True
-        r = c.get(f"/app/log/private?id={log_id}")
-        assert r.status_code == http.HTTPStatus.UNAUTHORIZED.value, r
 
-    with primary.client("user0") as c:
-        r = c.get(f"/app/log/private?id={log_id}")
-        assert msg in r.body.json()["msg"], r
+    network.txs.issue(
+        network,
+        1,
+        idx=log_id,
+        send_public=False,
+        msg=msg,
+        user="user5",
+        url_suffix="anonymous",
+    )
+    prefixed_msg = f"Anonymous: {msg}"
+    network.txs.priv[log_id][-1]["msg"] = prefixed_msg
+
+    r = network.txs.request(log_id, priv=True, user="user5")
+    assert r.status_code == http.HTTPStatus.UNAUTHORIZED.value, r
+
+    r = network.txs.request(log_id, priv=True)
+    assert msg in r.body.json()["msg"], r
 
     return network
 
@@ -535,6 +614,7 @@ def test_multi_auth(network, args):
 
 @reqs.description("Call an endpoint with a custom auth policy")
 @reqs.supports_methods("/app/custom_auth")
+@reqs.no_http2()
 def test_custom_auth(network, args):
     primary, other = network.find_primary_and_any_backup()
 
@@ -575,6 +655,7 @@ def test_custom_auth(network, args):
 
 @reqs.description("Call an endpoint with a custom auth policy which throws")
 @reqs.supports_methods("/app/custom_auth")
+@reqs.no_http2()
 def test_custom_auth_safety(network, args):
     primary, other = network.find_primary_and_any_backup()
 
@@ -593,20 +674,15 @@ def test_custom_auth_safety(network, args):
 
 @reqs.description("Write non-JSON body")
 @reqs.supports_methods("/app/log/private/raw_text/{id}", "/app/log/private")
+@app.scoped_txs()
 def test_raw_text(network, args):
-    primary, _ = network.find_primary()
-
-    log_id = network.txs.find_max_log_id() + 1
+    log_id = 7
     msg = "This message is not in JSON"
-    with primary.client("user0") as c:
-        r = c.post(
-            f"/app/log/private/raw_text/{log_id}",
-            msg,
-            headers={"content-type": "text/plain"},
-        )
-        assert r.status_code == http.HTTPStatus.OK.value
-        r = c.get(f"/app/log/private?id={log_id}")
-        assert msg in r.body.json()["msg"], r
+
+    r = network.txs.post_raw_text(log_id, msg)
+    assert r.status_code == http.HTTPStatus.OK.value
+    r = network.txs.request(log_id, priv=True)
+    assert msg in r.body.json()["msg"], r
 
     return network
 
@@ -670,6 +746,8 @@ def test_metrics(network, args):
 
 @reqs.description("Read historical state")
 @reqs.supports_methods("/app/log/private", "/app/log/private/historical")
+@reqs.no_http2()
+@app.scoped_txs()
 def test_historical_query(network, args):
     network.txs.issue(network, number_txs=2)
     network.txs.issue(network, number_txs=2, repeat=True)
@@ -739,7 +817,7 @@ def test_historical_receipts_with_claims(network, args):
                 node, idx, first_msg["seqno"], first_msg["view"], domain="public"
             )
             r = first_receipt.json()["receipt"]
-            verify_receipt(r, network.cert, True, first_receipt.json()["msg"].encode())
+            verify_receipt(r, network.cert, first_receipt.json()["msg"].encode())
 
     # receipt.verify() and ccf.receipt.check_endorsement() raise if they fail, but do not return anything
     verified = True
@@ -1029,6 +1107,8 @@ def escaped_query_tests(c, endpoint):
 @reqs.description("Testing forwarding on member and user frontends")
 @reqs.supports_methods("/app/log/private")
 @reqs.at_least_n_nodes(2)
+@reqs.no_http2()
+@app.scoped_txs()
 def test_forwarding_frontends(network, args):
     backup = network.find_any_backup()
 
@@ -1041,13 +1121,9 @@ def test_forwarding_frontends(network, args):
         check_commit = infra.checker.Checker(c)
         check = infra.checker.Checker()
         msg = "forwarded_msg"
-        log_id = network.txs.find_max_log_id() + 1
-        check_commit(
-            c.post("/app/log/private", {"id": log_id, "msg": msg}),
-            result=True,
-        )
-        check(c.get(f"/app/log/private?id={log_id}"), result={"msg": msg})
-
+        log_id = 7
+        network.txs.issue(network, 1, idx=log_id, send_public=False, msg=msg)
+        check(network.txs.request(log_id, priv=True), result={"msg": msg})
         if args.package == "samples/apps/logging/liblogging":
             escaped_query_tests(c, "request_query")
 
@@ -1057,6 +1133,7 @@ def test_forwarding_frontends(network, args):
 @reqs.description("Testing signed queries with escaped queries")
 @reqs.installed_package("samples/apps/logging/liblogging")
 @reqs.at_least_n_nodes(2)
+@reqs.no_http2()
 def test_signed_escapes(network, args):
     node = network.find_node_by_role()
     with node.client("user0", "user0") as c:
@@ -1213,14 +1290,14 @@ class SentTxs:
 
 @reqs.description("Build a list of Tx IDs, check they transition states as expected")
 @reqs.supports_methods("/app/log/private")
+@app.scoped_txs()
 def test_tx_statuses(network, args):
     primary, _ = network.find_primary()
 
     with primary.client("user0") as c:
         check = infra.checker.Checker()
-        r = c.post("/app/log/private", {"id": 0, "msg": "Ignored"})
-        check(r)
-        # Until this tx is globally committed, poll for the status of this and some other
+        r = network.txs.issue(network, 1, idx=0, send_public=False, msg="Ignored")
+        # Until this tx is committed, poll for the status of this and some other
         # related transactions around it (and also any historical transactions we're tracking)
         target_view = r.view
         target_seqno = r.seqno
@@ -1232,7 +1309,7 @@ def test_tx_statuses(network, args):
         while True:
             if time.time() > end_time:
                 raise TimeoutError(
-                    f"Took too long waiting for global commit of {target_view}.{target_seqno}"
+                    f"Took too long waiting for commit of {target_view}.{target_seqno}"
                 )
 
             done = False
@@ -1258,29 +1335,27 @@ def test_tx_statuses(network, args):
 @reqs.description("Running transactions against logging app")
 @reqs.supports_methods("/app/receipt", "/app/log/private")
 @reqs.at_least_n_nodes(2)
+@app.scoped_txs()
 def test_receipts(network, args):
     primary, _ = network.find_primary_and_any_backup()
-    with primary.client() as mc:
-        check_commit = infra.checker.Checker(mc)
-        msg = "Hello world"
+    msg = "Hello world"
 
-        LOG.info("Write/Read on primary")
-        with primary.client("user0") as c:
-            for j in range(10):
-                idx = j + 10000
-                r = c.post("/app/log/private", {"id": idx, "msg": msg})
-                check_commit(r, result=True)
-                start_time = time.time()
-                while time.time() < (start_time + 3.0):
-                    rc = c.get(f"/app/receipt?transaction_id={r.view}.{r.seqno}")
-                    if rc.status_code == http.HTTPStatus.OK:
-                        receipt = rc.body.json()
-                        verify_receipt(receipt, network.cert)
-                        break
-                    elif rc.status_code == http.HTTPStatus.ACCEPTED:
-                        time.sleep(0.5)
-                    else:
-                        assert False, rc
+    LOG.info("Write/Read on primary")
+    with primary.client("user0") as c:
+        for j in range(10):
+            idx = j + 10000
+            r = network.txs.issue(network, 1, idx=idx, send_public=False, msg=msg)
+            start_time = time.time()
+            while time.time() < (start_time + 3.0):
+                rc = c.get(f"/app/receipt?transaction_id={r.view}.{r.seqno}")
+                if rc.status_code == http.HTTPStatus.OK:
+                    receipt = rc.body.json()
+                    verify_receipt(receipt, network.cert)
+                    break
+                elif rc.status_code == http.HTTPStatus.ACCEPTED:
+                    time.sleep(0.5)
+                else:
+                    assert False, rc
 
     return network
 
@@ -1317,10 +1392,11 @@ def test_random_receipts(
         last_sig_seqno = max_seqno
         interesting_prefix = [genesis_seqno, likely_first_sig_seqno]
         seqnos = range(len(interesting_prefix) + 1, max_seqno)
+        random_sample_count = 20 if lts else 50
         for s in (
             interesting_prefix
             + sorted(
-                random.sample(seqnos, min(50, len(seqnos)))
+                random.sample(seqnos, min(random_sample_count, len(seqnos)))
                 + list(additional_seqnos.keys())
             )
             + [last_sig_seqno]
@@ -1330,18 +1406,24 @@ def test_random_receipts(
                 rc = c.get(f"/app/receipt?transaction_id={view}.{s}")
                 if rc.status_code == http.HTTPStatus.OK:
                     receipt = rc.body.json()
-                    if lts and not receipt.get("cert"):
-                        receipt["cert"] = certs[receipt["node_id"]]
-                    verify_receipt(
-                        receipt,
-                        network.cert,
-                        not lts,
-                        claims=additional_seqnos.get(s),
-                        generic=True,
-                    )
-                    if s == max_seqno:
-                        # Always a signature receipt
-                        assert receipt["proof"] == [], receipt
+                    if "leaf" in receipt:
+                        if not lts:
+                            assert "proof" in receipt, receipt
+                            assert len(receipt["proof"]) == 0, receipt
+                        # Legacy signature receipt
+                        LOG.warning(
+                            f"Skipping verification of signature receipt at {view}.{s}"
+                        )
+                    else:
+                        if lts and not receipt.get("cert"):
+                            receipt["cert"] = certs[receipt["node_id"]]
+                        verify_receipt(
+                            receipt,
+                            network.cert,
+                            claims=additional_seqnos.get(s),
+                            generic=True,
+                            skip_endorsement_check=lts,
+                        )
                     break
                 elif rc.status_code == http.HTTPStatus.ACCEPTED:
                     time.sleep(0.5)
@@ -1355,6 +1437,8 @@ def test_random_receipts(
 
 @reqs.description("Test basic app liveness")
 @reqs.at_least_n_nodes(1)
+@reqs.no_http2()
+@app.scoped_txs()
 def test_liveness(network, args):
     network.txs.issue(
         network=network,
@@ -1372,6 +1456,54 @@ def test_rekey(network, args):
     return network
 
 
+@reqs.description("Test UDP echo endpoint")
+@reqs.at_least_n_nodes(1)
+def test_udp_echo(network, args):
+    # For now, only test UDP on primary
+    primary, _ = network.find_primary()
+    udp_interface = primary.host.rpc_interfaces["udp_interface"]
+    host = udp_interface.public_host
+    port = udp_interface.public_port
+    LOG.info(f"Testing UDP echo server at {host}:{port}")
+
+    server_address = (host, port)
+    buffer_size = 1024
+    test_string = b"Some random text"
+    attempts = 10
+    attempt = 1
+
+    while attempt <= attempts:
+        LOG.info(f"Testing UDP echo server sending '{test_string}'")
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(3)
+            s.sendto(test_string, server_address)
+            recv = s.recvfrom(buffer_size)
+        text = recv[0]
+        LOG.info(f"Testing UDP echo server received '{text}'")
+        assert text == test_string
+        attempt = attempt + 1
+
+
+def run_udp_tests(args):
+    # Register secondary interface as an UDP socket on all nodes
+    udp_interface = infra.interfaces.make_secondary_interface("udp", "udp_interface")
+    for node in args.nodes:
+        node.rpc_interfaces.update(udp_interface)
+
+    txs = app.LoggingTxs("user0")
+    with infra.network.network(
+        args.nodes,
+        args.binary_dir,
+        args.debug_nodes,
+        args.perf_nodes,
+        pdb=args.pdb,
+        txs=txs,
+    ) as network:
+        network.start(args)
+
+        test_udp_echo(network, args)
+
+
 def run(args):
     # Listen on two additional RPC interfaces for each node
     def additional_interfaces(local_node_id):
@@ -1383,7 +1515,10 @@ def run(args):
     for local_node_id, node_host in enumerate(args.nodes):
         for interface_name, host in additional_interfaces(local_node_id).items():
             node_host.rpc_interfaces[interface_name] = infra.interfaces.RPCInterface(
-                host=host
+                host=host,
+                app_protocol=infra.interfaces.AppProtocol.HTTP2
+                if args.http2
+                else infra.interfaces.AppProtocol.HTTP1,
             )
 
     txs = app.LoggingTxs("user0")
@@ -1397,38 +1532,51 @@ def run(args):
     ) as network:
         network.start_and_open(args)
 
-        network = test(network, args)
-        network = test_illegal(network, args)
-        network = test_protocols(network, args)
-        network = test_large_messages(network, args)
-        network = test_remove(network, args)
-        network = test_clear(network, args)
-        network = test_record_count(network, args)
-        network = test_forwarding_frontends(network, args)
-        network = test_signed_escapes(network, args)
-        network = test_user_data_ACL(network, args)
-        network = test_cert_prefix(network, args)
-        network = test_anonymous_caller(network, args)
-        network = test_multi_auth(network, args)
-        network = test_custom_auth(network, args)
-        network = test_custom_auth_safety(network, args)
-        network = test_raw_text(network, args)
-        network = test_historical_query(network, args)
-        network = test_historical_query_range(network, args)
-        network = test_view_history(network, args)
-        network = test_metrics(network, args)
+        test(network, args)
+        test_remove(network, args)
+        test_clear(network, args)
+        test_record_count(network, args)
+        test_forwarding_frontends(network, args)
+        test_signed_escapes(network, args)
+        test_user_data_ACL(network, args)
+        test_cert_prefix(network, args)
+        test_anonymous_caller(network, args)
+        test_multi_auth(network, args)
+        test_custom_auth(network, args)
+        test_custom_auth_safety(network, args)
+        test_raw_text(network, args)
+        test_historical_query(network, args)
+        test_historical_query_range(network, args)
+        test_view_history(network, args)
+        test_metrics(network, args)
         # BFT does not handle re-keying yet
         if args.consensus == "CFT":
-            network = test_liveness(network, args)
-            network = test_rekey(network, args)
-            network = test_liveness(network, args)
-            network = test_random_receipts(network, args, False)
+            test_liveness(network, args)
+            test_rekey(network, args)
+            test_liveness(network, args)
+            test_random_receipts(network, args, False)
         if args.package == "samples/apps/logging/liblogging":
-            network = test_receipts(network, args)
-            network = test_historical_query_sparse(network, args)
+            test_receipts(network, args)
+            test_historical_query_sparse(network, args)
         if "v8" not in args.package:
-            network = test_historical_receipts(network, args)
-            network = test_historical_receipts_with_claims(network, args)
+            test_historical_receipts(network, args)
+            test_historical_receipts_with_claims(network, args)
+
+
+def run_parsing_errors(args):
+    txs = app.LoggingTxs("user0")
+    with infra.network.network(
+        args.nodes,
+        args.binary_dir,
+        args.debug_nodes,
+        args.perf_nodes,
+        pdb=args.pdb,
+        txs=txs,
+    ) as network:
+        network.start_and_open(args)
+
+        test_illegal(network, args)
+        test_protocols(network, args)
 
 
 if __name__ == "__main__":
@@ -1454,6 +1602,8 @@ if __name__ == "__main__":
             nodes=infra.e2e_args.max_nodes(cr.args, f=0),
             initial_user_count=4,
             initial_member_count=2,
+            election_timeout_ms=cr.args.election_timeout_ms
+            * 2,  # Larger election timeout as some large payloads may cause an election with v8
         )
 
     cr.add(
@@ -1469,6 +1619,30 @@ if __name__ == "__main__":
     cr.add(
         "common",
         e2e_common_endpoints.run,
+        package="samples/apps/logging/liblogging",
+        nodes=infra.e2e_args.max_nodes(cr.args, f=0),
+    )
+
+    # Run illegal traffic tests in separate runners, to reduce total serial runtime
+    if not cr.args.http2:
+        cr.add(
+            "js_illegal",
+            run_parsing_errors,
+            package="libjs_generic",
+            nodes=infra.e2e_args.max_nodes(cr.args, f=0),
+        )
+
+        cr.add(
+            "cpp_illegal",
+            run_parsing_errors,
+            package="samples/apps/logging/liblogging",
+            nodes=infra.e2e_args.max_nodes(cr.args, f=0),
+        )
+
+    # This is just for the UDP echo test for now
+    cr.add(
+        "udp",
+        run_udp_tests,
         package="samples/apps/logging/liblogging",
         nodes=infra.e2e_args.max_nodes(cr.args, f=0),
     )

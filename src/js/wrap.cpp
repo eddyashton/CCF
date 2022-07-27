@@ -8,7 +8,6 @@
 #include "ccf/tx_id.h"
 #include "ccf/version.h"
 #include "crypto/certs.h"
-#include "crypto/openssl/x509_time.h"
 #include "js/consensus.cpp"
 #include "js/conv.cpp"
 #include "js/crypto.cpp"
@@ -16,6 +15,7 @@
 #include "js/no_plugins.cpp"
 #include "kv/untyped_map.h"
 #include "node/rpc/call_types.h"
+#include "node/rpc/gov_effects_interface.h"
 #include "node/rpc/jwt_management.h"
 #include "node/rpc/node_interface.h"
 
@@ -32,6 +32,7 @@ namespace ccf::js
   using KVMap = kv::untyped::Map;
 
   JSClassID kv_class_id = 0;
+  JSClassID kv_read_only_class_id = 0;
   JSClassID kv_map_handle_class_id = 0;
   JSClassID body_class_id = 0;
   JSClassID node_class_id = 0;
@@ -44,6 +45,8 @@ namespace ccf::js
 
   JSClassDef kv_class_def = {};
   JSClassExoticMethods kv_exotic_methods = {};
+  JSClassDef kv_read_only_class_def = {};
+  JSClassExoticMethods kv_read_only_exotic_methods = {};
   JSClassDef kv_map_handle_class_def = {};
   JSClassDef body_class_def = {};
   JSClassDef node_class_def = {};
@@ -330,23 +333,13 @@ namespace ccf::js
     return JS_UNDEFINED;
   }
 
-  static int js_kv_lookup(
-    JSContext* ctx,
-    JSPropertyDescriptor* desc,
-    JSValueConst this_val,
-    JSAtom property)
+  static bool _check_kv_map_access(
+    TxAccess access, const std::string& table_name)
   {
-    js::Context& jsctx = *(js::Context*)JS_GetContextOpaque(ctx);
-    const auto property_name = jsctx.to_str(property).value_or("");
-    LOG_TRACE_FMT("Looking for kv map '{}'", property_name);
-
     const auto [security_domain, access_category] =
-      kv::parse_map_name(property_name);
+      kv::parse_map_name(table_name);
 
-    auto tx_ctx_ptr =
-      static_cast<TxContext*>(JS_GetOpaque(this_val, kv_class_id));
-
-    auto read_only = false;
+    bool read_only = false;
     switch (access_category)
     {
       case kv::AccessCategory::INTERNAL:
@@ -359,29 +352,33 @@ namespace ccf::js
         {
           throw std::runtime_error(fmt::format(
             "JS application cannot access private internal CCF table '{}'",
-            property_name));
+            table_name));
         }
         break;
       }
       case kv::AccessCategory::GOVERNANCE:
       {
-        read_only = tx_ctx_ptr->access != TxAccess::GOV_RW;
+        read_only = access != TxAccess::GOV_RW;
         break;
       }
       case kv::AccessCategory::APPLICATION:
       {
-        read_only = tx_ctx_ptr->access != TxAccess::APP;
+        read_only = access != TxAccess::APP;
         break;
       }
       default:
       {
-        throw std::logic_error(fmt::format(
-          "Unhandled AccessCategory for table '{}'", property_name));
+        throw std::logic_error(
+          fmt::format("Unhandled AccessCategory for table '{}'", table_name));
       }
     }
 
-    auto handle = tx_ctx_ptr->tx->rw<KVMap>(property_name);
+    return read_only;
+  }
 
+  static void _create_kv_map_handle(
+    JSContext* ctx, JSPropertyDescriptor* desc, void* handle, bool read_only)
+  {
     // This follows the interface of Map:
     // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map
     // Keys and values are ArrayBuffers. Keys are matched based on their
@@ -447,6 +444,49 @@ namespace ccf::js
 
     desc->flags = 0;
     desc->value = view_val;
+  }
+
+  static int js_kv_lookup(
+    JSContext* ctx,
+    JSPropertyDescriptor* desc,
+    JSValueConst this_val,
+    JSAtom property)
+  {
+    js::Context& jsctx = *(js::Context*)JS_GetContextOpaque(ctx);
+    const auto property_name = jsctx.to_str(property).value_or("");
+    LOG_TRACE_FMT("Looking for kv map '{}'", property_name);
+
+    auto tx_ctx_ptr =
+      static_cast<TxContext*>(JS_GetOpaque(this_val, kv_class_id));
+
+    const auto read_only = _check_kv_map_access(jsctx.access, property_name);
+
+    auto handle = tx_ctx_ptr->tx->rw<KVMap>(property_name);
+
+    _create_kv_map_handle(ctx, desc, handle, read_only);
+
+    return true;
+  }
+
+  static int js_read_only_kv_lookup(
+    JSContext* ctx,
+    JSPropertyDescriptor* desc,
+    JSValueConst this_val,
+    JSAtom property)
+  {
+    js::Context& jsctx = *(js::Context*)JS_GetContextOpaque(ctx);
+    const auto property_name = jsctx.to_str(property).value_or("");
+    LOG_TRACE_FMT("Looking for read-only kv map '{}'", property_name);
+
+    auto tx_ctx_ptr = static_cast<ReadOnlyTxContext*>(
+      JS_GetOpaque(this_val, kv_read_only_class_id));
+
+    _check_kv_map_access(jsctx.access, property_name);
+    const auto read_only = true;
+
+    auto handle = tx_ctx_ptr->tx->ro<KVMap>(property_name);
+
+    _create_kv_map_handle(ctx, desc, handle, read_only);
 
     return true;
   }
@@ -546,10 +586,10 @@ namespace ccf::js
   {
     js::Context& jsctx = *(js::Context*)JS_GetContextOpaque(ctx);
 
-    if (argc != 0)
+    if (argc != 2)
     {
       return JS_ThrowTypeError(
-        ctx, "Passed %d arguments but expected none", argc);
+        ctx, "Passed %d arguments but expected two", argc);
     }
 
     auto gov_effects = static_cast<ccf::AbstractGovernanceEffects*>(
@@ -574,11 +614,47 @@ namespace ccf::js
 
     try
     {
-      gov_effects->transition_service_to_open(*tx_ctx_ptr->tx);
+      AbstractGovernanceEffects::ServiceIdentities identities;
+
+      size_t prev_bytes_sz = 0;
+      uint8_t* prev_bytes = nullptr;
+      if (!JS_IsUndefined(argv[0]))
+      {
+        prev_bytes = JS_GetArrayBuffer(ctx, &prev_bytes_sz, argv[0]);
+        if (!prev_bytes)
+        {
+          return JS_ThrowTypeError(
+            ctx, "Previous service identity argument is not an array buffer");
+        }
+        identities.previous = crypto::Pem(prev_bytes, prev_bytes_sz);
+        LOG_DEBUG_FMT(
+          "previous service identity: {}", identities.previous->str());
+      }
+
+      if (JS_IsUndefined(argv[1]))
+      {
+        return JS_ThrowInternalError(
+          ctx, "Proposal requires a service identity");
+      }
+
+      size_t next_bytes_sz = 0;
+      uint8_t* next_bytes = JS_GetArrayBuffer(ctx, &next_bytes_sz, argv[1]);
+
+      if (!next_bytes)
+      {
+        return JS_ThrowTypeError(
+          ctx, "Next service identity argument is not an array buffer");
+      }
+
+      identities.next = crypto::Pem(next_bytes, next_bytes_sz);
+      LOG_DEBUG_FMT("next service identity: {}", identities.next.str());
+
+      gov_effects->transition_service_to_open(*tx_ctx_ptr->tx, identities);
     }
     catch (const std::exception& e)
     {
       LOG_FAIL_FMT("Unable to open service: {}", e.what());
+      return JS_ThrowInternalError(ctx, "Unable to open service: %s", e.what());
     }
 
     return JS_UNDEFINED;
@@ -672,10 +748,17 @@ namespace ccf::js
       return JS_EXCEPTION;
     }
 
-    auto renewed_cert =
-      network->identity->issue_certificate(valid_from, validity_period_days);
+    try
+    {
+      auto renewed_cert =
+        network->identity->issue_certificate(valid_from, validity_period_days);
 
-    return JS_NewString(ctx, renewed_cert.str().c_str());
+      return JS_NewString(ctx, renewed_cert.str().c_str());
+    }
+    catch (std::exception& exc)
+    {
+      return JS_ThrowInternalError(ctx, "Error: %s", exc.what());
+    }
   }
 
   JSValue js_network_latest_ledger_secret_seqno(
@@ -727,7 +810,7 @@ namespace ccf::js
     }
 
     auto rpc_ctx =
-      static_cast<enclave::RpcContext*>(JS_GetOpaque(this_val, rpc_class_id));
+      static_cast<ccf::RpcContext*>(JS_GetOpaque(this_val, rpc_class_id));
 
     if (rpc_ctx == nullptr)
     {
@@ -754,7 +837,7 @@ namespace ccf::js
     }
 
     auto rpc_ctx =
-      static_cast<enclave::RpcContext*>(JS_GetOpaque(this_val, rpc_class_id));
+      static_cast<ccf::RpcContext*>(JS_GetOpaque(this_val, rpc_class_id));
 
     if (rpc_ctx == nullptr)
     {
@@ -765,11 +848,15 @@ namespace ccf::js
     uint8_t* digest = JS_GetArrayBuffer(ctx, &digest_size, argv[0]);
 
     if (!digest)
+    {
       return JS_ThrowTypeError(ctx, "Argument must be an ArrayBuffer");
+    }
 
     if (digest_size != ccf::ClaimsDigest::Digest::SIZE)
+    {
       return JS_ThrowTypeError(
         ctx, "Argument must be an ArrayBuffer of the right size");
+    }
 
     std::span<uint8_t, ccf::ClaimsDigest::Digest::SIZE> digest_bytes(
       digest, ccf::ClaimsDigest::Digest::SIZE);
@@ -812,14 +899,14 @@ namespace ccf::js
       return JS_ThrowTypeError(ctx, "issuer argument is not a string");
     }
 
-    JSValue metadata_val = JS_JSONStringify(ctx, argv[1], JS_NULL, JS_NULL);
+    auto metadata_val = jsctx.json_stringify(JSWrappedValue(ctx, argv[1]));
     if (JS_IsException(metadata_val))
     {
       return JS_ThrowTypeError(ctx, "metadata argument is not a JSON object");
     }
     auto metadata_json = jsctx.to_str(metadata_val);
 
-    JSValue jwks_val = JS_JSONStringify(ctx, argv[2], JS_NULL, JS_NULL);
+    auto jwks_val = jsctx.json_stringify(JSWrappedValue(ctx, argv[2]));
     if (JS_IsException(jwks_val))
     {
       return JS_ThrowTypeError(ctx, "jwks argument is not a JSON object");
@@ -988,24 +1075,16 @@ namespace ccf::js
     return JS_UNDEFINED;
   }
 
-  JSValue js_node_trigger_host_process_launch(
-    JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv)
+  JSValue get_string_array(
+    JSContext* ctx, JSValueConst& argv, std::vector<std::string>& out)
   {
     js::Context& jsctx = *(js::Context*)JS_GetContextOpaque(ctx);
-
-    if (argc != 1)
-    {
-      return JS_ThrowTypeError(ctx, "Passed %d arguments but expected 1", argc);
-    }
-
-    auto args = JSWrappedValue(ctx, argv[0]);
+    auto args = JSWrappedValue(ctx, argv);
 
     if (!JS_IsArray(ctx, args))
     {
       return JS_ThrowTypeError(ctx, "First argument must be an array");
     }
-
-    std::vector<std::string> process_args;
 
     auto len_atom = JS_NewAtom(ctx, "length");
     auto len_val = args.get_property(len_atom);
@@ -1027,8 +1106,76 @@ namespace ccf::js
         return JS_ThrowTypeError(
           ctx, "First argument must be an array of strings, found non-string");
       }
-      auto arg = jsctx.to_str(arg_val);
-      process_args.push_back(*arg);
+      out.push_back(*jsctx.to_str(arg_val));
+    }
+
+    return JS_UNDEFINED;
+  }
+
+  JSValue js_trigger_acme_refresh(
+    JSContext* ctx,
+    JSValueConst this_val,
+    [[maybe_unused]] int argc,
+    [[maybe_unused]] JSValueConst* argv)
+  {
+    js::Context& jsctx = *(js::Context*)JS_GetContextOpaque(ctx);
+
+    auto gov_effects = static_cast<ccf::AbstractGovernanceEffects*>(
+      JS_GetOpaque(this_val, node_class_id));
+    auto global_obj = jsctx.get_global_obj();
+    auto ccf = global_obj["ccf"];
+    auto kv = ccf["kv"];
+
+    auto tx_ctx_ptr = static_cast<TxContext*>(JS_GetOpaque(kv, kv_class_id));
+
+    if (tx_ctx_ptr->tx == nullptr)
+    {
+      return JS_ThrowInternalError(ctx, "No transaction available");
+    }
+
+    try
+    {
+      std::optional<std::vector<std::string>> opt_interfaces = std::nullopt;
+
+      if (argc > 0)
+      {
+        std::vector<std::string> interfaces;
+        JSValue r = get_string_array(ctx, argv[0], interfaces);
+
+        if (!JS_IsUndefined(r))
+        {
+          return r;
+        }
+
+        opt_interfaces = interfaces;
+      }
+
+      gov_effects->trigger_acme_refresh(*tx_ctx_ptr->tx, opt_interfaces);
+    }
+    catch (const std::exception& e)
+    {
+      LOG_FAIL_FMT("Unable to request snapshot: {}", e.what());
+    }
+
+    return JS_UNDEFINED;
+  }
+
+  JSValue js_node_trigger_host_process_launch(
+    JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv)
+  {
+    js::Context& jsctx = *(js::Context*)JS_GetContextOpaque(ctx);
+
+    if (argc != 1)
+    {
+      return JS_ThrowTypeError(ctx, "Passed %d arguments but expected 1", argc);
+    }
+
+    std::vector<std::string> process_args;
+    JSValue r = get_string_array(ctx, argv[0], process_args);
+
+    if (!JS_IsUndefined(r))
+    {
+      return r;
     }
 
     auto host_processes = static_cast<ccf::AbstractHostProcesses*>(
@@ -1156,7 +1303,7 @@ namespace ccf::js
 
     js::Runtime rt;
     JS_SetModuleLoaderFunc(rt, nullptr, js::js_app_module_loader, &tx);
-    js::Context ctx2(rt);
+    js::Context ctx2(rt, js::TxAccess::APP);
 
     auto modules = tx.ro<ccf::Modules>(ccf::Tables::MODULES);
     auto quickjs_version =
@@ -1214,6 +1361,11 @@ namespace ccf::js
     kv_class_def.class_name = "KV Tables";
     kv_class_def.exotic = &kv_exotic_methods;
 
+    JS_NewClassID(&kv_read_only_class_id);
+    kv_read_only_exotic_methods.get_own_property = js_read_only_kv_lookup;
+    kv_read_only_class_def.class_name = "Read-only KV Tables";
+    kv_read_only_class_def.exotic = &kv_read_only_exotic_methods;
+
     JS_NewClassID(&kv_map_handle_class_id);
     kv_map_handle_class_def.class_name = "KV Map Handle";
 
@@ -1243,7 +1395,8 @@ namespace ccf::js
     historical_state_class_def.finalizer = js_historical_state_finalizer;
   }
 
-  JSValue js_print(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+  std::optional<std::stringstream> stringify_args(
+    JSContext* ctx, int argc, JSValueConst* argv)
   {
     js::Context& jsctx = *(js::Context*)JS_GetContextOpaque(ctx);
 
@@ -1254,19 +1407,84 @@ namespace ccf::js
     for (i = 0; i < argc; i++)
     {
       if (i != 0)
+      {
         ss << ' ';
+      }
       if (!JS_IsError(ctx, argv[i]) && JS_IsObject(argv[i]))
       {
         auto rval = jsctx.json_stringify(JSWrappedValue(ctx, argv[i]));
         str = jsctx.to_str(rval);
       }
       else
+      {
         str = jsctx.to_str(argv[i]);
+      }
       if (!str)
-        return JS_EXCEPTION;
+      {
+        return std::nullopt;
+      }
       ss << *str;
     }
-    LOG_INFO << ss.str() << std::endl;
+    return ss;
+  }
+
+  JSValue js_info(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+  {
+    const auto ss = stringify_args(ctx, argc, argv);
+    if (!ss.has_value())
+    {
+      return JS_EXCEPTION;
+    }
+
+    js::Context& jsctx = *(js::Context*)JS_GetContextOpaque(ctx);
+    if (jsctx.access == js::TxAccess::APP)
+    {
+      CCF_APP_INFO("{}", ss->str());
+    }
+    else
+    {
+      LOG_INFO_FMT("{}", ss->str());
+    }
+    return JS_UNDEFINED;
+  }
+
+  JSValue js_fail(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+  {
+    const auto ss = stringify_args(ctx, argc, argv);
+    if (!ss.has_value())
+    {
+      return JS_EXCEPTION;
+    }
+
+    js::Context& jsctx = *(js::Context*)JS_GetContextOpaque(ctx);
+    if (jsctx.access == js::TxAccess::APP)
+    {
+      CCF_APP_INFO("{}", ss->str());
+    }
+    else
+    {
+      LOG_FAIL_FMT("{}", ss->str());
+    }
+    return JS_UNDEFINED;
+  }
+
+  JSValue js_fatal(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+  {
+    const auto ss = stringify_args(ctx, argc, argv);
+    if (!ss.has_value())
+    {
+      return JS_EXCEPTION;
+    }
+
+    js::Context& jsctx = *(js::Context*)JS_GetContextOpaque(ctx);
+    if (jsctx.access == js::TxAccess::APP)
+    {
+      CCF_APP_FATAL("{}", ss->str());
+    }
+    else
+    {
+      LOG_FATAL_FMT("{}", ss->str());
+    }
     return JS_UNDEFINED;
   }
 
@@ -1278,7 +1496,7 @@ namespace ccf::js
     bool is_error = JS_IsError(ctx, exception_val);
     if (!is_error)
       LOG_INFO_FMT("Throw: ");
-    js_print(ctx, JS_NULL, 1, (JSValueConst*)&exception_val);
+    js_fail(ctx, JS_NULL, 1, (JSValueConst*)&exception_val);
     if (is_error)
     {
       auto val = exception_val["stack"];
@@ -1400,7 +1618,13 @@ namespace ccf::js
     auto console = jsctx.new_obj();
 
     JS_SetPropertyStr(
-      ctx, console, "log", JS_NewCFunction(ctx, js_print, "log", 1));
+      ctx, console, "log", JS_NewCFunction(ctx, js_info, "log", 1));
+    JS_SetPropertyStr(
+      ctx, console, "info", JS_NewCFunction(ctx, js_info, "info", 1));
+    JS_SetPropertyStr(
+      ctx, console, "warn", JS_NewCFunction(ctx, js_fail, "warn", 1));
+    JS_SetPropertyStr(
+      ctx, console, "error", JS_NewCFunction(ctx, js_fatal, "error", 1));
 
     return console;
   }
@@ -1413,10 +1637,10 @@ namespace ccf::js
 
   JSValue create_ccf_obj(
     TxContext* txctx,
-    TxContext* historical_txctx,
-    enclave::RpcContext* rpc_ctx,
+    ReadOnlyTxContext* historical_txctx,
+    ccf::RpcContext* rpc_ctx,
     const std::optional<ccf::TxID>& transaction_id,
-    ccf::TxReceiptPtr receipt,
+    ccf::TxReceiptImplPtr receipt,
     ccf::AbstractGovernanceEffects* gov_effects,
     ccf::AbstractHostProcesses* host_processes,
     ccf::NetworkState* network_state,
@@ -1528,7 +1752,7 @@ namespace ccf::js
         JS_NewString(ctx, transaction_id->to_str().c_str()));
       auto js_receipt = ccf_receipt_to_js(ctx, receipt);
       JS_SetPropertyStr(ctx, state, "receipt", js_receipt);
-      auto kv = JS_NewObjectClass(ctx, kv_class_id);
+      auto kv = JS_NewObjectClass(ctx, kv_read_only_class_id);
       JS_SetOpaque(kv, historical_txctx);
       JS_SetPropertyStr(ctx, state, "kv", kv);
       JS_SetPropertyStr(ctx, ccf, "historicalState", state);
@@ -1559,7 +1783,7 @@ namespace ccf::js
           ctx,
           js_node_transition_service_to_open,
           "transitionServiceToOpen",
-          0));
+          2));
       JS_SetPropertyStr(
         ctx,
         node,
@@ -1579,6 +1803,11 @@ namespace ccf::js
         node,
         "triggerSnapshot",
         JS_NewCFunction(ctx, js_trigger_snapshot, "triggerSnapshot", 0));
+      JS_SetPropertyStr(
+        ctx,
+        node,
+        "triggerACMERefresh",
+        JS_NewCFunction(ctx, js_trigger_acme_refresh, "triggerACMERefresh", 0));
     }
 
     if (host_processes != nullptr)
@@ -1706,10 +1935,10 @@ namespace ccf::js
 
   void populate_global_ccf(
     TxContext* txctx,
-    TxContext* historical_txctx,
-    enclave::RpcContext* rpc_ctx,
+    ReadOnlyTxContext* historical_txctx,
+    ccf::RpcContext* rpc_ctx,
     const std::optional<ccf::TxID>& transaction_id,
-    ccf::TxReceiptPtr receipt,
+    ccf::TxReceiptImplPtr receipt,
     ccf::AbstractGovernanceEffects* gov_effects,
     ccf::AbstractHostProcesses* host_processes,
     ccf::NetworkState* network_state,
@@ -1739,10 +1968,10 @@ namespace ccf::js
 
   void populate_global(
     TxContext* txctx,
-    TxContext* historical_txctx,
-    enclave::RpcContext* rpc_ctx,
+    ReadOnlyTxContext* historical_txctx,
+    ccf::RpcContext* rpc_ctx,
     const std::optional<ccf::TxID>& transaction_id,
-    ccf::TxReceiptPtr receipt,
+    ccf::TxReceiptImplPtr receipt,
     ccf::AbstractGovernanceEffects* gov_effects,
     ccf::AbstractHostProcesses* host_processes,
     ccf::NetworkState* network_state,
@@ -1774,6 +2003,7 @@ namespace ccf::js
   {
     std::vector<std::pair<JSClassID, JSClassDef*>> classes{
       {kv_class_id, &kv_class_def},
+      {kv_read_only_class_id, &kv_read_only_class_def},
       {kv_map_handle_class_id, &kv_map_handle_class_def},
       {body_class_id, &body_class_def},
       {node_class_id, &node_class_def},

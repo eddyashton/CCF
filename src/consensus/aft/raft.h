@@ -2,7 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "ccf/ds/ccf_exception.h"
 #include "ccf/ds/logger.h"
+#include "ccf/ds/pal.h"
 #include "ccf/tx_id.h"
 #include "ccf/tx_status.h"
 #include "ds/serialized.h"
@@ -21,7 +23,6 @@
 #include <algorithm>
 #include <deque>
 #include <list>
-#include <mutex>
 #include <random>
 #include <unordered_map>
 #include <vector>
@@ -30,7 +31,7 @@ namespace aft
 {
   using Configuration = kv::Configuration;
 
-  template <class LedgerProxy, class SnapshotterProxy>
+  template <class LedgerProxy>
   class Aft : public kv::Consensus
   {
   private:
@@ -44,6 +45,9 @@ namespace aft
       // the highest matching index with the node that was confirmed
       Index match_idx;
 
+      // timeout tracking the last time an ack was received from the node
+      std::chrono::milliseconds last_ack_timeout;
+
       NodeState() = default;
 
       NodeState(
@@ -52,17 +56,17 @@ namespace aft
         Index match_idx_ = 0) :
         node_info(node_info_),
         sent_idx(sent_idx_),
-        match_idx(match_idx_)
+        match_idx(match_idx_),
+        last_ack_timeout(0)
       {}
     };
 
+    // Persistent
     ConsensusType consensus_type;
     std::unique_ptr<Store> store;
 
-    // Persistent
-    std::optional<ccf::NodeId> voted_for = std::nullopt;
-
     // Volatile
+    std::optional<ccf::NodeId> voted_for = std::nullopt;
     std::optional<ccf::NodeId> leader_id = std::nullopt;
     std::unordered_set<ccf::NodeId> votes_for_me;
 
@@ -100,6 +104,13 @@ namespace aft
     // the first append entries after it became a follower. As with any append
     // entries, the initial index will not advance until this node acks.
     bool is_new_follower = false;
+
+    // When this node becomes primary, they should produce a new signature in
+    // the current view. This signature is the first thing they may commit, as
+    // they cannot confirm commit of anything from a previous view (Raft paper
+    // section 5.4.2). This bool is true from the point this node becomes
+    // primary, until it is explicitly reset by a call to get_signable_txid()
+    bool should_sign = false;
 
     std::shared_ptr<aft::State> state;
 
@@ -151,7 +162,6 @@ namespace aft
     static constexpr size_t append_entries_size_limit = 20000;
     std::unique_ptr<LedgerProxy> ledger;
     std::shared_ptr<ccf::NodeToNode> channels;
-    std::shared_ptr<SnapshotterProxy> snapshotter;
 
   public:
     Aft(
@@ -159,7 +169,6 @@ namespace aft
       std::unique_ptr<Store> store_,
       std::unique_ptr<LedgerProxy> ledger_,
       std::shared_ptr<ccf::NodeToNode> channels_,
-      std::shared_ptr<SnapshotterProxy> snapshotter_,
       std::shared_ptr<aft::State> state_,
       std::shared_ptr<ccf::ResharingTracker> resharing_tracker_,
       std::shared_ptr<ccf::NodeClient> rpc_request_context_,
@@ -191,8 +200,7 @@ namespace aft
       rand((int)(uintptr_t)this),
 
       ledger(std::move(ledger_)),
-      channels(channels_),
-      snapshotter(snapshotter_)
+      channels(channels_)
 
     {
       LOG_DEBUG_FMT(
@@ -226,7 +234,7 @@ namespace aft
 
     bool view_change_in_progress() override
     {
-      std::unique_lock<std::mutex> guard(state->lock);
+      std::unique_lock<ccf::Pal::Mutex> guard(state->lock);
       if (consensus_type == ConsensusType::BFT)
       {
         LOG_FAIL_FMT("Unsupported");
@@ -250,9 +258,28 @@ namespace aft
 
     bool can_replicate() override
     {
-      std::unique_lock<std::mutex> guard(state->lock);
-      return leadership_state == kv::LeadershipState::Leader &&
-        !retirement_committable_idx.has_value();
+      std::unique_lock<ccf::Pal::Mutex> guard(state->lock);
+      return can_replicate_unsafe();
+    }
+
+    Consensus::SignatureDisposition get_signature_disposition() override
+    {
+      std::unique_lock<ccf::Pal::Mutex> guard(state->lock);
+      if (can_replicate_unsafe())
+      {
+        if (should_sign)
+        {
+          return Consensus::SignatureDisposition::SHOULD_SIGN;
+        }
+        else
+        {
+          return Consensus::SignatureDisposition::CAN_SIGN;
+        }
+      }
+      else
+      {
+        return Consensus::SignatureDisposition::CANT_REPLICATE;
+      }
     }
 
     bool is_backup() override
@@ -275,17 +302,6 @@ namespace aft
       return membership_state == kv::MembershipState::RetirementInitiated;
     }
 
-    ccf::NodeId get_primary(ccf::View view)
-    {
-      CCF_ASSERT_FMT(
-        consensus_type == ConsensusType::BFT,
-        "Computing primary id from view is only supported with BFT consensus");
-
-      assert(configurations.size() > 0);
-      const auto& config = configurations.back();
-      return get_primary_at_config(view, config.bft_offset, config.nodes);
-    }
-
     Index last_committable_index() const
     {
       return committable_indices.empty() ? state->commit_idx :
@@ -296,7 +312,7 @@ namespace aft
     {
       // When receiving append entries as a follower, all security domains will
       // be deserialised
-      std::lock_guard<std::mutex> guard(state->lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(state->lock);
       public_only = false;
     }
 
@@ -315,7 +331,7 @@ namespace aft
           "Can't force leadership if there is already a leader");
       }
 
-      std::lock_guard<std::mutex> guard(state->lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(state->lock);
       state->current_view += starting_view_change;
       become_leader(true);
     }
@@ -334,7 +350,7 @@ namespace aft
           "Can't force leadership if there is already a leader");
       }
 
-      std::lock_guard<std::mutex> guard(state->lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(state->lock);
       state->current_view = term;
       state->last_idx = index;
       state->commit_idx = commit_idx_;
@@ -352,7 +368,7 @@ namespace aft
     {
       // This should only be called when the node resumes from a snapshot and
       // before it has received any append entries.
-      std::lock_guard<std::mutex> guard(state->lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(state->lock);
 
       state->last_idx = index;
       state->commit_idx = index;
@@ -360,7 +376,6 @@ namespace aft
       state->view_history.initialise(term_history);
 
       ledger->init(index, recovery_start_index);
-      snapshotter->set_last_snapshot_idx(index);
 
       become_aware_of_new_term(term);
     }
@@ -372,45 +387,42 @@ namespace aft
 
     Index get_committed_seqno() override
     {
-      std::lock_guard<std::mutex> guard(state->lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(state->lock);
       return get_commit_idx_unsafe();
     }
 
     Term get_view() override
     {
-      std::lock_guard<std::mutex> guard(state->lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(state->lock);
       return state->current_view;
     }
 
     std::pair<Term, Index> get_committed_txid() override
     {
-      std::lock_guard<std::mutex> guard(state->lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(state->lock);
       ccf::SeqNo commit_idx = get_commit_idx_unsafe();
       return {get_term_internal(commit_idx), commit_idx};
     }
 
-    std::optional<kv::Consensus::SignableTxIndices> get_signable_txid() override
+    kv::Consensus::SignableTxIndices get_signable_txid() override
     {
-      std::lock_guard<std::mutex> guard(state->lock);
-      if (
-        consensus_type == ConsensusType::BFT ||
-        state->commit_idx >= election_index)
-      {
-        kv::Consensus::SignableTxIndices r;
-        r.term = get_term_internal(state->commit_idx);
-        r.version = state->commit_idx;
-        r.previous_version = last_committable_index();
-        return r;
-      }
-      else
-      {
-        return std::nullopt;
-      }
+      std::lock_guard<ccf::Pal::Mutex> guard(state->lock);
+
+      kv::Consensus::SignableTxIndices r;
+      r.version = state->last_idx;
+      r.term = get_term_internal(r.version);
+      r.previous_version = std::max(last_committable_index(), election_index);
+
+      // NB: Reset here, since we're already holding the lock, and assume the
+      // caller will go on to emit a signature
+      should_sign = false;
+
+      return r;
     }
 
     Term get_view(Index idx) override
     {
-      std::lock_guard<std::mutex> guard(state->lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(state->lock);
       return get_term_internal(idx);
     }
 
@@ -560,21 +572,6 @@ namespace aft
       LOG_INFO_FMT("Election timer has become active");
     }
 
-    void record_signature(
-      kv::Version version,
-      const std::vector<uint8_t>& sig,
-      const ccf::NodeId& node_id,
-      const crypto::Pem& node_cert) override
-    {
-      snapshotter->record_signature(version, sig, node_id, node_cert);
-    }
-
-    void record_serialised_tree(
-      kv::Version version, const std::vector<uint8_t>& tree) override
-    {
-      snapshotter->record_serialised_tree(version, tree);
-    }
-
     void add_resharing_result(
       ccf::SeqNo seqno,
       kv::ReconfigurationId rid,
@@ -597,6 +594,15 @@ namespace aft
       }
     }
 
+    void reset_last_ack_timeouts()
+    {
+      for (auto& node : nodes)
+      {
+        using namespace std::chrono_literals;
+        node.second.last_ack_timeout = 0ms;
+      }
+    }
+
     // For more info about Observed Reconfiguration Commits see
     // https://microsoft.github.io/CCF/main/architecture/consensus/2tx-reconfig.html
     //
@@ -612,7 +618,7 @@ namespace aft
     std::optional<kv::Configuration::Nodes> orc(
       kv::ReconfigurationId rid, const ccf::NodeId& node_id) override
     {
-      std::lock_guard<std::mutex> guard(state->lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(state->lock);
 
       LOG_DEBUG_FMT(
         "Configurations: ORC for configuration #{} from {}", rid, node_id);
@@ -676,14 +682,17 @@ namespace aft
 
     Configuration::Nodes get_latest_configuration() override
     {
-      std::lock_guard<std::mutex> guard(state->lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(state->lock);
       return get_latest_configuration_unsafe();
     }
 
     kv::ConsensusDetails get_details() override
     {
       kv::ConsensusDetails details;
-      std::lock_guard<std::mutex> guard(state->lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(state->lock);
+      details.primary_id = leader_id;
+      details.current_view = state->current_view;
+      details.ticking = ticking;
       details.leadership_state = leadership_state;
       details.membership_state = membership_state;
       if (is_retired())
@@ -696,7 +705,8 @@ namespace aft
       }
       for (auto& [k, v] : nodes)
       {
-        details.acks[k] = v.match_idx;
+        details.acks[k] = {
+          v.match_idx, static_cast<size_t>(v.last_ack_timeout.count())};
       }
       details.reconfiguration_type = reconfiguration_type;
       if (reconfiguration_type == ReconfigurationType::TWO_TRANSACTION)
@@ -708,7 +718,7 @@ namespace aft
 
     bool replicate(const kv::BatchVector& entries, Term term) override
     {
-      std::lock_guard<std::mutex> guard(state->lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(state->lock);
 
       if (leadership_state != kv::LeadershipState::Leader)
       {
@@ -759,7 +769,6 @@ namespace aft
           hook->call(this);
         }
 
-        bool force_ledger_chunk = false;
         if (globally_committable)
         {
           LOG_DEBUG_FMT(
@@ -773,21 +782,12 @@ namespace aft
             become_retired(index, kv::RetirementPhase::Signed);
           }
           committable_indices.push_back(index);
-
-          // Only if globally committable, a snapshot requires a new ledger
-          // chunk to be created
-          force_ledger_chunk = snapshotter->record_committable(index);
-
           start_ticking_if_necessary();
         }
 
         state->last_idx = index;
         ledger->put_entry(
-          *data,
-          globally_committable,
-          force_ledger_chunk,
-          state->current_view,
-          index);
+          *data, globally_committable, state->current_view, index);
         entry_size_not_limited += data->size();
         entry_count++;
 
@@ -878,7 +878,7 @@ namespace aft
 
     void periodic(std::chrono::milliseconds elapsed) override
     {
-      std::unique_lock<std::mutex> guard(state->lock);
+      std::unique_lock<ccf::Pal::Mutex> guard(state->lock);
       timeout_elapsed += elapsed;
 
       if (leadership_state == kv::LeadershipState::Leader)
@@ -894,6 +894,29 @@ namespace aft
           {
             send_append_entries(it.first, it.second.sent_idx + 1);
           }
+        }
+
+        size_t backup_ack_timeout_count = 0;
+        for (auto& node : nodes)
+        {
+          node.second.last_ack_timeout += elapsed;
+          if (node.second.last_ack_timeout >= election_timeout)
+          {
+            backup_ack_timeout_count++;
+          }
+        }
+
+        if (backup_ack_timeout_count >= get_quorum(nodes.size()))
+        {
+          // CheckQuorum: The primary automatically steps down if it has not
+          // heard back from a majority of backups during an election timeout.
+          LOG_INFO_FMT(
+            "Stepping down as follower {}: No ack received from a majority {} "
+            "of backups in last {}",
+            state->my_node_id,
+            backup_ack_timeout_count,
+            election_timeout);
+          become_follower();
         }
       }
       else if (consensus_type != ConsensusType::BFT)
@@ -958,25 +981,18 @@ namespace aft
       entries_batch_size = std::max((batch_window_sum / batch_window_size), 1);
     }
 
-    ccf::NodeId get_primary_at_config(
-      ccf::View view, uint32_t offset, const Configuration::Nodes& conf) const
-    {
-      CCF_ASSERT_FMT(
-        consensus_type == ConsensusType::BFT,
-        "Computing primary id from view is only supported with BFT consensus");
-
-      assert(conf.size() > 0);
-      auto it = conf.begin();
-      std::advance(it, (view - starting_view_change + offset) % conf.size());
-      return it->first;
-    }
-
     Term get_term_internal(Index idx)
     {
       if (idx > state->last_idx)
         return ccf::VIEW_UNKNOWN;
 
       return state->view_history.view_at(idx);
+    }
+
+    bool can_replicate_unsafe()
+    {
+      return leadership_state == kv::LeadershipState::Leader &&
+        !retirement_committable_idx.has_value();
     }
 
     Index get_commit_idx_unsafe()
@@ -1087,7 +1103,7 @@ namespace aft
       const uint8_t* data,
       size_t size)
     {
-      std::unique_lock<std::mutex> guard(state->lock);
+      std::unique_lock<ccf::Pal::Mutex> guard(state->lock);
 
       LOG_DEBUG_FMT(
         "Received append entries: {}.{} to {}.{} (from {} in term {})",
@@ -1253,7 +1269,7 @@ namespace aft
         std::vector<uint8_t> entry;
         try
         {
-          entry = ledger->get_entry(data, size);
+          entry = LedgerProxy::get_entry(data, size);
         }
         catch (const std::logic_error& e)
         {
@@ -1314,21 +1330,15 @@ namespace aft
 
         bool globally_committable =
           (apply_success == kv::ApplyResult::PASS_SIGNATURE);
-        bool force_ledger_chunk = false;
         if (globally_committable)
         {
-          force_ledger_chunk = snapshotter->record_committable(i);
           start_ticking_if_necessary();
         }
 
         const auto& entry = ds->get_entry();
 
         ledger->put_entry(
-          entry,
-          globally_committable,
-          force_ledger_chunk,
-          ds->get_term(),
-          ds->get_index());
+          entry, globally_committable, ds->get_term(), ds->get_index());
 
         switch (apply_success)
         {
@@ -1344,7 +1354,6 @@ namespace aft
           case kv::ApplyResult::PASS_SIGNATURE:
           {
             LOG_DEBUG_FMT("Deserialising signature at {}", i);
-            auto prev_lci = last_committable_index();
             if (
               membership_state == kv::MembershipState::Retired &&
               retirement_phase == kv::RetirementPhase::Ordered)
@@ -1364,7 +1373,10 @@ namespace aft
               }
               else
               {
-                state->view_history.update(prev_lci + 1, ds->get_term());
+                // NB: This is only safe as long as AppendEntries only contain a
+                // single term. If they cover multiple terms, then we need to
+                // know our previous signature locally.
+                state->view_history.update(r.prev_idx + 1, ds->get_term());
               }
               commit_if_possible(r.leader_commit_idx);
             }
@@ -1466,11 +1478,15 @@ namespace aft
     void recv_append_entries_response(
       const ccf::NodeId& from, AppendEntriesResponse r)
     {
-      std::lock_guard<std::mutex> guard(state->lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(state->lock);
       // Ignore if we're not the leader.
 
       if (leadership_state != kv::LeadershipState::Leader)
       {
+        LOG_FAIL_FMT(
+          "Recv append entries response to {} from {}: no longer leader",
+          state->my_node_id,
+          from);
         return;
       }
 
@@ -1484,7 +1500,11 @@ namespace aft
           from);
         return;
       }
-      else if (state->current_view < r.term)
+
+      using namespace std::chrono_literals;
+      node->second.last_ack_timeout = 0ms;
+
+      if (state->current_view < r.term)
       {
         // We are behind, update our state.
         LOG_DEBUG_FMT(
@@ -1533,14 +1553,23 @@ namespace aft
       }
 
       // Update next and match for the responding node.
+      auto& match_idx = node->second.match_idx;
       if (r.success == AppendEntriesResponseType::FAIL)
       {
-        node->second.match_idx =
+        const auto this_match =
           find_highest_possible_match({r.term, r.last_log_idx});
+        if (match_idx == 0)
+        {
+          match_idx = this_match;
+        }
+        else
+        {
+          match_idx = std::min(match_idx, this_match);
+        }
       }
       else
       {
-        node->second.match_idx = std::min(r.last_log_idx, state->last_idx);
+        match_idx = std::min(r.last_log_idx, state->last_idx);
       }
 
       if (r.success != AppendEntriesResponseType::OK)
@@ -1583,7 +1612,7 @@ namespace aft
 
     void recv_request_vote(const ccf::NodeId& from, RequestVote r)
     {
-      std::lock_guard<std::mutex> guard(state->lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(state->lock);
 
       // Do not check that from is a known node. It is possible to receive
       // RequestVotes from nodes that this node doesn't yet know, just as it
@@ -1613,6 +1642,19 @@ namespace aft
           state->current_view,
           r.term);
         become_aware_of_new_term(r.term);
+      }
+
+      if (leader_id.has_value())
+      {
+        // Reply false, since we already know the leader in the current term.
+        LOG_DEBUG_FMT(
+          "Recv request vote to {} from {}: leader {} already known in term {}",
+          state->my_node_id,
+          from,
+          leader_id.value(),
+          state->current_view);
+        send_request_vote_response(from, false);
+        return;
       }
 
       if ((voted_for.has_value()) && (voted_for.value() != from))
@@ -1678,13 +1720,14 @@ namespace aft
     void recv_request_vote_response(
       const ccf::NodeId& from, RequestVoteResponse r)
     {
-      std::lock_guard<std::mutex> guard(state->lock);
+      std::lock_guard<ccf::Pal::Mutex> guard(state->lock);
 
       if (leadership_state != kv::LeadershipState::Candidate)
       {
         LOG_INFO_FMT(
-          "Recv request vote response to {}: we aren't a candidate",
-          state->my_node_id);
+          "Recv request vote response to {} from: {}: we aren't a candidate",
+          state->my_node_id,
+          from);
         return;
       }
 
@@ -1758,6 +1801,7 @@ namespace aft
       state->current_view++;
 
       restart_election_timeout();
+      reset_last_ack_timeouts();
       add_vote_for_me(state->my_node_id);
 
       LOG_INFO_FMT(
@@ -1765,9 +1809,9 @@ namespace aft
 
       if (consensus_type != ConsensusType::BFT)
       {
-        for (auto it = nodes.begin(); it != nodes.end(); ++it)
+        for (auto const& node : nodes)
         {
-          send_request_vote(it->first);
+          send_request_vote(node.first);
         }
       }
     }
@@ -1783,6 +1827,13 @@ namespace aft
       // consensus protocol. This only happens when a node starts a new network
       // and has a genesis or recovery tx as the last transaction
       election_index = last_committable_index();
+
+      // A newly elected leader must not advance the commit index until a
+      // transaction in the new term commits. We achieve this by clearing our
+      // list committable indices - so nothing from a previous term is now
+      // considered committable. Instead this new primary will shortly produce
+      // their own signature, which _will_ be considered committable.
+      committable_indices.clear();
 
       LOG_DEBUG_FMT(
         "Election index is {} in term {}", election_index, state->current_view);
@@ -1801,9 +1852,12 @@ namespace aft
 
       leadership_state = kv::LeadershipState::Leader;
       leader_id = state->my_node_id;
+      should_sign = true;
 
       using namespace std::chrono_literals;
       timeout_elapsed = 0ms;
+
+      reset_last_ack_timeouts();
 
       LOG_INFO_FMT(
         "Becoming leader {}: {}", state->my_node_id, state->current_view);
@@ -1818,13 +1872,13 @@ namespace aft
       // Reset next, match, and sent indices for all nodes.
       auto next = state->last_idx + 1;
 
-      for (auto it = nodes.begin(); it != nodes.end(); ++it)
+      for (auto& node : nodes)
       {
-        it->second.match_idx = 0;
-        it->second.sent_idx = next - 1;
+        node.second.match_idx = 0;
+        node.second.sent_idx = next - 1;
 
         // Send an empty append_entries to all nodes.
-        send_append_entries(it->first, next);
+        send_append_entries(node.first, next);
       }
     }
 
@@ -1841,23 +1895,16 @@ namespace aft
     }
 
   public:
-    // Called when a replica becomes aware of the existence of a new term
-    // If retired already, state remains unchanged, but the replica otherwise
-    // becomes a follower in the new term.
-    void become_aware_of_new_term(Term term)
+    // Called when a replica becomes follower in the same term, e.g. when the
+    // primary node has not received a majority of acks (CheckQuorum)
+    void become_follower()
     {
-      LOG_DEBUG_FMT("Becoming aware of new term {}", term);
       leader_id.reset();
       restart_election_timeout();
-
-      state->current_view = term;
-      voted_for.reset();
-      votes_for_me.clear();
       clear_orc_sets();
+      reset_last_ack_timeouts();
 
       rollback(last_committable_index());
-
-      is_new_follower = true;
 
       if (
         can_endorse_primary() &&
@@ -1870,6 +1917,20 @@ namespace aft
           state->current_view,
           state->commit_idx);
       }
+    }
+
+    // Called when a replica becomes aware of the existence of a new term
+    // If retired already, state remains unchanged, but the replica otherwise
+    // becomes a follower in the new term.
+    void become_aware_of_new_term(Term term)
+    {
+      LOG_DEBUG_FMT("Becoming aware of new term {}", term);
+
+      state->current_view = term;
+      voted_for.reset();
+      votes_for_me.clear();
+      become_follower();
+      is_new_follower = true;
     }
 
     std::string leadership_state_string()
@@ -2119,16 +2180,6 @@ namespace aft
       }
     }
 
-    bool have_quorum(size_t n, const kv::Configuration& c) const
-    {
-      return n >= get_quorum(c.nodes.size());
-    }
-
-    bool enough_trusted(const kv::Configuration& c) const
-    {
-      return have_quorum(num_trusted(c), c);
-    }
-
     void commit(Index idx)
     {
       if (idx > state->last_idx)
@@ -2154,12 +2205,6 @@ namespace aft
       }
 
       LOG_DEBUG_FMT("Compacting...");
-      // Snapshots are not yet supported with BFT
-      snapshotter->commit(
-        idx,
-        leadership_state == kv::LeadershipState::Leader &&
-          consensus_type == ConsensusType::CFT);
-
       store->compact(idx);
       ledger->commit(idx);
 
@@ -2343,7 +2388,6 @@ namespace aft
         return;
       }
 
-      snapshotter->rollback(idx);
       store->rollback({get_term_internal(idx), idx}, state->current_view);
 
       LOG_DEBUG_FMT("Setting term in store to: {}", state->current_view);
@@ -2449,7 +2493,7 @@ namespace aft
       // configuration.
       std::vector<ccf::NodeId> to_remove;
 
-      for (auto& node : nodes)
+      for (const auto& node : nodes)
       {
         if (active_nodes.find(node.first) == active_nodes.end())
         {

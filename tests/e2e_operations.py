@@ -14,7 +14,8 @@ import ipaddress
 import infra.interfaces
 import infra.path
 import infra.proc
-
+import random
+import json
 
 from loguru import logger as LOG
 
@@ -72,6 +73,7 @@ def find_ledger_chunk_for_seqno(ledger, seqno):
 
 
 @reqs.description("Forced ledger chunk")
+@app.scoped_txs()
 def test_forced_ledger_chunk(network, args):
     primary, _ = network.find_primary()
 
@@ -82,7 +84,7 @@ def test_forced_ledger_chunk(network, args):
     proposal = network.consortium.force_ledger_chunk(primary)
 
     # Issue some more transactions
-    network.txs.issue(network, number_txs=3)
+    network.txs.issue(network, number_txs=5)
 
     ledger_dirs = primary.remote.ledger_paths()
 
@@ -102,6 +104,7 @@ def test_forced_ledger_chunk(network, args):
 
 
 @reqs.description("Forced snapshot")
+@app.scoped_txs()
 def test_forced_snapshot(network, args):
     primary, _ = network.find_primary()
 
@@ -123,7 +126,7 @@ def test_forced_snapshot(network, args):
     )
 
     # Issue some more transactions
-    network.txs.issue(network, number_txs=3)
+    network.txs.issue(network, number_txs=5)
 
     ledger_dirs = primary.remote.ledger_paths()
 
@@ -147,25 +150,96 @@ def test_forced_snapshot(network, args):
     raise RuntimeError("Could not find matching snapshot file")
 
 
+def split_all_ledger_files_in_dir(input_dir, output_dir):
+    # A ledger file can only be split at a seqno that contains a signature
+    # (so that all files end on a signature that verifies their integrity).
+    # We first detect all signature transactions in a ledger file and truncate
+    # at any one (but not the last one, which would have no effect) at random.
+    for ledger_file in os.listdir(input_dir):
+        sig_seqnos = []
+
+        if ledger_file.endswith(ccf.ledger.RECOVERY_FILE_SUFFIX):
+            # Ignore recovery files
+            continue
+
+        ledger_file_path = os.path.join(input_dir, ledger_file)
+        ledger_chunk = ccf.ledger.LedgerChunk(ledger_file_path, ledger_validator=None)
+        for transaction in ledger_chunk:
+            public_domain = transaction.get_public_domain()
+            if ccf.ledger.SIGNATURE_TX_TABLE_NAME in public_domain.get_tables().keys():
+                sig_seqnos.append(public_domain.get_seqno())
+
+        if len(sig_seqnos) <= 1:
+            # A chunk may not contain enough signatures to be worth truncating
+            continue
+
+        # Ignore last signature, which would result in a no-op split
+        split_seqno = random.choice(sig_seqnos[:-1])
+
+        assert ccf.split_ledger.run(
+            [ledger_file_path, str(split_seqno), f"--output-dir={output_dir}"]
+        ), f"Ledger file {ledger_file_path} was not split at {split_seqno}"
+        LOG.info(
+            f"Ledger file {ledger_file_path} was successfully split at {split_seqno}"
+        )
+        LOG.debug(f"Deleting input ledger file {ledger_file_path}")
+        os.remove(ledger_file_path)
+
+
+@reqs.description("Split ledger")
+def test_split_ledger_on_stopped_network(primary, args):
+    # Test that ledger files can be arbitrarily split.
+    # Note: For real operations, it would be best practice to use a separate
+    # output directory
+
+    current_ledger_dir, committed_ledger_dirs = primary.get_ledger()
+    split_all_ledger_files_in_dir(current_ledger_dir, current_ledger_dir)
+    if committed_ledger_dirs:
+        split_all_ledger_files_in_dir(
+            committed_ledger_dirs[0], committed_ledger_dirs[0]
+        )
+
+    # Check that the split ledger can be read successfully
+    ccf.ledger.Ledger(
+        [current_ledger_dir] + committed_ledger_dirs, committed_only=False
+    )
+
+
 def run_file_operations(args):
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        txs = app.LoggingTxs("user0")
-        with infra.network.network(
-            args.nodes,
-            args.binary_dir,
-            args.debug_nodes,
-            args.perf_nodes,
-            pdb=args.pdb,
-            txs=txs,
-        ) as network:
+    with tempfile.NamedTemporaryFile(mode="w+") as ntf:
+        service_data = {"the owls": "are not", "what": "they seem"}
+        json.dump(service_data, ntf)
+        ntf.flush()
 
-            args.common_read_only_ledger_dir = tmp_dir
-            network.start_and_open(args)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            txs = app.LoggingTxs("user0")
+            with infra.network.network(
+                args.nodes,
+                args.binary_dir,
+                args.debug_nodes,
+                args.perf_nodes,
+                pdb=args.pdb,
+                txs=txs,
+            ) as network:
 
-            test_save_committed_ledger_files(network, args)
-            test_parse_snapshot_file(network, args)
-            test_forced_ledger_chunk(network, args)
-            test_forced_snapshot(network, args)
+                args.common_read_only_ledger_dir = tmp_dir
+                network.start_and_open(args, service_data_json_file=ntf.name)
+
+                LOG.info("Check that service data has been set")
+                primary, _ = network.find_primary()
+                with primary.client() as c:
+                    r = c.get("/node/network").body.json()
+                    assert r["service_data"] == service_data
+
+                test_save_committed_ledger_files(network, args)
+                test_parse_snapshot_file(network, args)
+                test_forced_ledger_chunk(network, args)
+                test_forced_snapshot(network, args)
+
+                primary, _ = network.find_primary()
+                network.stop_all_nodes()
+
+                test_split_ledger_on_stopped_network(primary, args)
 
 
 def run_tls_san_checks(args):
@@ -178,6 +252,9 @@ def run_tls_san_checks(args):
     ) as network:
         args.common_read_only_ledger_dir = None  # Reset from previous test
         network.start_and_open(args)
+        network.verify_service_certificate_validity_period(
+            args.initial_service_cert_validity_days
+        )
 
         LOG.info("Check SAN value in TLS certificate")
         dummy_san = "*.dummy.com"
@@ -185,7 +262,9 @@ def run_tls_san_checks(args):
             infra.interfaces.HostSpec(
                 rpc_interfaces={
                     infra.interfaces.PRIMARY_RPC_INTERFACE: infra.interfaces.RPCInterface(
-                        endorsement=infra.interfaces.Endorsement(authority="Node")
+                        endorsement=infra.interfaces.Endorsement(
+                            authority=infra.interfaces.EndorsementAuthority.Node
+                        )
                     )
                 }
             )
@@ -205,7 +284,9 @@ def run_tls_san_checks(args):
                 rpc_interfaces={
                     infra.interfaces.PRIMARY_RPC_INTERFACE: infra.interfaces.RPCInterface(
                         public_host=dummy_public_rpc_host,
-                        endorsement=infra.interfaces.Endorsement(authority="Node"),
+                        endorsement=infra.interfaces.Endorsement(
+                            authority=infra.interfaces.EndorsementAuthority.Node
+                        ),
                     )
                 }
             )

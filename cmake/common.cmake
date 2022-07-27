@@ -23,11 +23,11 @@ else()
   unset(NODES)
 endif()
 
-option(VERBOSE_LOGGING "Enable verbose logging" OFF)
+option(VERBOSE_LOGGING "Enable verbose, unsafe logging of enclave code" OFF)
 set(TEST_HOST_LOGGING_LEVEL "info")
 if(VERBOSE_LOGGING)
+  set(TEST_HOST_LOGGING_LEVEL "trace")
   add_compile_definitions(VERBOSE_LOGGING)
-  set(TEST_HOST_LOGGING_LEVEL "debug")
 endif()
 
 option(USE_NULL_ENCRYPTOR "Turn off encryption of ledger updates - debug only"
@@ -119,8 +119,14 @@ foreach(UTILITY ${CCF_UTILITIES})
 endforeach()
 
 # Copy utilities from tests directory
-set(CCF_TEST_UTILITIES tests.sh cimetrics_env.sh upload_pico_metrics.py
-                       test_install.sh docker_wrap.sh config.jinja
+set(CCF_TEST_UTILITIES
+    tests.sh
+    cimetrics_env.sh
+    upload_pico_metrics.py
+    test_install.sh
+    docker_wrap.sh
+    config.jinja
+    recovery_benchmark.sh
 )
 foreach(UTILITY ${CCF_TEST_UTILITIES})
   configure_file(
@@ -173,25 +179,16 @@ set(CCF_ENDPOINTS_SOURCES
     ${CCF_DIR}/src/indexing/strategies/seqnos_by_key_in_memory.cpp
     ${CCF_DIR}/src/indexing/strategies/visit_each_entry_in_map.cpp
     ${CCF_DIR}/src/node/historical_queries_adapter.cpp
+    ${CCF_DIR}/src/node/receipt.cpp
 )
 
 find_library(CRYPTO_LIBRARY crypto)
 find_library(TLS_LIBRARY ssl)
 
-list(APPEND COMPILE_LIBCXX -stdlib=libc++)
-if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9)
-  list(APPEND LINK_LIBCXX -lc++ -lc++abi -stdlib=libc++)
-else()
-  # Clang <9 needs to link libc++fs when using <filesystem>
-  list(APPEND LINK_LIBCXX -lc++ -lc++abi -lc++fs -stdlib=libc++)
-endif()
-
 include(${CCF_DIR}/cmake/crypto.cmake)
 include(${CCF_DIR}/cmake/quickjs.cmake)
 include(${CCF_DIR}/cmake/sss.cmake)
-if(ENABLE_HTTP2)
-  include(${CCF_DIR}/cmake/nghttp2.cmake)
-endif()
+include(${CCF_DIR}/cmake/nghttp2.cmake)
 
 # Unit test wrapper
 function(add_unit_test name)
@@ -252,6 +249,9 @@ enable_quote_code(cchost)
 target_compile_options(cchost PRIVATE ${COMPILE_LIBCXX})
 target_include_directories(cchost PRIVATE ${CCF_GENERATED_DIR})
 
+# Host is always built with verbose logging enabled, regardless of CMake option
+target_compile_definitions(cchost PRIVATE VERBOSE_LOGGING)
+
 if("sgx" IN_LIST COMPILE_TARGETS)
   target_compile_definitions(cchost PUBLIC CCHOST_SUPPORTS_SGX)
 endif()
@@ -264,7 +264,6 @@ target_link_libraries(
   cchost
   PRIVATE uv
           ${SNMALLOC_LIB}
-          ${CRYPTO_LIBRARY}
           ${TLS_LIBRARY}
           ${CMAKE_DL_LIBS}
           ${CMAKE_THREAD_LIBS_INIT}
@@ -369,8 +368,8 @@ set(CCF_NETWORK_TEST_DEFAULT_CONSTITUTION
     --constitution
     ${CCF_DIR}/samples/constitutions/default/apply.js
 )
-set(CCF_NETWORK_TEST_ARGS -l ${TEST_HOST_LOGGING_LEVEL} --worker-threads
-                          ${WORKER_THREADS}
+set(CCF_NETWORK_TEST_ARGS --host-log-level ${TEST_HOST_LOGGING_LEVEL}
+                          --worker-threads ${WORKER_THREADS}
 )
 
 if("sgx" IN_LIST COMPILE_TARGETS)
@@ -451,6 +450,7 @@ sign_app_library(
 # SNIPPET_END: JS generic application
 
 include(${CCF_DIR}/cmake/js_v8.cmake)
+include(${CCF_DIR}/cmake/quictls.cmake)
 
 install(DIRECTORY ${CCF_DIR}/samples/apps/logging/js
         DESTINATION samples/logging

@@ -42,7 +42,7 @@ namespace loggingapp
     struct Out
     {
       std::string msg;
-      ccf::Receipt receipt;
+      nlohmann::json receipt;
     };
   };
 
@@ -57,6 +57,7 @@ namespace loggingapp
   DECLARE_JSON_REQUIRED_FIELDS(LoggingGetReceipt::In, id);
   DECLARE_JSON_TYPE(LoggingGetReceipt::Out);
   DECLARE_JSON_REQUIRED_FIELDS(LoggingGetReceipt::Out, msg, receipt);
+
   // SNIPPET_END: macro_validation_macros
 
   using LoggingGetHistorical = LoggingGet;

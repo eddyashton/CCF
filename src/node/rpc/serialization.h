@@ -17,7 +17,8 @@ namespace ccf
     GetState::Out, recovery_target_seqno, last_recovered_seqno)
 
   DECLARE_JSON_TYPE(GetVersion::Out)
-  DECLARE_JSON_REQUIRED_FIELDS(GetVersion::Out, ccf_version, quickjs_version)
+  DECLARE_JSON_REQUIRED_FIELDS(
+    GetVersion::Out, ccf_version, quickjs_version, unsafe)
 
   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(JoinNetworkNodeToNode::In)
   DECLARE_JSON_REQUIRED_FIELDS(
@@ -28,7 +29,7 @@ namespace ccf
     consensus_type,
     startup_seqno)
   DECLARE_JSON_OPTIONAL_FIELDS(
-    JoinNetworkNodeToNode::In, certificate_signing_request)
+    JoinNetworkNodeToNode::In, certificate_signing_request, node_data)
 
   DECLARE_JSON_ENUM(
     ccf::IdentityType,
@@ -71,8 +72,10 @@ namespace ccf
     quote_info,
     public_encryption_key,
     code_digest,
-    node_info_network)
-  DECLARE_JSON_OPTIONAL_FIELDS(CreateNetworkNodeToNode::In, genesis_info)
+    node_info_network,
+    create_txid)
+  DECLARE_JSON_OPTIONAL_FIELDS(
+    CreateNetworkNodeToNode::In, genesis_info, node_data, service_data)
 
   DECLARE_JSON_TYPE(GetCommit::Out)
   DECLARE_JSON_REQUIRED_FIELDS(GetCommit::Out, transaction_id)
@@ -86,11 +89,20 @@ namespace ccf
     service_status,
     service_certificate,
     current_view,
-    primary_id)
+    primary_id,
+    recovery_count,
+    service_data,
+    current_service_create_txid)
 
   DECLARE_JSON_TYPE(GetNode::NodeInfo)
   DECLARE_JSON_REQUIRED_FIELDS(
-    GetNode::NodeInfo, node_id, status, primary, rpc_interfaces)
+    GetNode::NodeInfo,
+    node_id,
+    status,
+    primary,
+    rpc_interfaces,
+    node_data,
+    last_written)
 
   DECLARE_JSON_TYPE(GetNodes::Out)
   DECLARE_JSON_REQUIRED_FIELDS(GetNodes::Out, nodes)

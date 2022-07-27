@@ -3,9 +3,9 @@
 #pragma once
 
 #include "ccf/historical_queries_interface.h"
+#include "ccf/node/host_processes_interface.h"
 #include "kv/test/stub_consensus.h"
 #include "node/rpc/gov_effects_interface.h"
-#include "node/rpc/host_processes_interface.h"
 #include "node/rpc/node_interface.h"
 #include "node/rpc/node_operation_interface.h"
 #include "node/share_manager.h"
@@ -57,11 +57,6 @@ namespace ccf
       return kv::NoVersion;
     }
 
-    std::optional<kv::Version> get_startup_snapshot_seqno() override
-    {
-      return std::nullopt;
-    }
-
     SessionMetrics get_session_metrics() override
     {
       return {};
@@ -81,16 +76,26 @@ namespace ccf
       return QuoteVerificationResult::Verified;
     }
 
+    kv::Version get_startup_snapshot_seqno() override
+    {
+      return 0;
+    }
+
     void initiate_private_recovery(kv::Tx& tx) override
     {
       throw std::logic_error("Unimplemented");
+    }
+
+    crypto::Pem get_self_signed_node_certificate() override
+    {
+      return {};
     }
   };
 
   class StubGovernanceEffects : public ccf::AbstractGovernanceEffects
   {
   public:
-    void transition_service_to_open(kv::Tx& tx) override
+    void transition_service_to_open(kv::Tx& tx, ServiceIdentities) override
     {
       return;
     }
@@ -114,6 +119,14 @@ namespace ccf
     {
       return;
     }
+
+    void trigger_acme_refresh(
+      kv::Tx& tx,
+      const std::optional<std::vector<std::string>>& interfaces =
+        std::nullopt) override
+    {
+      return;
+    }
   };
 
   class StubHostProcesses : public ccf::AbstractHostProcesses
@@ -133,7 +146,7 @@ namespace ccf
       historical::ExpiryDuration seconds_until_expiry)
     {}
 
-    kv::StorePtr get_store_at(
+    kv::ReadOnlyStorePtr get_store_at(
       historical::RequestHandle handle,
       ccf::SeqNo seqno,
       historical::ExpiryDuration seconds_until_expiry)
@@ -141,7 +154,7 @@ namespace ccf
       return nullptr;
     }
 
-    kv::StorePtr get_store_at(
+    kv::ReadOnlyStorePtr get_store_at(
       historical::RequestHandle handle, ccf::SeqNo seqno)
     {
       return nullptr;
@@ -161,7 +174,7 @@ namespace ccf
       return nullptr;
     }
 
-    std::vector<kv::StorePtr> get_store_range(
+    std::vector<kv::ReadOnlyStorePtr> get_store_range(
       historical::RequestHandle handle,
       ccf::SeqNo start_seqno,
       ccf::SeqNo end_seqno,
@@ -170,7 +183,7 @@ namespace ccf
       return {};
     }
 
-    std::vector<kv::StorePtr> get_store_range(
+    std::vector<kv::ReadOnlyStorePtr> get_store_range(
       historical::RequestHandle handle,
       ccf::SeqNo start_seqno,
       ccf::SeqNo end_seqno)
@@ -195,7 +208,7 @@ namespace ccf
       return {};
     }
 
-    std::vector<kv::StorePtr> get_stores_for(
+    std::vector<kv::ReadOnlyStorePtr> get_stores_for(
       historical::RequestHandle handle,
       const SeqNoCollection& seqnos,
       historical::ExpiryDuration seconds_until_expiry)
@@ -203,7 +216,7 @@ namespace ccf
       return {};
     }
 
-    std::vector<kv::StorePtr> get_stores_for(
+    std::vector<kv::ReadOnlyStorePtr> get_stores_for(
       historical::RequestHandle handle, const SeqNoCollection& seqnos)
     {
       return {};

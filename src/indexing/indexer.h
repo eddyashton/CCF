@@ -90,7 +90,7 @@ namespace ccf::indexing
 
       if (min_requested.has_value())
       {
-        if (*min_requested < committed.seqno)
+        if (*min_requested <= committed.seqno)
         {
           // Request a prefix of the missing entries. Cap the requested range,
           // so we don't overload the node with a huge historical request
@@ -108,8 +108,7 @@ namespace ccf::indexing
           auto stores = transaction_fetcher->fetch_transactions(seqnos);
           for (auto& store : stores)
           {
-            const kv::TxID kv_tx = store->current_txid();
-            const ccf::TxID tx_id{kv_tx.term, kv_tx.version};
+            const ccf::TxID tx_id = store->get_txid();
 
             for (auto& strategy : strategies)
             {

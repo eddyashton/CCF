@@ -15,9 +15,10 @@ namespace ccf
   public:
     GovernanceEffects(AbstractNodeState& impl_) : impl(impl_) {}
 
-    void transition_service_to_open(kv::Tx& tx) override
+    void transition_service_to_open(
+      kv::Tx& tx, ServiceIdentities identities) override
     {
-      impl.transition_service_to_open(tx);
+      impl.transition_service_to_open(tx, identities);
     }
 
     bool rekey_ledger(kv::Tx& tx) override
@@ -38,6 +39,14 @@ namespace ccf
     void trigger_snapshot(kv::Tx& tx) override
     {
       impl.trigger_snapshot(tx);
+    }
+
+    void trigger_acme_refresh(
+      kv::Tx& tx,
+      const std::optional<std::vector<std::string>>& interfaces =
+        std::nullopt) override
+    {
+      impl.trigger_acme_refresh(tx, interfaces);
     }
   };
 }

@@ -4,11 +4,13 @@
 
 #include "ccf/ds/json_schema.h"
 #include "ccf/ds/nonstd.h"
+#include "ccf/http_consts.h"
 #include "ccf/http_status.h"
 
 #include <llhttp/llhttp.h>
 #include <nlohmann/json.hpp>
 #include <string>
+#include <string_view>
 
 namespace ds
 {
@@ -23,14 +25,14 @@ namespace ds
     namespace access
     {
       static inline nlohmann::json& get_object(
-        nlohmann::json& j, const std::string& k)
+        nlohmann::json& j, const std::string_view& k)
       {
         const auto ib = j.emplace(k, nlohmann::json::object());
         return ib.first.value();
       }
 
       static inline nlohmann::json& get_array(
-        nlohmann::json& j, const std::string& k)
+        nlohmann::json& j, const std::string_view& k)
       {
         const auto ib = j.emplace(k, nlohmann::json::array());
         return ib.first.value();
@@ -58,9 +60,9 @@ namespace ds
     }
 
     static inline nlohmann::json create_document(
-      const std::string& title,
-      const std::string& description,
-      const std::string& document_version)
+      const std::string_view& title,
+      const std::string_view& description,
+      const std::string_view& document_version)
     {
       return nlohmann::json{
         {"openapi", "3.0.0"},
@@ -73,7 +75,7 @@ namespace ds
     }
 
     static inline nlohmann::json& server(
-      nlohmann::json& document, const std::string& url)
+      nlohmann::json& document, const std::string_view& url)
     {
       auto& servers = access::get_object(document, "servers");
       servers.push_back({{"url", url}});
@@ -81,7 +83,7 @@ namespace ds
     }
 
     static inline nlohmann::json& path(
-      nlohmann::json& document, const std::string& path)
+      nlohmann::json& document, const std::string_view& path)
     {
       auto p = path;
       if (p.find("/") != 0)
@@ -124,7 +126,7 @@ namespace ds
     static inline nlohmann::json& response(
       nlohmann::json& path_operation,
       http_status status,
-      const std::string& description = "Default response description")
+      const std::string_view& description = "Default response description")
     {
       auto& all_responses = responses(path_operation);
 
@@ -144,7 +146,7 @@ namespace ds
     }
 
     static inline nlohmann::json& media_type(
-      nlohmann::json& j, const std::string& mt)
+      nlohmann::json& j, const std::string_view& mt)
     {
       auto& content = access::get_object(j, "content");
       return access::get_object(content, mt);
@@ -155,12 +157,26 @@ namespace ds
       return access::get_object(media_type_object, "schema");
     }
 
+    static inline nlohmann::json& extension(
+      nlohmann::json& object, const std::string_view& extension_name)
+    {
+      if (!extension_name.starts_with("x-"))
+      {
+        throw std::logic_error(fmt::format(
+          "Adding extension with name '{}'. Extension fields must begin with "
+          "'x-'",
+          extension_name));
+      }
+
+      return access::get_object(object, extension_name);
+    }
+
     //
     // Helper functions for auto-inserting schema into components
     //
 
     static inline nlohmann::json components_ref_object(
-      const std::string& element_name)
+      const std::string_view& element_name)
     {
       auto schema_ref_object = nlohmann::json::object();
       schema_ref_object["$ref"] =
@@ -171,7 +187,7 @@ namespace ds
     // Returns a ref object pointing to the item inserted into the components
     static inline nlohmann::json add_schema_to_components(
       nlohmann::json& document,
-      const std::string& element_name,
+      const std::string_view& element_name,
       const nlohmann::json& schema_)
     {
       const auto name = sanitise_components_key(element_name);
@@ -205,7 +221,7 @@ namespace ds
 
     static inline void add_security_scheme_to_components(
       nlohmann::json& document,
-      const std::string& scheme_name,
+      const std::string_view& scheme_name,
       const nlohmann::json& security_scheme)
     {
       const auto name = sanitise_components_key(scheme_name);
@@ -244,7 +260,7 @@ namespace ds
     // json.h macros, and this could be implemented manually for other types.
     struct SchemaHelper;
     template <typename T>
-    void add_schema_components(SchemaHelper&, nlohmann::json& j, const T& t)
+    void add_schema_components(SchemaHelper&, nlohmann::json& j, const T* t)
     {
       fill_json_schema(j, t);
     }
@@ -346,7 +362,7 @@ namespace ds
 #  pragma clang diagnostic ignored "-Wuninitialized-const-reference"
 #endif
             // Use argument-dependent-lookup to call correct functions
-            T t;
+            T* t = nullptr;
             if constexpr (std::is_enum<T>::value)
             {
               fill_enum_schema(j, t);
@@ -363,12 +379,25 @@ namespace ds
       }
     };
 
+    template <typename T>
+    static inline char const* auto_content_type()
+    {
+      if constexpr (std::is_same_v<T, std::string>)
+      {
+        return http::headervalues::contenttype::TEXT;
+      }
+      else
+      {
+        return http::headervalues::contenttype::JSON;
+      }
+    }
+
     static inline void add_request_body_schema(
       nlohmann::json& document,
-      const std::string& uri,
+      const std::string_view& uri,
       llhttp_method verb,
-      const std::string& content_type,
-      const std::string& schema_name,
+      const std::string_view& content_type,
+      const std::string_view& schema_name,
       const nlohmann::json& schema_)
     {
       auto& rb = request_body(path_operation(path(document, uri), verb));
@@ -380,10 +409,7 @@ namespace ds
 
     template <typename T>
     static inline void add_request_body_schema(
-      nlohmann::json& document,
-      const std::string& uri,
-      llhttp_method verb,
-      const std::string& content_type)
+      nlohmann::json& document, const std::string_view& uri, llhttp_method verb)
     {
       auto& rb = request_body(path_operation(path(document, uri), verb));
       rb["description"] = "Auto-generated request body schema";
@@ -392,13 +418,14 @@ namespace ds
       const auto schema_comp = sh.add_schema_component<T>();
       if (schema_comp != nullptr)
       {
-        schema(media_type(rb, content_type)) = sh.add_schema_component<T>();
+        schema(media_type(rb, auto_content_type<T>())) =
+          sh.add_schema_component<T>();
       }
     }
 
     static inline void add_path_parameter_schema(
       nlohmann::json& document,
-      const std::string& uri,
+      const std::string_view& uri,
       const nlohmann::json& param)
     {
       auto& params = parameters(path(document, uri));
@@ -407,7 +434,7 @@ namespace ds
 
     static inline void add_request_parameter_schema(
       nlohmann::json& document,
-      const std::string& uri,
+      const std::string_view& uri,
       llhttp_method verb,
       const nlohmann::json& param)
     {
@@ -417,11 +444,11 @@ namespace ds
 
     static inline void add_response_schema(
       nlohmann::json& document,
-      const std::string& uri,
+      const std::string_view& uri,
       llhttp_method verb,
       http_status status,
-      const std::string& content_type,
-      const std::string& schema_name,
+      const std::string_view& content_type,
+      const std::string_view& schema_name,
       const nlohmann::json& schema_)
     {
       auto& r = response(path_operation(path(document, uri), verb), status);
@@ -433,10 +460,9 @@ namespace ds
     template <typename T>
     static inline void add_response_schema(
       nlohmann::json& document,
-      const std::string& uri,
+      const std::string_view& uri,
       llhttp_method verb,
-      http_status status,
-      const std::string& content_type)
+      http_status status)
     {
       auto& r = response(path_operation(path(document, uri), verb), status);
 
@@ -444,7 +470,8 @@ namespace ds
       const auto schema_comp = sh.add_schema_component<T>();
       if (schema_comp != nullptr)
       {
-        schema(media_type(r, content_type)) = sh.add_schema_component<T>();
+        schema(media_type(r, auto_content_type<T>())) =
+          sh.add_schema_component<T>();
       }
     }
   }

@@ -3,6 +3,13 @@ Disaster Recovery
 
 For unexpected reasons, a significant number [#crash]_ of CCF nodes may become unavailable. In this catastrophic scenario, operators and members can recover transactions that were committed on the crashed service by starting a new network.
 
+The disaster recovery procedure is costly (e.g. the service identity certificate will need to be re-distributed to clients) and should only be staged once operators are confident that the service will not heal by itself. In other words, the recovery procedure should only be staged once a majority of nodes do not consistently report one of them as their primary node. 
+
+.. tip:: See :ccf_repo:`tests/infra/health_watcher.py` for an example of how a network can be monitored to detect a disaster recovery scenario.
+
+Overview
+--------
+
 The recovery procedure consists of two phases:
 
 1. Operators should retrieve one of the ledgers of the previous service and re-start one or several nodes in ``recover`` mode. The public transactions of the previous network are restored and the new network established.
@@ -106,6 +113,11 @@ Summary Diagram
 
 Once operators have established a recovered crash-fault tolerant public network, the existing members of the consortium :ref:`must vote to accept the recovery of the network and submit their recovery shares <governance/accept_recovery:Accepting Recovery and Submitting Shares>`.
 
+Notes
+-----
+
+- Operators can track the number of times a given service has undergone the disaster recovery procedure via the :http:GET:`/node/network` endpoint (``recovery_count`` field).
+
 .. rubric:: Footnotes
 
-.. [#crash] When using CFT as consensus algorithm, CCF tolerates up to `N/2 - 1` crashed nodes (where `N` is the number of trusted nodes constituting the network) before having to perform a recovery procedure. For example, in a 5-node network, no more than 2 nodes are allowed to fail for the service to be able to commit new transactions.
+.. [#crash] When using CFT as consensus algorithm, CCF tolerates up to `(N-1)/2` crashed nodes (where `N` is the number of trusted nodes constituting the network) before having to perform a recovery procedure. For example, in a 5-node network, no more than 2 nodes are allowed to fail for the service to be able to commit new transactions.

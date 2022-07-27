@@ -19,7 +19,12 @@ import json
 from loguru import logger as LOG
 
 DBG = os.getenv("DBG", "cgdb")
-FILE_TIMEOUT = 60
+
+# Duration after which unresponsive node is declared as crashed on startup
+REMOTE_STARTUP_TIMEOUT_S = 5
+
+
+FILE_TIMEOUT_S = 60
 
 _libc = ctypes.CDLL("libc.so.6")
 
@@ -52,7 +57,12 @@ def sftp_session(hostname):
 DEFAULT_TAIL_LINES_LEN = 10
 
 
-def log_errors(out_path, err_path, tail_lines_len=DEFAULT_TAIL_LINES_LEN):
+def log_errors(
+    out_path,
+    err_path,
+    tail_lines_len=DEFAULT_TAIL_LINES_LEN,
+    ignore_error_patterns=None,
+):
     error_filter = ["[fail ]", "[fatal]", "Atom leak", "atom leakage"]
     error_lines = []
     try:
@@ -62,8 +72,15 @@ def log_errors(out_path, err_path, tail_lines_len=DEFAULT_TAIL_LINES_LEN):
                 stripped_line = line.rstrip()
                 tail_lines.append(stripped_line)
                 if any(x in stripped_line for x in error_filter):
-                    LOG.error("{}: {}".format(out_path, stripped_line))
-                    error_lines.append(stripped_line)
+                    ignore = False
+                    if ignore_error_patterns is not None:
+                        for pattern in ignore_error_patterns:
+                            if pattern in stripped_line:
+                                ignore = True
+                                break
+                    if not ignore:
+                        LOG.error("{}: {}".format(out_path, stripped_line))
+                        error_lines.append(stripped_line)
         if error_lines:
             LOG.info(
                 "{} errors found, printing end of output for context:", len(error_lines)
@@ -198,7 +215,7 @@ class SSHRemote(CmdMixin):
         self,
         file_name,
         dst_path,
-        timeout=FILE_TIMEOUT,
+        timeout=FILE_TIMEOUT_S,
         target_name=None,
         pre_condition_func=lambda src_dir, _: True,
     ):
@@ -249,7 +266,7 @@ class SSHRemote(CmdMixin):
             else:
                 raise ValueError(file_name)
 
-    def list_files(self, timeout=FILE_TIMEOUT):
+    def list_files(self, timeout=FILE_TIMEOUT_S):
         files = []
         with sftp_session(self.hostname) as session:
             end_time = time.time() + timeout
@@ -265,7 +282,9 @@ class SSHRemote(CmdMixin):
                 raise ValueError(self.root)
         return files
 
-    def get_logs(self, tail_lines_len=DEFAULT_TAIL_LINES_LEN):
+    def get_logs(
+        self, tail_lines_len=DEFAULT_TAIL_LINES_LEN, ignore_error_patterns=None
+    ):
         with sftp_session(self.hostname) as session:
             for filepath in (self.err, self.out):
                 try:
@@ -285,6 +304,7 @@ class SSHRemote(CmdMixin):
             os.path.join(self.common_dir, "{}_{}_out".format(self.hostname, self.name)),
             os.path.join(self.common_dir, "{}_{}_err".format(self.hostname, self.name)),
             tail_lines_len=tail_lines_len,
+            ignore_error_patterns=ignore_error_patterns,
         )
 
     def start(self):
@@ -325,7 +345,7 @@ class SSHRemote(CmdMixin):
         if stdout.channel.recv_exit_status() != 0:
             raise RuntimeError(f"Could not resume remote {self.name} from suspension!")
 
-    def stop(self):
+    def stop(self, ignore_error_patterns=None):
         """
         Disconnect the client, and therefore shut down the command as well.
         """
@@ -333,7 +353,7 @@ class SSHRemote(CmdMixin):
         (
             errors,
             fatal_errors,
-        ) = self.get_logs()
+        ) = self.get_logs(ignore_error_patterns=ignore_error_patterns)
         self.client.close()
         self.proc_client.close()
         return errors, fatal_errors
@@ -436,7 +456,7 @@ class LocalRemote(CmdMixin):
         self,
         src_path,
         dst_path,
-        timeout=FILE_TIMEOUT,
+        timeout=FILE_TIMEOUT_S,
         target_name=None,
         pre_condition_func=lambda src_dir, _: True,
     ):
@@ -478,10 +498,17 @@ class LocalRemote(CmdMixin):
     def resume(self):
         self.proc.send_signal(signal.SIGCONT)
 
-    def get_logs(self, tail_lines_len=DEFAULT_TAIL_LINES_LEN):
-        return log_errors(self.out, self.err, tail_lines_len=tail_lines_len)
+    def get_logs(
+        self, tail_lines_len=DEFAULT_TAIL_LINES_LEN, ignore_error_patterns=None
+    ):
+        return log_errors(
+            self.out,
+            self.err,
+            tail_lines_len=tail_lines_len,
+            ignore_error_patterns=ignore_error_patterns,
+        )
 
-    def stop(self):
+    def stop(self, ignore_error_patterns=None):
         """
         Disconnect the client, and therefore shut down the command as well.
         """
@@ -497,7 +524,7 @@ class LocalRemote(CmdMixin):
                 self.stdout.close()
             if self.stderr:
                 self.stderr.close()
-            return self.get_logs()
+            return self.get_logs(ignore_error_patterns=ignore_error_patterns)
 
     def setup(self):
         """
@@ -516,7 +543,7 @@ class LocalRemote(CmdMixin):
         return f"cd {self.root} && {DBG} --args {cmd}"
 
     def check_done(self):
-        return self.proc.poll() is not None
+        return self.proc is not None and self.proc.poll() is not None
 
     def get_result(self, line_count):
         with open(self.out, "rb") as out:
@@ -554,6 +581,7 @@ class CCFRemote(object):
         ledger_dir=None,
         read_only_ledger_dirs=None,
         snapshots_dir=None,
+        read_only_snapshots_dir=None,
         common_read_only_ledger_dir=None,
         constitution=None,
         curve_id=None,
@@ -566,6 +594,9 @@ class CCFRemote(object):
         sig_ms_interval=None,
         jwt_key_refresh_interval_s=None,
         election_timeout_ms=None,
+        node_data_json_file=None,
+        service_cert_file="service_cert.pem",
+        service_data_json_file=None,
         **kwargs,
     ):
         """
@@ -581,9 +612,7 @@ class CCFRemote(object):
 
         # 1.x releases have a separate cchost.virtual binary for virtual enclaves
         if enclave_type == "virtual" and (
-            (major_version is not None and major_version <= 1)
-            # This is still present in 2.0.0-rc0
-            or (version == "ccf-2.0.0-rc0")
+            major_version is not None and major_version <= 1
         ):
             self.BIN = "cchost.virtual"
         self.BIN = infra.path.build_bin_path(self.BIN, binary_dir=binary_dir)
@@ -611,16 +640,32 @@ class CCFRemote(object):
 
         # Snapshots
         self.snapshots_dir = os.path.normpath(snapshots_dir) if snapshots_dir else None
-        self.snapshot_dir_name = (
+        self.snapshots_dir_name = (
             os.path.basename(self.snapshots_dir)
             if self.snapshots_dir
             else f"{local_node_id}.snapshots"
+        )
+        self.read_only_snapshots_dir = (
+            os.path.normpath(read_only_snapshots_dir)
+            if read_only_snapshots_dir
+            else None
+        )
+        self.read_only_snapshots_dir_name = (
+            os.path.basename(self.read_only_snapshots_dir)
+            if self.read_only_snapshots_dir
+            else None
         )
 
         # Constitution
         constitution = [
             os.path.join(self.common_dir, os.path.basename(f)) for f in constitution
         ]
+
+        # ACME
+        if "acme" in kwargs and host.acme_challenge_server_interface:
+            kwargs["acme"][
+                "challenge_server_interface"
+            ] = host.acme_challenge_server_interface
 
         # Configuration file
         if config_file:
@@ -647,7 +692,8 @@ class CCFRemote(object):
                 rpc_addresses_file=self.rpc_addresses_file,
                 ledger_dir=self.ledger_dir_name,
                 read_only_ledger_dirs=self.read_only_ledger_dirs_names,
-                snapshots_dir=self.snapshot_dir_name,
+                snapshots_dir=self.snapshots_dir_name,
+                read_only_snapshots_dir=self.read_only_snapshots_dir_name,
                 constitution=constitution,
                 curve_id=curve_id.name.title(),
                 host_log_level=host_log_level.title(),
@@ -655,6 +701,9 @@ class CCFRemote(object):
                 signature_interval_duration=f"{sig_ms_interval}ms",
                 jwt_key_refresh_interval=f"{jwt_key_refresh_interval_s}s",
                 election_timeout=f"{election_timeout_ms}ms",
+                node_data_json_file=node_data_json_file,
+                service_data_json_file=service_data_json_file,
+                service_cert_file=service_cert_file,
                 **kwargs,
             )
 
@@ -668,6 +717,9 @@ class CCFRemote(object):
         exe_files += [self.BIN, enclave_file] + self.DEPS
         data_files += [self.ledger_dir] if self.ledger_dir else []
         data_files += [self.snapshots_dir] if self.snapshots_dir else []
+        data_files += (
+            [self.read_only_snapshots_dir] if self.read_only_snapshots_dir else []
+        )
         if self.read_only_ledger_dirs_names:
             data_files.extend(
                 [os.path.join(self.common_dir, f) for f in self.read_only_ledger_dirs]
@@ -714,7 +766,7 @@ class CCFRemote(object):
                 f"--rpc-address={infra.interfaces.make_address(primary_rpc_interface.host, primary_rpc_interface.port)}",
                 f"--rpc-address-file={self.rpc_addresses_file}",
                 f"--ledger-dir={self.ledger_dir_name}",
-                f"--snapshot-dir={self.snapshot_dir_name}",
+                f"--snapshot-dir={self.snapshots_dir_name}",
                 f"--node-cert-file={self.pem}",
                 f"--host-log-level={host_log_level}",
                 f"--raft-election-timeout-ms={election_timeout_ms}",
@@ -860,22 +912,22 @@ class CCFRemote(object):
     def resume(self):
         self.remote.resume()
 
-    def get_startup_files(self, dst_path):
-        self.remote.get(self.pem, dst_path)
+    def get_startup_files(self, dst_path, timeout=FILE_TIMEOUT_S):
+        self.remote.get(self.pem, dst_path, timeout=REMOTE_STARTUP_TIMEOUT_S)
         if self.node_address_file is not None:
-            self.remote.get(self.node_address_file, dst_path)
+            self.remote.get(self.node_address_file, dst_path, timeout=timeout)
         if self.rpc_addresses_file is not None:
-            self.remote.get(self.rpc_addresses_file, dst_path)
+            self.remote.get(self.rpc_addresses_file, dst_path, timeout=timeout)
         if self.start_type in {StartType.start, StartType.recover}:
-            self.remote.get("service_cert.pem", dst_path)
+            self.remote.get("service_cert.pem", dst_path, timeout=timeout)
 
     def debug_node_cmd(self):
         return self.remote.debug_node_cmd()
 
-    def stop(self):
+    def stop(self, *args, **kwargs):
         errors, fatal_errors = [], []
         try:
-            errors, fatal_errors = self.remote.stop()
+            errors, fatal_errors = self.remote.stop(*args, **kwargs)
         except Exception:
             LOG.exception("Failed to shut down {} cleanly".format(self.local_node_id))
         return errors, fatal_errors
@@ -886,10 +938,36 @@ class CCFRemote(object):
     def set_perf(self):
         self.remote.set_perf()
 
-    def get_ledger(self, ledger_dir_name):
-        self.remote.get(
-            self.ledger_dir_name, self.common_dir, target_name=ledger_dir_name
+    def _resilient_copy(
+        self,
+        directory,
+        pre_condition_func=lambda src_dir, _: True,
+        target_name=None,
+        max_retry_count=5,
+    ):
+        # It is possible that files (ledger, snapshots) are committed
+        # while the copy is happening so retry a reasonable number of times.
+        retry_count = 0
+        while retry_count < max_retry_count:
+            try:
+                self.remote.get(
+                    directory,
+                    self.common_dir,
+                    pre_condition_func=pre_condition_func,
+                    target_name=target_name,
+                )
+                return
+            except Exception as e:
+                LOG.warning(f"Error copying file from {directory}: {e}. Retrying...")
+                retry_count += 1
+                time.sleep(0.1)
+
+        raise Exception(
+            f"Error copying files from {directory} after {retry_count} retries"
         )
+
+    def get_ledger(self, ledger_dir_name):
+        self._resilient_copy(self.ledger_dir_name, target_name=ledger_dir_name)
         read_only_ledger_dirs = []
         for read_only_ledger_dir in self.read_only_ledger_dirs:
             name = f"{read_only_ledger_dir}.ro"
@@ -901,17 +979,21 @@ class CCFRemote(object):
             read_only_ledger_dirs.append(os.path.join(self.common_dir, name))
         return (os.path.join(self.common_dir, ledger_dir_name), read_only_ledger_dirs)
 
-    def get_snapshots(self):
-        self.remote.get(self.snapshot_dir_name, self.common_dir)
-        return os.path.join(self.common_dir, self.snapshot_dir_name)
-
     def get_committed_snapshots(self, pre_condition_func=lambda src_dir, _: True):
-        self.remote.get(
-            self.snapshot_dir_name,
-            self.common_dir,
-            pre_condition_func=pre_condition_func,
+        self._resilient_copy(
+            self.snapshots_dir_name, pre_condition_func=pre_condition_func
         )
-        return os.path.join(self.common_dir, self.snapshot_dir_name)
+        read_only_snapshots_dir = None
+        if self.read_only_snapshots_dir_name:
+            self._resilient_copy(self.read_only_snapshots_dir_name)
+            read_only_snapshots_dir = os.path.join(
+                self.common_dir, self.read_only_snapshots_dir_name
+            )
+
+        return (
+            os.path.join(self.common_dir, self.snapshots_dir_name),
+            read_only_snapshots_dir,
+        )
 
     def log_path(self):
         return self.remote.out
@@ -922,8 +1004,12 @@ class CCFRemote(object):
             paths += [os.path.join(self.remote.root, read_only_ledger_dir_name)]
         return paths
 
-    def get_logs(self, tail_lines_len=DEFAULT_TAIL_LINES_LEN):
-        return self.remote.get_logs(tail_lines_len=tail_lines_len)
+    def get_logs(
+        self, tail_lines_len=DEFAULT_TAIL_LINES_LEN, ignore_error_patterns=None
+    ):
+        return self.remote.get_logs(
+            tail_lines_len=tail_lines_len, ignore_error_patterns=ignore_error_patterns
+        )
 
     def get_host(self):
         return self.pub_host

@@ -7,7 +7,7 @@ include(${CCF_DIR}/cmake/preproject.cmake)
 include(${CCF_DIR}/cmake/version.cmake)
 
 project(
-  ccf
+  ${CCF_PROJECT}
   VERSION ${CCF_RELEASE_VERSION}
   LANGUAGES C CXX
 )
@@ -16,8 +16,6 @@ message(STATUS "CCF version = ${CCF_VERSION}")
 message(STATUS "CCF release version = ${CCF_RELEASE_VERSION}")
 message(STATUS "CCF version suffix = ${CCF_VERSION_SUFFIX}")
 
-include(${CCF_DIR}/cmake/cpack_settings.cmake)
-
 # Set the default install prefix for CCF. Users may override this value with the
 # cmake command. For example:
 #
@@ -25,10 +23,12 @@ include(${CCF_DIR}/cmake/cpack_settings.cmake)
 #
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX
-      "/opt/ccf"
+      "/opt/${CCF_PROJECT}"
       CACHE PATH "Default install prefix" FORCE
   )
 endif()
+
+include(${CCF_DIR}/cmake/cpack_settings.cmake)
 
 message(STATUS "CMAKE_INSTALL_PREFIX is '${CMAKE_INSTALL_PREFIX}'")
 
@@ -72,6 +72,10 @@ option(BUILD_UNIT_TESTS "Build unit tests" ON)
 option(TLS_TEST "TLS Test using https://github.com/drwetter/testssl.sh" OFF)
 option(BUILD_TPCC "Build TPPC sample app and clients" OFF)
 
+# Allow framework code to use LOG_*_FMT macros. These will be removed from
+# public headers in future
+add_compile_definitions(CCF_LOGGER_NO_DEPRECATE)
+
 # Build common library for CCF enclaves
 add_custom_target(ccf ALL)
 
@@ -105,9 +109,7 @@ if("sgx" IN_LIST COMPILE_TARGETS)
                        sss.enclave ccf_endpoints.enclave ccf_kv.enclave
   )
 
-  if(ENABLE_HTTP2)
-    target_link_libraries(ccf.enclave PUBLIC nghttp2.enclave)
-  endif()
+  target_link_libraries(ccf.enclave PUBLIC nghttp2.enclave)
 
   enable_quote_code(ccf.enclave)
 
@@ -159,9 +161,7 @@ if("virtual" IN_LIST COMPILE_TARGETS)
            ${CMAKE_THREAD_LIBS_INIT}
   )
 
-  if(ENABLE_HTTP2)
-    target_link_libraries(ccf.virtual PUBLIC nghttp2.host)
-  endif()
+  target_link_libraries(ccf.virtual PUBLIC nghttp2.host)
 
   set_property(TARGET ccf.virtual PROPERTY POSITION_INDEPENDENT_CODE ON)
 
@@ -191,10 +191,10 @@ install(
   PATTERN "*.hpp"
 )
 
-# Install all CCF headers
+# Install all private CCF headers, which may still be needed
 install(
   DIRECTORY src/
-  DESTINATION include/ccf
+  DESTINATION include/ccf/_private
   FILES_MATCHING
   PATTERN "*.h"
   PATTERN "*/test*" EXCLUDE
@@ -235,11 +235,8 @@ add_custom_target(
   signing_key ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/signing_key.pem
 )
 
-# Add Logging app.
-add_subdirectory(${CCF_DIR}/samples/apps/logging)
-
-# Add NoBuiltins app
-add_subdirectory(${CCF_DIR}/samples/apps/nobuiltins)
+# Add sample apps
+add_subdirectory(${CCF_DIR}/samples)
 
 if(BUILD_TESTS)
   enable_testing()
@@ -250,6 +247,10 @@ if(BUILD_TESTS)
 
     add_unit_test(
       json_schema ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/json_schema.cpp
+    )
+
+    add_unit_test(
+      logger_test ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/logger.cpp
     )
 
     add_unit_test(
@@ -339,9 +340,17 @@ if(BUILD_TESTS)
     )
     target_link_libraries(encryptor_test PRIVATE ccfcrypto.host ccf_kv.host)
 
+    add_unit_test(js_test ${CMAKE_CURRENT_SOURCE_DIR}/src/js/test/js.cpp)
+    target_link_libraries(
+      js_test PRIVATE quickjs.host ccf_kv.host ccf_endpoints.host
+                      http_parser.host
+    )
+
     add_unit_test(
       historical_queries_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/historical_queries.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/receipt.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/node/receipt.cpp
     )
     target_link_libraries(
       historical_queries_test PRIVATE http_parser.host sss.host ccf_kv.host
@@ -372,6 +381,14 @@ if(BUILD_TESTS)
       node_info_json_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/node_info_json.cpp
     )
+
+    if(ENABLE_QUICTLS)
+      add_unit_test(
+        quic_test ${CMAKE_CURRENT_SOURCE_DIR}/src/quic/test/main.cpp
+      )
+      target_include_directories(quic_test PUBLIC ${QUICTLS_INCLUDE_DIRS})
+      target_link_libraries(quic_test PUBLIC ${QUICTLS_LIBRARIES})
+    endif()
 
     add_unit_test(tls_test ${CMAKE_CURRENT_SOURCE_DIR}/src/tls/test/main.cpp)
     target_link_libraries(tls_test PRIVATE ${CMAKE_THREAD_LIBS_INIT})
@@ -422,12 +439,13 @@ if(BUILD_TESTS)
     )
 
     add_unit_test(
-      node_frontend_test
+      node_frontend_test ${CMAKE_CURRENT_SOURCE_DIR}/src/js/wrap.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/rpc/test/node_frontend_test.cpp
     )
     target_link_libraries(
-      node_frontend_test PRIVATE ${CMAKE_THREAD_LIBS_INIT} http_parser.host
-                                 sss.host ccf_endpoints.host ccf_kv.host
+      node_frontend_test
+      PRIVATE ${CMAKE_THREAD_LIBS_INIT} http_parser.host sss.host
+              ccf_endpoints.host ccf_kv.host quickjs.host
     )
 
     add_unit_test(
@@ -465,13 +483,17 @@ if(BUILD_TESTS)
       PROPERTY LABELS unit_test
     )
 
-    add_test(NAME versionifier_test
-             COMMAND ${PYTHON} ${CMAKE_SOURCE_DIR}/python/versionifier.py
-    )
+    if(NOT UNSAFE_VERSION)
+      # Unsafe builds do not follow normal version conventions
+      add_test(NAME versionifier_test
+               COMMAND ${PYTHON}
+                       ${CMAKE_SOURCE_DIR}/python/ccf/_versionifier.py
+      )
 
-    add_test(NAME github_version_lts_test
-             COMMAND ${PYTHON} ${CMAKE_SOURCE_DIR}/tests/infra/github.py
-    )
+      add_test(NAME github_version_lts_test
+               COMMAND ${PYTHON} ${CMAKE_SOURCE_DIR}/tests/infra/github.py
+      )
+    endif()
   endif()
 
   # Picobench benchmarks
@@ -514,10 +536,15 @@ if(BUILD_TESTS)
       ${CCF_DIR}/samples/constitutions/default/apply.js
   )
 
+  if(LONG_TESTS)
+    set(ADDITIONAL_RECOVERY_ARGS --with-load)
+  endif()
+
   add_e2e_test(
     NAME recovery_test_cft
     PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/recovery.py
     CONSENSUS cft
+    ADDITIONAL_ARGS ${ADDITIONAL_RECOVERY_ARGS}
   )
 
   if(LONG_TESTS)
@@ -661,11 +688,15 @@ if(BUILD_TESTS)
   endif()
 
   if(TLS_TEST)
-    add_custom_target(
-      testssl ALL
+    add_custom_command(
+      OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/testssl/testssl.sh
       COMMAND
-        test -d testssl || git clone https://github.com/drwetter/testssl.sh
+        rm -rf ${CMAKE_CURRENT_BINARY_DIR}/testssl && git clone --depth 1
+        --branch v3.0.7 --single-branch https://github.com/drwetter/testssl.sh
         ${CMAKE_CURRENT_BINARY_DIR}/testssl
+    )
+    add_custom_target(
+      testssl ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/testssl/testssl.sh
     )
   endif()
 
@@ -677,16 +708,28 @@ if(BUILD_TESTS)
     ADDITIONAL_ARGS --js-app-bundle ${CMAKE_SOURCE_DIR}/samples/apps/logging/js
   )
 
+  if(ENABLE_HTTP2)
+    add_e2e_test(
+      NAME e2e_logging_http2
+      PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/e2e_logging.py
+      CONSENSUS cft
+      ADDITIONAL_ARGS --js-app-bundle
+                      ${CMAKE_SOURCE_DIR}/samples/apps/logging/js --http2
+    )
+  endif()
+
   add_e2e_test(
     NAME membership
     PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/membership.py
     CONSENSUS cft
   )
-
-  # Higher snapshot interval as the test currently assumes that no transactions
-  # are emitted while partitions are up. To be removed when
-  # https://github.com/microsoft/CCF/issues/2577 is implemented
-  set(PARTITIONS_TEST_ARGS --snapshot-tx-interval 10000)
+  set(PARTITIONS_TEST_ARGS
+      # Higher snapshot interval as the test currently assumes that no
+      # transactions
+      # are emitted while partitions are up. To be removed when
+      # https://github.com/microsoft/CCF/issues/2577 is implemented
+      --snapshot-tx-interval 10000
+  )
   if(ENABLE_2TX_RECONFIG)
     list(APPEND PARTITIONS_TEST_ARGS --include-2tx-reconfig)
   endif()
@@ -739,13 +782,16 @@ if(BUILD_TESTS)
     )
   endif()
 
-  add_e2e_test(
-    NAME lts_compatibility
-    PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/lts_compatibility.py
-    CONSENSUS cft
-    LABEL e2e
-    ADDITIONAL_ARGS ${LTS_TEST_ARGS}
-  )
+  if(NOT UNSAFE_VERSION)
+    # Unsafe builds do not follow normal version conventions
+    add_e2e_test(
+      NAME lts_compatibility
+      PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/lts_compatibility.py
+      CONSENSUS cft
+      LABEL e2e
+      ADDITIONAL_ARGS ${LTS_TEST_ARGS}
+    )
+  endif()
 
   if(LONG_TESTS)
     set(ROTATION_TEST_ARGS --rotation-retirements 10)
@@ -774,6 +820,13 @@ if(BUILD_TESTS)
     NAME election_test
     PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/election.py
     CONSENSUS ${CONSENSUS_FILTER}
+  )
+
+  add_e2e_test(
+    NAME acme_endorsement_test
+    PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/acme_endorsement.py
+    LABEL ACME
+    CONSENSUS cft
   )
 
   foreach(CONSENSUS ${CONSENSUSES})
@@ -941,16 +994,16 @@ endif()
 # Generate and install CMake export file for consumers using CMake
 include(CMakePackageConfigHelpers)
 configure_package_config_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ccf-config.cmake.in
-  ${CMAKE_BINARY_DIR}/cmake/ccf-config.cmake
+  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/${CCF_PROJECT}-config.cmake.in
+  ${CMAKE_BINARY_DIR}/cmake/${CCF_PROJECT}-config.cmake
   INSTALL_DESTINATION ${CMAKE_INSTALL_PREFIX}/cmake
   PATH_VARS CMAKE_INSTALL_LIBDIR CMAKE_INSTALL_BINDIR CMAKE_INSTALL_INCLUDEDIR
 )
 write_basic_package_version_file(
-  ${CMAKE_BINARY_DIR}/cmake/ccf-config-version.cmake
+  ${CMAKE_BINARY_DIR}/cmake/${CCF_PROJECT}-config-version.cmake
   COMPATIBILITY SameMajorVersion
 )
-install(FILES ${CMAKE_BINARY_DIR}/cmake/ccf-config.cmake
-              ${CMAKE_BINARY_DIR}/cmake/ccf-config-version.cmake
+install(FILES ${CMAKE_BINARY_DIR}/cmake/${CCF_PROJECT}-config.cmake
+              ${CMAKE_BINARY_DIR}/cmake/${CCF_PROJECT}-config-version.cmake
         DESTINATION ${CMAKE_INSTALL_PREFIX}/cmake
 )

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "ccf/service/signed_req.h"
+#include "ccf/service/tables/acme_certificates.h"
 #include "ccf/service/tables/cert_bundles.h"
 #include "ccf/service/tables/code_id.h"
 #include "ccf/service/tables/constitution.h"
@@ -60,7 +61,7 @@ namespace ccf
     GovernanceHistory governance_history;
     RecoveryShares shares;
     EncryptedLedgerSecretsInfo encrypted_ledger_secrets;
-    SubmittedShares submitted_shares;
+    EncryptedSubmittedShares encrypted_submitted_shares;
     Configuration config;
 
     CACertBundlePEMs ca_cert_bundles;
@@ -76,10 +77,11 @@ namespace ccf
     UserInfo user_info;
 
     //
-    // Node table
+    // Node tables
     //
     Nodes nodes;
     NodeEndorsedCertificates node_endorsed_certificates;
+    ACMECertificates acme_certificates;
 
     //
     // Internal CCF tables
@@ -115,7 +117,7 @@ namespace ccf
       governance_history(Tables::GOV_HISTORY),
       shares(Tables::SHARES),
       encrypted_ledger_secrets(Tables::ENCRYPTED_PAST_LEDGER_SECRET),
-      submitted_shares(Tables::SUBMITTED_SHARES),
+      encrypted_submitted_shares(Tables::ENCRYPTED_SUBMITTED_SHARES),
       config(Tables::CONFIGURATION),
       ca_cert_bundles(Tables::CA_CERT_BUNDLE_PEMS),
       jwt_issuers(Tables::JWT_ISSUERS),
@@ -125,6 +127,7 @@ namespace ccf
       user_info(Tables::USER_INFO),
       nodes(Tables::NODES),
       node_endorsed_certificates(Tables::NODE_ENDORSED_CERTIFICATES),
+      acme_certificates(Tables::ACME_CERTIFICATES),
       service(Tables::SERVICE),
       secrets(Tables::ENCRYPTED_LEDGER_SECRETS),
       snapshot_evidence(Tables::SNAPSHOT_EVIDENCE),

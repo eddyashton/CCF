@@ -1,60 +1,59 @@
 Receipts
 ========
 
-Write Receipts
---------------
+In combination with a copy of the ledger, receipts are also useful for audit purposes.
 
-Once a transaction has been committed, it is possible to get a cryptographic receipt over the entry produced in the ledger. That receipt can be verified offline.
+Check for transaction inclusion
+-------------------------------
 
-To obtain a receipt, a user needs to call a :http:GET:`/node/receipt` for a particular transaction ID. Because fetching the information necessary to produce a receipt likely involves a round trip to the ledger, the endpoint is implemented as a historical query.
-This means that the request may return ``202 Accepted`` at first, with a suggested ``Retry-After`` header. A subsequent call will return the actual receipt, for example:
+A user having executed a transaction, fetched a receipt for it, can check for its inclusion in the ledger.
+All they need to do is scan to the corresponding :term:`Transaction ID`, digest the serialised transaction, and compare it with :term:`Write Set` digest in their receipt.
+
+For example, given the following transaction receipt:
+
+.. code-block:: python
+   :emphasize-lines: 15
+
+    {"cert": "-----BEGIN CERTIFICATE-----\n"
+            "MIIB0DCCAVWgAwIBAgIRAKut43pNWfrRFqoU3CiDwQMwCgYIKoZIzj0EAwMwFjEU\n"
+            "MBIGA1UEAwwLQ0NGIE5ldHdvcmswHhcNMjIwNjIzMTI1NDMwWhcNMjIwNjI0MTI1\n"
+            "NDI5WjATMREwDwYDVQQDDAhDQ0YgTm9kZTB2MBAGByqGSM49AgEGBSuBBAAiA2IA\n"
+            "BEbyEIuw666ZinL2V1hRrP5MCLL2rUoM/BLyz7sECnwJKMPr8NL9zm1QawkuSjoG\n"
+            "OBLBr1E+M74q0RgJFcc/r4M0NKyqgy3MG2JskXsFsZx4IlsEw1h8dAeeGoQ5zbPM\n"
+            "46NqMGgwCQYDVR0TBAIwADAdBgNVHQ4EFgQUPAUVdR+vSnLqMrEMrCHbWI7XTXEw\n"
+            "HwYDVR0jBBgwFoAU5947gxFF/Fe+60BAT/fxl/l2eFkwGwYDVR0RBBQwEocEfwAA\n"
+            "AYcEfw55KocEfwAAAjAKBggqhkjOPQQDAwNpADBmAjEA2404WF4g1GRfcwXzB74b\n"
+            "s+DRtsjalqkGVbjCTcSPWxZMRDnCgAfLp8FvjnoWFURQAjEArKvzYoZ71r+Lejdr\n"
+            "ptMmANqMma9fh8eYSAwRgyM+DTlsvcjHqamnbqdp4xcQBqBb\n"
+            "-----END CERTIFICATE-----\n",
+    "leaf_components": {"claims_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+                        "commit_evidence": "ce:2.662:e423779b5314e92b79852c7b17888752d5e61e4f1ef3e79d9a06ef25cbfe2744",
+                        "write_set_digest": "89145f455cb3e0854052232078989faf083237dae354180ca9942b1821f60c5d"},
+    "node_id": "c5f66bbdca022af31050e104615ff0eaabd633b472bfda6650e8bee09a632ca3",
+    "proof": [{"right": "3cd7b9c512371e411884917617462eacbeaf27988546a0c87fc7da89aec5b77d"},
+            {"left": "6f5a6d0613488ac942af045b64782d4a14bb7466b9ad64619c7c50f335ac0ed3"},
+            {"left": "d6401bf622794ae4d50b2f736cb2b6d590f42faa76cf0796ba05a57e9fb153fe"},
+            {"right": "24032f6c4b57233a9ff30478b6c209ac2a7ac27c136899618fcf1d54cdcd6313"},
+            {"left": "e16c5aa89b950b6ae23ff6eb297d330e7e4a239f2958d1e09d671bd8e72974ec"},
+            {"left": "6058b0e8cfe37550f2feec7ae8e89905df6b7e67c2e4aff227fcb5ea0a9100cd"},
+            {"left": "b582e168cd35dff37794d0f0fbac3de6dcb9271bcebc4a654f1e74be592370f3"}],
+    "signature": "MGQCMBQz7qIuHxc512Prg9NjKWDYwg0i6myQ/LCm6APVYRxlLdi1gng3/CmQ6bEE2Siy7QIwRWGOVobolhrWOavwr8WPm+YqdB6LsxQhOqqU/diZ/mU9gE6NavufIKPHA6zsl46h"}
+
+The corresponding transaction, ``2.662``, can be extracted from ledger files, and the digest compared:
 
 .. code-block:: bash
+   :emphasize-lines: 2
 
-    $ curl -X GET "https://<ccf-node-address>/app/receipt?transaction_id=2.643" --cacert service_cert.pem --key user0_privk.pem --cert user0_cert.pem
+    $ read_ledger.py -d workspace/cpp_e2e_logging_cft_0/0.ledger/ | grep "2\.662"
+        2.662 89145f455cb3e0854052232078989faf083237dae354180ca9942b1821f60c5d
 
-    {'cert': '-----BEGIN CERTIFICATE-----\n'
-            'MIIBzjCCAVSgAwIBAgIQGR/ue9CFspRa/g6jSMHFYjAKBggqhkjOPQQDAzAWMRQw\n'
-            'EgYDVQQDDAtDQ0YgTmV0d29yazAeFw0yMjAxMjgxNjAzNDZaFw0yMjAxMjkxNjAz\n'
-            'NDVaMBMxETAPBgNVBAMMCENDRiBOb2RlMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE\n'
-            'wsdpHLNw7xso/g71XzlQjoITiTBOef8gCayOiPJh/W2YfzreOawzD6gVQPSI+iPg\n'
-            'ZPc6smFhtV5bP/WZ2KW0K9Pn+OIjm/jMU5+s3rSgts50cRjlA/k81bUI88dzQzx9\n'
-            'o2owaDAJBgNVHRMEAjAAMB0GA1UdDgQWBBQgtPwYar54AQ4UL0RImVsm6wQQpzAf\n'
-            'BgNVHSMEGDAWgBS2ngksRlVPvwDcLhN57VV+j2WyBTAbBgNVHREEFDAShwR/AAAB\n'
-            'hwR/ZEUlhwR/AAACMAoGCCqGSM49BAMDA2gAMGUCMQDq54yS4Bmfwfcikpy2yL2+\n'
-            'GFemyqNKXheFExRVt2edxVgId+uvIBGjrJEqf6zS/dsCMHVnBCLYRgxpamFkX1BF\n'
-            'BDkVitfTOdYfUDWGV3MIMNdbam9BDNxG4q6XtQr4eb3jqg==\n'
-            '-----END CERTIFICATE-----\n',
-    'leaf_components': {'commit_evidence': 'ce:2.643:55dbbbf04b71c6dcc01dd9d1c0012a6a959aef907398f7e183cc8913c82468d8',
-                        'write_set_digest': 'd0c521504ce2be6b4c22db8e99b14fc475b51bc91224181c75c64aa2cef72b83'},
-    'node_id': '7dfbb9a56ebe8b43c833b34cb227153ef61e4890187fe6164022255dec8f9646',
-    'proof': [{'left': '00a771baf15468ed05d6ef8614b3669fcde6809314650061d64281b5d4faf9ec'},
-              {'left': 'a9c8a36d01aa9dfbfb74c6f6a2cef2efcbd92bd6dfd1f7440302ad5ac7be1577'},
-              {'right': '8e238d95767e6ffe4b20e1a5e93dd7b926cbd86caa83698584a16ad2dd7d60b8'},
-              {'left': 'd4717996ae906cdce0ac47257a4a9445c58474c2f40811e575f804506e5fee9f'},
-              {'left': 'c1c206c4670bd2adee821013695d593f5983ca0994ae74630528da5fb6642205'}],
-    'signature': 'MGQCMHrnwS123oHqUKuQRPsQ+gk6WVutixeOvxcXX79InBgPOxJCoScCOlBnK4UYyLzangIwW9k7IZkMgG076qVv5zcx7OuKb7bKyii1yP1rcakeGVvVMwISeE+Fr3BnFfPD66Df'}
+Denounce an invalid recovery
+----------------------------
 
-Note that receipts over signature transactions are a special case, for example:
+A user having executed a number of transactions, and fetched receipts for them, can denounce a recovery that removes one or more of these transactions.
+This may occur if the consortium approves a catastrophic recovery from a truncated ledger.
 
-.. code-block:: bash
+This user can either:
 
-    $ curl -X GET "https://<ccf-node-address>/app/receipt?transaction_id=2.35" --cacert service_cert.pem --key user0_privk.pem --cert user0_cert.pem
-
-    {'leaf': 'fdc977c49d3a8bdf986176984e9432a09b5f6fe0c04e0b1c2dd177c03fdca9ec',
-     'node_id': '06fef62c80b6471c7005c1b114166fd1b0e077845f5ad544ad4eea4fb1d31f78',
-     'proof': [],
-     'signature': 'MGQCMACklXqd0ge+gBS8WzewrwtwzRzSKy+bfrLZVx0YHmQvtsqs7dExYESsqrUrB8ZcKwIwS3NPKaGq0w2QlPlCqUC3vQoQvhcZgPHPu2GkFYa7JEOdSKLknNPHaCRv80zx2RGF',
-     'cert': '<PEM string>'}
-
-The proof is empty, and the 'leaf' field is set to the value being signed, which is the root of the Merkle Tree covering all transactions until the signature.
-This allows writing verification code that handles both regular and signature receipts similarly, but it is worth noting that the 'leaf' value for signatures is not
-the digest of the signature transaction itself.
-
-Verifying a receipt involves the following steps:
-
-  - Digest ``commit_evidence`` to produce ``commit_evidence_digest`` and ``claims`` to produce ``claims_digest`` when applicable.
-  - If the receipt contains ``leaf_components``, digest the concatenation ``write_set_digest + commit_evidence_digest + claims_digest`` to produce ``leaf``.
-  - Combine ``leaf`` with the successive elements in ``proof`` to calculate the value of ``root``. See :py:func:`ccf.receipt.root` for a reference implementation.
-  - Verify ``signature`` over the ``root`` using the certificate of the node identified by ``node_id`` and ``cert``. See :py:func:`ccf.receipt.verify` for a reference implementation.
-  - Check that the certificate ``cert`` of ``node_id`` used to sign the receipt is endorsed by the CCF network. See :py:func:`ccf.receipt.check_endorsement` for a reference implementation.
+1. Query the new service for receipts at the same :term:`Transaction ID` values.  If those transactions come back as `INVALID`, because they were truncated, the signature over the old receipts is proof of truncation. If they come back as `COMMITTED` with a different root, the existence of two signatures over different roots at the same TxID is proof that a fork happened.
+2. Scan the ledger, for example using the :doc:`/audit/python_library`, and find the transactions for which they have receipts. The `write_set_digest` in the receipts should match the digest of the serialised :term:`Write Set` in the ledger on disk. If it does not, the signature over the receipt is proof of a fork. See :ref:`audit/receipts:Check for transaction inclusion` for an example.

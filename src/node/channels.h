@@ -7,6 +7,7 @@
 #include "ccf/crypto/key_pair.h"
 #include "ccf/crypto/symmetric_key.h"
 #include "ccf/crypto/verifier.h"
+#include "ccf/ds/ccf_exception.h"
 #include "ccf/ds/hex.h"
 #include "ccf/ds/logger.h"
 #include "ccf/entity_id.h"
@@ -366,7 +367,7 @@ namespace ccf
       else if (status.check(INITIATED))
       {
         const auto time_since_initiated =
-          enclave::get_enclave_time() - last_initiation_time;
+          ccf::get_enclave_time() - last_initiation_time;
         if (time_since_initiated >= min_gap_between_initiation_attempts)
         {
           // If this node attempts to initiate too early when the peer node
@@ -833,7 +834,7 @@ namespace ccf
       // status.expect(INACTIVE);
       status.advance(INITIATED);
 
-      last_initiation_time = enclave::get_enclave_time();
+      last_initiation_time = ccf::get_enclave_time();
 
       send_key_exchange_init();
     }

@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 License.
 #include "driver.h"
 
-#include "ds/hash.h"
+#include "ccf/ds/hash.h"
 
 #include <cassert>
 #include <fstream>
@@ -140,6 +140,28 @@ int main(int argc, char** argv)
       case shash("assert_state_sync"):
         assert(items.size() == 1);
         driver->assert_state_sync();
+        break;
+      case shash("assert_is_backup"):
+        assert(items.size() == 2);
+        driver->assert_is_backup(items[1]);
+        break;
+      case shash("assert_is_primary"):
+        assert(items.size() == 2);
+        driver->assert_is_primary(items[1]);
+        break;
+      case shash("assert_commit_idx"):
+        assert(items.size() == 3);
+        driver->assert_commit_idx(items[1], items[2]);
+        break;
+      case shash("replicate_new_configuration"):
+        assert(items.size() >= 3);
+        items.erase(items.begin());
+        driver->replicate_new_configuration(
+          items[0], {std::next(items.begin()), items.end()});
+        break;
+      case shash("create_new_node"):
+        assert(items.size() == 2);
+        driver->create_new_node(items[1]);
         break;
       case shash(""):
         // Ignore empty lines

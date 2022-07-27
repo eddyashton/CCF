@@ -123,6 +123,7 @@ def run(
     uncommitted=False,
     insecure_skip_verification=False,
     tables_format_rules=None,
+    digests_only=None,
 ):
 
     # Extend and compile rules
@@ -142,11 +143,12 @@ def run(
             dump_entry(snapshot, table_filter, tables_format_rules)
         return True
     else:
+        validator = (
+            ccf.ledger.LedgerValidator() if not insecure_skip_verification else None
+        )
         ledger_paths = paths
         ledger = ccf.ledger.Ledger(
-            ledger_paths,
-            committed_only=not uncommitted,
-            insecure_skip_verification=insecure_skip_verification,
+            ledger_paths, committed_only=not uncommitted, validator=validator
         )
 
         LOG.info(f"Reading ledger from {ledger_paths}")
@@ -158,7 +160,12 @@ def run(
                     f"chunk {chunk.filename()} ({'' if chunk.is_committed() else 'un'}committed)"
                 )
                 for transaction in chunk:
-                    dump_entry(transaction, table_filter, tables_format_rules)
+                    if digests_only:
+                        print(
+                            f"{transaction.gcm_header.view}.{transaction.gcm_header.seqno} {transaction.get_write_set_digest().hex()}"
+                        )
+                    else:
+                        dump_entry(transaction, table_filter, tables_format_rules)
         except Exception as e:
             LOG.exception(f"Error parsing ledger: {e}")
             has_error = True
@@ -166,11 +173,11 @@ def run(
             LOG.success("Ledger verification complete")
             has_error = False
         finally:
-            if insecure_skip_verification:
+            if not validator:
                 LOG.warning("Skipped ledger integrity verification")
             else:
                 LOG.info(
-                    f"Found {ledger.signature_count()} signatures, and verified until {ledger.last_verified_txid()}"
+                    f"Found {validator.signature_count} signatures, and verified until {validator.last_verified_txid()}"
                 )
         return not has_error
 
@@ -200,6 +207,12 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
+        "-d",
+        "--digests-only",
+        help="Only print transaction digests",
+        action="store_true",
+    )
+    parser.add_argument(
         "-t",
         "--tables",
         help="Regex filter for tables to display",
@@ -223,5 +236,7 @@ if __name__ == "__main__":
         args.tables,
         args.uncommitted,
         args.insecure_skip_verification,
+        None,
+        args.digests_only,
     ):
         sys.exit(1)

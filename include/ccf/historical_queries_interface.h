@@ -2,49 +2,36 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "ccf/kv/read_only_store.h"
 #include "ccf/node_subsystem_interface.h"
 #include "ccf/receipt.h"
 #include "ccf/seq_no_collection.h"
-#include "ccf/store_ptr.h"
 #include "ccf/tx_id.h"
 
 #include <chrono>
 #include <memory>
-
-namespace ccf
-{
-  // This is an opaque, incomplete type, but can be summarised to a
-  // JSON-serialisable form by the functions below
-  struct TxReceipt;
-  using TxReceiptPtr = std::shared_ptr<TxReceipt>;
-
-  ccf::Receipt describe_receipt(
-    const TxReceipt& receipt, bool include_root = false);
-  ccf::Receipt describe_receipt(
-    const TxReceiptPtr& receipt_ptr, bool include_root = false);
-}
 
 namespace ccf::historical
 {
   struct State
   {
     /// Read-only historical store at transaction_id
-    kv::StorePtr store = nullptr;
+    kv::ReadOnlyStorePtr store = nullptr;
     /// Receipt for ledger entry at transaction_id
-    TxReceiptPtr receipt = nullptr;
+    TxReceiptImplPtr receipt = nullptr;
     /// View and Sequence Number for the State
     ccf::TxID transaction_id;
 
     State(
-      const kv::StorePtr& store_,
-      const TxReceiptPtr& receipt_,
+      const kv::ReadOnlyStorePtr& store_,
+      const TxReceiptImplPtr& receipt_,
       const ccf::TxID& transaction_id_) :
       store(store_),
       receipt(receipt_),
       transaction_id(transaction_id_)
     {}
 
-    bool operator==(const State& other)
+    bool operator==(const State& other) const
     {
       return store == other.store && receipt == other.receipt &&
         transaction_id == other.transaction_id;
@@ -98,7 +85,7 @@ namespace ccf::historical
      * is equivalent to get_store_at(handle, seqno, seqno), but returns nullptr
      * if the state is currently unavailable.
      */
-    virtual kv::StorePtr get_store_at(
+    virtual kv::ReadOnlyStorePtr get_store_at(
       RequestHandle handle,
       ccf::SeqNo seqno,
       ExpiryDuration seconds_until_expiry) = 0;
@@ -106,7 +93,7 @@ namespace ccf::historical
     /** Same as @c get_store_at but uses default expiry value.
      * @see get_store_at
      */
-    virtual kv::StorePtr get_store_at(
+    virtual kv::ReadOnlyStorePtr get_store_at(
       RequestHandle handle, ccf::SeqNo seqno) = 0;
 
     /** Retrieve a full state at a given seqno, including the Store, the TxID
@@ -140,7 +127,7 @@ namespace ccf::historical
      * vector will be of length (end_seqno - start_seqno + 1) and will contain
      * no nullptrs.
      */
-    virtual std::vector<kv::StorePtr> get_store_range(
+    virtual std::vector<kv::ReadOnlyStorePtr> get_store_range(
       RequestHandle handle,
       ccf::SeqNo start_seqno,
       ccf::SeqNo end_seqno,
@@ -149,7 +136,7 @@ namespace ccf::historical
     /** Same as @c get_store_range but uses default expiry value.
      * @see get_store_range
      */
-    virtual std::vector<kv::StorePtr> get_store_range(
+    virtual std::vector<kv::ReadOnlyStorePtr> get_store_range(
       RequestHandle handle, ccf::SeqNo start_seqno, ccf::SeqNo end_seqno) = 0;
 
     /** Retrieve a range of states at the given indices, including the Store,
@@ -170,11 +157,11 @@ namespace ccf::historical
 
     /** Retrieve stores for a set of given indices.
      */
-    virtual std::vector<kv::StorePtr> get_stores_for(
+    virtual std::vector<kv::ReadOnlyStorePtr> get_stores_for(
       RequestHandle handle,
       const SeqNoCollection& seqnos,
       ExpiryDuration seconds_until_expiry) = 0;
-    virtual std::vector<kv::StorePtr> get_stores_for(
+    virtual std::vector<kv::ReadOnlyStorePtr> get_stores_for(
       RequestHandle handle, const SeqNoCollection& seqnos) = 0;
 
     /** Retrieve states for a set of given indices.
