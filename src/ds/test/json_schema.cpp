@@ -29,107 +29,62 @@ struct Bar : public Bing
 // DECLARE_JSON_REQUIRED_FIELDS(Bar, a);
 // DECLARE_JSON_OPTIONAL_FIELDS(Bar, b, c);
 
-namespace serde_tags
+struct JsonSerdeBehaviour
 {
-  struct AlwaysRequired
-  {};
+  using Flags = uint8_t;
 
-  struct FullyOptional
-  {};
-}
+  static constexpr Flags omit_write_if_default = 1 << 0;
+  static constexpr Flags allow_read_if_missing = 1 << 1;
 
-namespace serde_traits
-{
-  template <typename T>
-  struct OmitWriteIfDefault : public std::false_type
-  {};
+  static constexpr Flags always_required = 0;
+  static constexpr Flags fully_optional =
+    omit_write_if_default | allow_read_if_missing;
+};
 
-  template <typename T>
-  struct AcceptReadIfMissing : public std::false_type
-  {};
+#define CCF_JSON_REQUIRED(x) JsonSerdeBehaviour::always_required, x
+#define CCF_JSON_OPTIONAL(x) JsonSerdeBehaviour::fully_optional, x
 
-  template <>
-  struct OmitWriteIfDefault<serde_tags::FullyOptional> : public std::true_type
-  {};
-
-  template <>
-  struct AcceptReadIfMissing<serde_tags::FullyOptional> : public std::true_type
-  {};
-}
-// static constexpr SerdeBehaviour AlwaysRequired{always_required};
-
-// static constexpr SerdeBehaviour OmitWriteIfDefault{omit_write_if_default};
-
-// static constexpr SerdeBehaviour
-// AcceptReadIfMissing{accept_read_if_missing};
-
-//   omit_write_if_default | accept_read_if_missing;
-// static constexpr SerdeBehaviour FullOptional{fully_optional};
-
-#define CCF_JSON_REQUIRED(x) serde_tags::AlwaysRequired, x
-#define CCF_JSON_OPTIONAL(x) serde_tags::FullyOptional, x
-
-// #define CCF_JSON_DONT_WRITE_DEFAULT(x) OmitWriteIfDefault, x
-// #define CCF_JSON_ALLOW_MISSING(x) AcceptReadIfMissing, x
-
-// // TODO: Flag needs to be something like custom_op_for_to_json
-// // TODO: Can these static constexpr structs instead be types?
-
-// #define CCF_JSON_CUSTOM_TO_JSON(x) serde_tags::CustomToJson, x
+#define CCF_JSON_OMIT_DEFAULT(x) JsonSerdeBehaviour::omit_write_if_default, x
+#define CCF_JSON_ALLOW_MISSING(x) JsonSerdeBehaviour::allow_read_if_missing, x
 
 ///////////////////////////////////////////////////////////////////////////////
 // CCF_TO_JSON
-#define CCF_TO_JSON_FOR_JSON_NEXT(TYPE, DISPATCH_TAG, FIELD) \
+#define CCF_TO_JSON_FOR_JSON_NEXT(TYPE, FLAGS, FIELD) \
   { \
-    constexpr bool is_field = requires() \
+    if ( \
+      !(FLAGS & JsonSerdeBehaviour::omit_write_if_default) || \
+      (t.FIELD != t_default.FIELD)) \
     { \
-      t.FIELD; \
-    }; \
-    if constexpr (is_field) \
-    { \
-      if ( \
-        (!serde_traits::OmitWriteIfDefault<DISPATCH_TAG>::value) || \
-        (t.FIELD != t_default.FIELD)) \
-      { \
-        j[#FIELD] = t.FIELD; \
-      } \
+      j[#FIELD] = t.FIELD; \
     } \
   }
-#define CCF_TO_JSON_FOR_JSON_FINAL(TYPE, DISPATCH_TAG, FIELD) \
-  CCF_TO_JSON_FOR_JSON_NEXT(TYPE, DISPATCH_TAG, FIELD)
+#define CCF_TO_JSON_FOR_JSON_FINAL(TYPE, FLAGS, FIELD) \
+  CCF_TO_JSON_FOR_JSON_NEXT(TYPE, FLAGS, FIELD)
 ///////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////
 // CCF_FROM_JSON
-#define CCF_FROM_JSON_FOR_JSON_NEXT(TYPE, DISPATCH_TAG, FIELD) \
+#define CCF_FROM_JSON_FOR_JSON_NEXT(TYPE, FLAGS, FIELD) \
   { \
-    constexpr bool is_field = requires() \
+    const auto it = j.find(#FIELD); \
+    if ( \
+      it == j.end() && (!(FLAGS & JsonSerdeBehaviour::allow_read_if_missing))) \
     { \
-      t.FIELD; \
-    }; \
-    if constexpr (is_field) \
+      throw JsonParseError( \
+        "Missing required field '" #FIELD "' in object: " + j.dump()); \
+    } \
+    try \
     { \
-      const auto it = j.find(#FIELD); \
-      if ( \
-        it == j.end() && \
-        (!serde_traits::AcceptReadIfMissing<DISPATCH_TAG>::value) == 0) \
-      { \
-        throw JsonParseError( \
-          "Missing required field '" #FIELD "' in object: " + j.dump()); \
-      } \
-      try \
-      { \
-        t.FIELD = it->get<decltype(TYPE::FIELD)>(); \
-      } \
-      catch (JsonParseError & jpe) \
-      { \
-        jpe.pointer_elements.push_back(#FIELD); \
-        throw; \
-      } \
+      t.FIELD = it->get<decltype(TYPE::FIELD)>(); \
+    } \
+    catch (JsonParseError & jpe) \
+    { \
+      jpe.pointer_elements.push_back(#FIELD); \
+      throw; \
     } \
   }
-#define CCF_FROM_JSON_FOR_JSON_FINAL(TYPE, BEHAVIOUR, FIELD) \
-  CCF_FROM_JSON_FOR_JSON_NEXT(TYPE, BEHAVIOUR, FIELD)
+#define CCF_FROM_JSON_FOR_JSON_FINAL(TYPE, FLAGS, FIELD) \
+  CCF_FROM_JSON_FOR_JSON_NEXT(TYPE, FLAGS, FIELD)
 ///////////////////////////////////////////////////////////////////////////////
 
 #define CCF_JSON_TYPE_(TYPE, BASE, ...) \
