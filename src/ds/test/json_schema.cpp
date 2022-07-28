@@ -31,11 +31,13 @@ struct JsonSerdeBehaviour
 // #define CCF_JSON_DONT_WRITE_DEFAULT(x) OmitWriteIfDefault, x
 // #define CCF_JSON_ALLOW_MISSING(x) AcceptReadIfMissing, x
 
-#define CCF_JSON_REQUIRED(x) JsonSerdeBehaviour::always_required, x
-#define CCF_JSON_OPTIONAL(x) JsonSerdeBehaviour::fully_optional, x
+#define CCF_JSON_REQUIRED(x) JsonSerdeBehaviour::always_required, x, #x
+#define CCF_JSON_OPTIONAL(x) JsonSerdeBehaviour::fully_optional, x, #x
 
-#define CCF_JSON_OMIT_DEFAULT(x) JsonSerdeBehaviour::omit_write_if_default, x
-#define CCF_JSON_ALLOW_MISSING(x) JsonSerdeBehaviour::allow_read_if_missing, x
+#define CCF_JSON_OMIT_DEFAULT(x) \
+  JsonSerdeBehaviour::omit_write_if_default, x, #x
+#define CCF_JSON_ALLOW_MISSING(x) \
+  JsonSerdeBehaviour::allow_read_if_missing, x, #x
 
 template <typename Base, typename T>
 void try_base_to_json(nlohmann::json& j, const T& t)
