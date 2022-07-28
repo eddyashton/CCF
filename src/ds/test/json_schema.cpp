@@ -14,6 +14,10 @@ void to_json(nlohmann::json& j, const Bing& b)
 {
   std::cout << "Trying to serialise base Bing" << std::endl;
 }
+void from_json(const nlohmann::json& j, Bing& b)
+{
+  std::cout << "Trying to deserialise base Bing" << std::endl;
+}
 
 struct Bar : public Bing
 {
@@ -27,18 +31,10 @@ struct Bar : public Bing
 
 namespace serde_tags
 {
-  struct BaseSerdeBehaviour
-  {
-    static void op(void* a, void* b)
-    {
-      throw std::logic_error("Unimplemented");
-    };
-  };
-
-  struct AlwaysRequired : public BaseSerdeBehaviour
+  struct AlwaysRequired
   {};
 
-  struct FullyOptional : public BaseSerdeBehaviour
+  struct FullyOptional
   {};
 }
 
@@ -72,7 +68,6 @@ namespace serde_traits
 
 #define CCF_JSON_REQUIRED(x) serde_tags::AlwaysRequired, x
 #define CCF_JSON_OPTIONAL(x) serde_tags::FullyOptional, x
-#define CCF_JSON_BASE_CLASS(B) B, 0
 
 // #define CCF_JSON_DONT_WRITE_DEFAULT(x) OmitWriteIfDefault, x
 // #define CCF_JSON_ALLOW_MISSING(x) AcceptReadIfMissing, x
@@ -82,26 +77,10 @@ namespace serde_traits
 
 // #define CCF_JSON_CUSTOM_TO_JSON(x) serde_tags::CustomToJson, x
 
-template <typename Base, typename T>
-void try_base_to_json(nlohmann::json& j, const T& t)
-{
-  constexpr bool is_base_of = std::is_base_of_v<Base, T>;
-  constexpr bool has_to_json = requires(const Base& bt)
-  {
-    to_json(j, bt);
-  };
-
-  if constexpr (is_base_of && has_to_json)
-  {
-    to_json(j, (const Base&)t);
-  }
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 // CCF_TO_JSON
 #define CCF_TO_JSON_FOR_JSON_NEXT(TYPE, DISPATCH_TAG, FIELD) \
   { \
-    try_base_to_json<DISPATCH_TAG>(j, t); \
     constexpr bool is_field = requires() \
     { \
       t.FIELD; \
@@ -153,9 +132,13 @@ void try_base_to_json(nlohmann::json& j, const T& t)
   CCF_FROM_JSON_FOR_JSON_NEXT(TYPE, BEHAVIOUR, FIELD)
 ///////////////////////////////////////////////////////////////////////////////
 
-#define CCF_JSON_TYPE_(TYPE, ...) \
+#define CCF_JSON_TYPE_(TYPE, BASE, ...) \
   inline void to_json(nlohmann::json& j, const TYPE& t) \
   { \
+    if constexpr (!std::is_same_v<BASE, TYPE>) \
+    { \
+      to_json(j, static_cast<const BASE&>(t)); \
+    } \
     if (!j.is_object()) \
     { \
       j = nlohmann::json::object(); \
@@ -165,6 +148,10 @@ void try_base_to_json(nlohmann::json& j, const T& t)
   } \
   inline void from_json(const nlohmann::json& j, TYPE& t) \
   { \
+    if constexpr (!std::is_same_v<BASE, TYPE>) \
+    { \
+      from_json(j, static_cast<BASE&>(t)); \
+    } \
     if (!j.is_object()) \
     { \
       throw JsonParseError("Expected object, found: " + j.dump()); \
@@ -172,14 +159,12 @@ void try_base_to_json(nlohmann::json& j, const T& t)
     _FOR_JSON_COUNT_NN(__VA_ARGS__)(POP2)(CCF_FROM_JSON, TYPE, ##__VA_ARGS__) \
   }
 
-#define CCF_JSON_TYPE(TYPE, ...) CCF_JSON_TYPE_(TYPE, __VA_ARGS__)
+#define CCF_JSON_TYPE(TYPE, ...) CCF_JSON_TYPE_(TYPE, TYPE, __VA_ARGS__)
+#define CCF_JSON_TYPE_WITH_BASE(TYPE, BASE, ...) \
+  CCF_JSON_TYPE_(TYPE, BASE, __VA_ARGS__)
 
-CCF_JSON_TYPE(
-  Bar,
-  // CCF_JSON_BASE_CLASS(Bing),
-  CCF_JSON_REQUIRED(a),
-  CCF_JSON_OPTIONAL(b),
-  CCF_JSON_OPTIONAL(c))
+CCF_JSON_TYPE_WITH_BASE(
+  Bar, Bing, CCF_JSON_REQUIRED(a), CCF_JSON_OPTIONAL(b), CCF_JSON_OPTIONAL(c))
 
 TEST_CASE("foo")
 {
