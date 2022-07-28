@@ -14,6 +14,10 @@ void to_json(nlohmann::json& j, const Bing& b)
 {
   std::cout << "Trying to serialise base Bing" << std::endl;
 }
+void from_json(const nlohmann::json& j, Bing& b)
+{
+  std::cout << "Trying to deserialise base Bing" << std::endl;
+}
 
 struct Bar : public Bing
 {
@@ -27,18 +31,10 @@ struct Bar : public Bing
 
 namespace serde_tags
 {
-  struct BaseSerdeBehaviour
-  {
-    static void op(void* a, void* b)
-    {
-      throw std::logic_error("Unimplemented");
-    };
-  };
-
-  struct AlwaysRequired : public BaseSerdeBehaviour
+  struct AlwaysRequired
   {};
 
-  struct FullyOptional : public BaseSerdeBehaviour
+  struct FullyOptional
   {};
 }
 
