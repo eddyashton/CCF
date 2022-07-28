@@ -170,12 +170,20 @@ struct JsonSerdeBehaviour
   }
 
 #define CCF_JSON_REQUIRED(x) JsonSerdeBehaviour::always_required, x, #x
+#define CCF_JSON_REQUIRED_RENAME(x, j_field) \
+  JsonSerdeBehaviour::always_required, x, j_field
 #define CCF_JSON_OPTIONAL(x) JsonSerdeBehaviour::fully_optional, x, #x
+#define CCF_JSON_OPTIONAL_RENAME(x, j_field) \
+  JsonSerdeBehaviour::fully_optional, x, j_field
 
 #define CCF_JSON_OMIT_DEFAULT(x) \
   JsonSerdeBehaviour::omit_write_if_default, x, #x
+#define CCF_JSON_OMIT_DEFAULT_RENAME(x, j_field) \
+  JsonSerdeBehaviour::omit_write_if_default, x, x
 #define CCF_JSON_ALLOW_MISSING(x) \
   JsonSerdeBehaviour::allow_read_if_missing, x, #x
+#define CCF_JSON_ALLOW_MISSING_RENAME(x, j_field) \
+  JsonSerdeBehaviour::allow_read_if_missing, x, x
 
 #define CCF_JSON_TYPE(TYPE, ...) CCF_JSON_TYPE_(TYPE, TYPE, __VA_ARGS__)
 #define CCF_JSON_TYPE_WITH_BASE(TYPE, BASE, ...) \
@@ -715,70 +723,71 @@ TEST_CASE("example validation")
   }
 }
 
-// namespace renamed
-// {
-//   struct Foo
-//   {
-//     size_t x;
-//     size_t y;
-//     size_t z;
+namespace renamed
+{
+  struct Foo
+  {
+    size_t x = {};
+    size_t y = {};
+    size_t z = {};
 
-//     size_t a;
-//     size_t b;
-//     size_t c;
-//   };
-//   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(Foo)
-//   DECLARE_JSON_REQUIRED_FIELDS_WITH_RENAMES(
-//     Foo, x, "X", y, "SOMETHING_ELSE", z, "z-z!?(),;")
-//   DECLARE_JSON_OPTIONAL_FIELDS_WITH_RENAMES(
-//     Foo, a, "A", b, "OTHER_NAME", c, "c")
-// }
+    size_t a = {};
+    size_t b = {};
+    size_t c = {};
+  };
+  CCF_JSON_TYPE(
+    Foo,
+    CCF_JSON_REQUIRED_RENAME(x, "X"),
+    CCF_JSON_REQUIRED_RENAME(y, "SOMETHING_ELSE"),
+    CCF_JSON_REQUIRED_RENAME(z, "z-z!?(),;"),
+    CCF_JSON_OPTIONAL_RENAME(a, "A"),
+    CCF_JSON_OPTIONAL_RENAME(b, "OTHER_NAME"),
+    CCF_JSON_OPTIONAL_RENAME(c, "c"))
+}
 
-// TEST_CASE("JSON with different field names")
-// {
-//   const auto schema = ds::json::build_schema<renamed::Foo>("renamed::Foo");
+TEST_CASE("JSON with different field names")
+{
+  const auto schema = ds::json::build_schema<renamed::Foo>("renamed::Foo");
 
-//   const auto& properties = schema["properties"];
-//   const auto& required = schema["required"];
+  const auto& properties = schema["properties"];
+  const auto& required = schema["required"];
 
-//   std::vector<char const*> required_json_fields{
-//     "X", "SOMETHING_ELSE", "z-z!?(),;"};
-//   for (const auto s : required_json_fields)
-//   {
-//     REQUIRE(properties.find(s) != properties.end());
-//     REQUIRE(std::find(required.begin(), required.end(), s) !=
-//     required.end());
-//   }
+  std::vector<char const*> required_json_fields{
+    "X", "SOMETHING_ELSE", "z-z!?(),;"};
+  for (const auto s : required_json_fields)
+  {
+    REQUIRE(properties.find(s) != properties.end());
+    REQUIRE(std::find(required.begin(), required.end(), s) != required.end());
+  }
 
-//   std::vector<char const*> optional_json_fields{"A", "OTHER_NAME", "c"};
-//   for (const auto s : optional_json_fields)
-//   {
-//     REQUIRE(properties.find(s) != properties.end());
-//     REQUIRE(std::find(required.begin(), required.end(), s) ==
-//     required.end());
-//   }
+  std::vector<char const*> optional_json_fields{"A", "OTHER_NAME", "c"};
+  for (const auto s : optional_json_fields)
+  {
+    REQUIRE(properties.find(s) != properties.end());
+    REQUIRE(std::find(required.begin(), required.end(), s) == required.end());
+  }
 
-//   renamed::Foo foo;
-//   foo.x = 1;
-//   foo.y = 2;
-//   foo.z = 3;
-//   foo.a = 4;
-//   foo.b = 5;
-//   foo.c = 6;
+  renamed::Foo foo;
+  foo.x = 1;
+  foo.y = 2;
+  foo.z = 3;
+  foo.a = 4;
+  foo.b = 5;
+  foo.c = 6;
 
-//   const nlohmann::json j = foo;
-//   REQUIRE(j["X"] == foo.x);
-//   REQUIRE(j["SOMETHING_ELSE"] == foo.y);
-//   REQUIRE(j["z-z!?(),;"] == foo.z);
-//   REQUIRE(j["A"] == foo.a);
-//   REQUIRE(j["OTHER_NAME"] == foo.b);
-//   REQUIRE(j["c"] == foo.c);
+  const nlohmann::json j = foo;
+  REQUIRE(j["X"] == foo.x);
+  REQUIRE(j["SOMETHING_ELSE"] == foo.y);
+  REQUIRE(j["z-z!?(),;"] == foo.z);
+  REQUIRE(j["A"] == foo.a);
+  REQUIRE(j["OTHER_NAME"] == foo.b);
+  REQUIRE(j["c"] == foo.c);
 
-//   const auto foo2 = j.get<renamed::Foo>();
-//   REQUIRE(foo2.x == foo.x);
-//   REQUIRE(foo2.y == foo.y);
-//   REQUIRE(foo2.z == foo.z);
-//   REQUIRE(foo2.a == foo.a);
-//   REQUIRE(foo2.b == foo.b);
-//   REQUIRE(foo2.c == foo.c);
-// }
+  const auto foo2 = j.get<renamed::Foo>();
+  REQUIRE(foo2.x == foo.x);
+  REQUIRE(foo2.y == foo.y);
+  REQUIRE(foo2.z == foo.z);
+  REQUIRE(foo2.a == foo.a);
+  REQUIRE(foo2.b == foo.b);
+  REQUIRE(foo2.c == foo.c);
+}
