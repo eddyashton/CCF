@@ -7,7 +7,15 @@
 #include <nlohmann/json.hpp>
 #include <vector>
 
-struct Bar
+struct Bing
+{};
+
+void to_json(nlohmann::json& j, const Bing& b)
+{
+  std::cout << "Trying to serialise base Bing" << std::endl;
+}
+
+struct Bar : public Bing
 {
   size_t a = {};
   std::string b = {};
@@ -17,12 +25,50 @@ struct Bar
 // DECLARE_JSON_REQUIRED_FIELDS(Bar, a);
 // DECLARE_JSON_OPTIONAL_FIELDS(Bar, b, c);
 
-using SerdeBehaviourFlags = uint8_t;
+namespace serde_tags
+{
+  struct BaseSerdeBehaviour
+  {
+    static void op(void* a, void* b)
+    {
+      throw std::logic_error("Unimplemented");
+    };
+  };
 
-static constexpr SerdeBehaviourFlags always_required = 0;
+  struct AlwaysRequired : public BaseSerdeBehaviour
+  {};
 
-static constexpr SerdeBehaviourFlags omit_write_if_default = 1 << 0;
-static constexpr SerdeBehaviourFlags accept_read_if_missing = 1 << 1;
+  struct FullyOptional : public BaseSerdeBehaviour
+  {};
+}
+
+namespace serde_traits
+{
+  template <typename T>
+  struct OmitWriteIfDefault : public std::false_type
+  {};
+
+  template <typename T>
+  struct AcceptReadIfMissing : public std::false_type
+  {};
+
+  template <>
+  struct OmitWriteIfDefault<serde_tags::FullyOptional> : public std::true_type
+  {};
+
+  template <>
+  struct AcceptReadIfMissing<serde_tags::FullyOptional> : public std::true_type
+  {};
+}
+// static constexpr SerdeBehaviour AlwaysRequired{always_required};
+
+// static constexpr SerdeBehaviour OmitWriteIfDefault{omit_write_if_default};
+
+// static constexpr SerdeBehaviour
+// AcceptReadIfMissing{accept_read_if_missing};
+
+//   omit_write_if_default | accept_read_if_missing;
+// static constexpr SerdeBehaviour FullOptional{fully_optional};
 
 j["b"] = "Test";
 j["c"] = 100;
@@ -32,11 +78,28 @@ REQUIRE(bar_1.b == j["b"].get<std::string>());
 REQUIRE(bar_1.c == j["c"]);
 }
 
-#define CCF_JSON_REQUIRED(x) always_required, x
-#define CCF_JSON_OPTIONAL(x) fully_optional, x
+// #define CCF_JSON_DONT_WRITE_DEFAULT(x) OmitWriteIfDefault, x
+// #define CCF_JSON_ALLOW_MISSING(x) AcceptReadIfMissing, x
 
-#define CCF_JSON_DONT_WRITE_DEFAULT(x) omit_write_if_default, x
-#define CCF_JSON_ALLOW_MISSING(x) accept_read_if_missing, x
+// // TODO: Flag needs to be something like custom_op_for_to_json
+// // TODO: Can these static constexpr structs instead be types?
+
+// #define CCF_JSON_CUSTOM_TO_JSON(x) serde_tags::CustomToJson, x
+
+template <typename Base, typename T>
+void try_base_to_json(nlohmann::json& j, const T& t)
+{
+  constexpr bool is_base_of = std::is_base_of_v<Base, T>;
+  constexpr bool has_to_json = requires(const Base& bt)
+  {
+    to_json(j, bt);
+  };
+
+  if constexpr (is_base_of && has_to_json)
+  {
+    to_json(j, (const Base&)t);
+  }
+}
 
 TEST_CASE("macro parser generation with base classes")
 {
