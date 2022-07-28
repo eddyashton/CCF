@@ -29,58 +29,35 @@ struct Bar : public Bing
 // DECLARE_JSON_REQUIRED_FIELDS(Bar, a);
 // DECLARE_JSON_OPTIONAL_FIELDS(Bar, b, c);
 
-namespace serde_tags
+struct JsonSerdeBehaviour
 {
-  struct AlwaysRequired
-  {};
+  using Flags = uint8_t;
 
-  struct FullyOptional
-  {};
-}
+  static constexpr Flags omit_write_if_default = 1 << 0;
+  static constexpr Flags allow_read_if_missing = 1 << 1;
 
-namespace serde_traits
-{
-  template <typename T>
-  struct OmitWriteIfDefault : public std::false_type
-  {};
+  // static constexpr SerdeBehaviour
+  // AcceptReadIfMissing{accept_read_if_missing};
 
-  template <typename T>
-  struct AcceptReadIfMissing : public std::false_type
-  {};
+  //   omit_write_if_default | accept_read_if_missing;
+  // static constexpr SerdeBehaviour FullOptional{fully_optional};
 
-  template <>
-  struct OmitWriteIfDefault<serde_tags::FullyOptional> : public std::true_type
-  {};
-
-  template <>
-  struct AcceptReadIfMissing<serde_tags::FullyOptional> : public std::true_type
-  {};
-}
-// static constexpr SerdeBehaviour AlwaysRequired{always_required};
-
-// static constexpr SerdeBehaviour OmitWriteIfDefault{omit_write_if_default};
-
-// static constexpr SerdeBehaviour
-// AcceptReadIfMissing{accept_read_if_missing};
-
-//   omit_write_if_default | accept_read_if_missing;
-// static constexpr SerdeBehaviour FullOptional{fully_optional};
-
-j["b"] = "Test";
-j["c"] = 100;
-const Bar bar_1 = j;
-REQUIRE(bar_1.a == j["a"]);
-REQUIRE(bar_1.b == j["b"].get<std::string>());
-REQUIRE(bar_1.c == j["c"]);
+  j["b"] = "Test";
+  j["c"] = 100;
+  const Bar bar_1 = j;
+  REQUIRE(bar_1.a == j["a"]);
+  REQUIRE(bar_1.b == j["b"].get<std::string>());
+  REQUIRE(bar_1.c == j["c"]);
 }
 
 // #define CCF_JSON_DONT_WRITE_DEFAULT(x) OmitWriteIfDefault, x
 // #define CCF_JSON_ALLOW_MISSING(x) AcceptReadIfMissing, x
 
-// // TODO: Flag needs to be something like custom_op_for_to_json
-// // TODO: Can these static constexpr structs instead be types?
+#define CCF_JSON_REQUIRED(x) JsonSerdeBehaviour::always_required, x
+#define CCF_JSON_OPTIONAL(x) JsonSerdeBehaviour::fully_optional, x
 
-// #define CCF_JSON_CUSTOM_TO_JSON(x) serde_tags::CustomToJson, x
+#define CCF_JSON_OMIT_DEFAULT(x) JsonSerdeBehaviour::omit_write_if_default, x
+#define CCF_JSON_ALLOW_MISSING(x) JsonSerdeBehaviour::allow_read_if_missing, x
 
 template <typename Base, typename T>
 void try_base_to_json(nlohmann::json& j, const T& t)
