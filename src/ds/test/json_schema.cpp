@@ -7,28 +7,6 @@
 #include <nlohmann/json.hpp>
 #include <vector>
 
-struct Bing
-{};
-
-void to_json(nlohmann::json& j, const Bing& b)
-{
-  std::cout << "Trying to serialise base Bing" << std::endl;
-}
-void from_json(const nlohmann::json& j, Bing& b)
-{
-  std::cout << "Trying to deserialise base Bing" << std::endl;
-}
-
-struct Bar : public Bing
-{
-  size_t a = {};
-  std::string b = {};
-  size_t c = 100;
-};
-// DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(Bar);
-// DECLARE_JSON_REQUIRED_FIELDS(Bar, a);
-// DECLARE_JSON_OPTIONAL_FIELDS(Bar, b, c);
-
 struct JsonSerdeBehaviour
 {
   using Flags = uint8_t;
