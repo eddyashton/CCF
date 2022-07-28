@@ -21,31 +21,31 @@ struct JsonSerdeBehaviour
 
 ////////////////////////////////////////////////////////////////////////////////
 // CCF_TO_JSON
-#define CCF_TO_JSON_FOR_JSON_NEXT(TYPE, FLAGS, FIELD) \
+#define CCF_TO_JSON_FOR_JSON_NEXT(TYPE, FLAGS, C_FIELD, JSON_FIELD) \
   { \
     if ( \
       ((FLAGS & JsonSerdeBehaviour::omit_write_if_default) == 0) || \
-      (t.FIELD != t_default.FIELD)) \
+      (t.C_FIELD != t_default.C_FIELD)) \
     { \
-      j[#FIELD] = t.FIELD; \
+      j[JSON_FIELD] = t.C_FIELD; \
     } \
   }
 
-#define CCF_TO_JSON_FOR_JSON_FINAL(TYPE, FLAGS, FIELD) \
-  CCF_TO_JSON_FOR_JSON_NEXT(TYPE, FLAGS, FIELD)
+#define CCF_TO_JSON_FOR_JSON_FINAL(TYPE, FLAGS, C_FIELD, JSON_FIELD) \
+  CCF_TO_JSON_FOR_JSON_NEXT(TYPE, FLAGS, C_FIELD, JSON_FIELD)
 ////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
 // CCF_FROM_JSON
-#define CCF_FROM_JSON_FOR_JSON_NEXT(TYPE, FLAGS, FIELD) \
+#define CCF_FROM_JSON_FOR_JSON_NEXT(TYPE, FLAGS, C_FIELD, JSON_FIELD) \
   { \
-    const auto it = j.find(#FIELD); \
+    const auto it = j.find(JSON_FIELD); \
     if (it == j.end()) \
     { \
       if constexpr ((FLAGS & JsonSerdeBehaviour::allow_read_if_missing) == 0) \
       { \
         throw JsonParseError( \
-          "Missing required field '" #FIELD "' in object: " + j.dump()); \
+          "Missing required field '" JSON_FIELD "' in object: " + j.dump()); \
       } \
       else \
       { /* Missing value allowed */ \
@@ -55,50 +55,50 @@ struct JsonSerdeBehaviour
     { \
       try \
       { \
-        t.FIELD = it->get<decltype(TYPE::FIELD)>(); \
+        t.C_FIELD = it->get<decltype(TYPE::C_FIELD)>(); \
       } \
       catch (JsonParseError & jpe) \
       { \
-        jpe.pointer_elements.push_back(#FIELD); \
+        jpe.pointer_elements.push_back(JSON_FIELD); \
         throw; \
       } \
     } \
   }
 
-#define CCF_FROM_JSON_FOR_JSON_FINAL(TYPE, FLAGS, FIELD) \
-  CCF_FROM_JSON_FOR_JSON_NEXT(TYPE, FLAGS, FIELD)
+#define CCF_FROM_JSON_FOR_JSON_FINAL(TYPE, FLAGS, C_FIELD, JSON_FIELD) \
+  CCF_FROM_JSON_FOR_JSON_NEXT(TYPE, FLAGS, C_FIELD, JSON_FIELD)
 ////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
 // CCF_FILL_SCHEMA
-#define CCF_FILL_SCHEMA_FOR_JSON_NEXT(TYPE, FLAGS, FIELD) \
+#define CCF_FILL_SCHEMA_FOR_JSON_NEXT(TYPE, FLAGS, C_FIELD, JSON_FIELD) \
   { \
-    j["properties"][#FIELD] = \
-      ::ds::json::schema_element<decltype(TYPE::FIELD)>(); \
+    j["properties"][JSON_FIELD] = \
+      ::ds::json::schema_element<decltype(TYPE::C_FIELD)>(); \
     if constexpr ((FLAGS & JsonSerdeBehaviour::allow_read_if_missing) == 0) \
     { \
-      j["required"].push_back(#FIELD); \
+      j["required"].push_back(JSON_FIELD); \
     } \
   }
 
-#define CCF_FILL_SCHEMA_FOR_JSON_FINAL(TYPE, FLAGS, FIELD) \
-  CCF_FILL_SCHEMA_FOR_JSON_NEXT(TYPE, FLAGS, FIELD)
+#define CCF_FILL_SCHEMA_FOR_JSON_FINAL(TYPE, FLAGS, C_FIELD, JSON_FIELD) \
+  CCF_FILL_SCHEMA_FOR_JSON_NEXT(TYPE, FLAGS, C_FIELD, JSON_FIELD)
 ////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
 // CCF_ADD_COMPONENTS
-#define CCF_ADD_COMPONENTS_FOR_JSON_NEXT(TYPE, FLAGS, FIELD) \
+#define CCF_ADD_COMPONENTS_FOR_JSON_NEXT(TYPE, FLAGS, C_FIELD, JSON_FIELD) \
   { \
-    j["properties"][#FIELD] = \
-      ::ds::json::schema_element<decltype(TYPE::FIELD)>(); \
+    j["properties"][JSON_FIELD] = \
+      ::ds::json::schema_element<decltype(TYPE::C_FIELD)>(); \
     if constexpr ((FLAGS & JsonSerdeBehaviour::allow_read_if_missing) == 0) \
     { \
-      j["required"].push_back(#FIELD); \
+      j["required"].push_back(JSON_FIELD); \
     } \
   }
 
-#define CCF_ADD_COMPONENTS_FOR_JSON_FINAL(TYPE, FLAGS, FIELD) \
-  CCF_ADD_COMPONENTS_FOR_JSON_NEXT(TYPE, FLAGS, FIELD)
+#define CCF_ADD_COMPONENTS_FOR_JSON_FINAL(TYPE, FLAGS, C_FIELD, JSON_FIELD) \
+  CCF_ADD_COMPONENTS_FOR_JSON_NEXT(TYPE, FLAGS, C_FIELD, JSON_FIELD)
 ////////////////////////////////////////////////////////////////////////////////
 
 #define CCF_JSON_TYPE_(TYPE, BASE, ...) \
@@ -113,7 +113,7 @@ struct JsonSerdeBehaviour
       j = nlohmann::json::object(); \
     } \
     TYPE t_default; \
-    _FOR_JSON_COUNT_NN(__VA_ARGS__)(POP2)(CCF_TO_JSON, TYPE, ##__VA_ARGS__) \
+    _FOR_JSON_COUNT_NN(__VA_ARGS__)(POP3)(CCF_TO_JSON, TYPE, ##__VA_ARGS__) \
   } \
 \
   inline void from_json(const nlohmann::json& j, TYPE& t) \
@@ -130,7 +130,7 @@ struct JsonSerdeBehaviour
     { \
       throw JsonParseError("Expected object, found: " + j.dump()); \
     } \
-    _FOR_JSON_COUNT_NN(__VA_ARGS__)(POP2)(CCF_FROM_JSON, TYPE, ##__VA_ARGS__) \
+    _FOR_JSON_COUNT_NN(__VA_ARGS__)(POP3)(CCF_FROM_JSON, TYPE, ##__VA_ARGS__) \
   } \
 \
   inline void fill_json_schema(nlohmann::json& j, const TYPE* t) \
@@ -145,7 +145,7 @@ struct JsonSerdeBehaviour
       fill_json_schema(j, static_cast<const BASE*>(t)); \
     } \
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
-    (POP2)(CCF_FILL_SCHEMA, TYPE, ##__VA_ARGS__) \
+    (POP3)(CCF_FILL_SCHEMA, TYPE, ##__VA_ARGS__) \
   } \
 \
   inline std::string schema_name(const TYPE*) \
@@ -166,14 +166,16 @@ struct JsonSerdeBehaviour
       add_schema_components(doc, j, static_cast<const BASE*>(t)); \
     } \
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
-    (POP2)(CCF_ADD_COMPONENTS, TYPE, ##__VA_ARGS__) \
+    (POP3)(CCF_ADD_COMPONENTS, TYPE, ##__VA_ARGS__) \
   }
 
-#define CCF_JSON_REQUIRED(x) JsonSerdeBehaviour::always_required, x
-#define CCF_JSON_OPTIONAL(x) JsonSerdeBehaviour::fully_optional, x
+#define CCF_JSON_REQUIRED(x) JsonSerdeBehaviour::always_required, x, #x
+#define CCF_JSON_OPTIONAL(x) JsonSerdeBehaviour::fully_optional, x, #x
 
-#define CCF_JSON_OMIT_DEFAULT(x) JsonSerdeBehaviour::omit_write_if_default, x
-#define CCF_JSON_ALLOW_MISSING(x) JsonSerdeBehaviour::allow_read_if_missing, x
+#define CCF_JSON_OMIT_DEFAULT(x) \
+  JsonSerdeBehaviour::omit_write_if_default, x, #x
+#define CCF_JSON_ALLOW_MISSING(x) \
+  JsonSerdeBehaviour::allow_read_if_missing, x, #x
 
 #define CCF_JSON_TYPE(TYPE, ...) CCF_JSON_TYPE_(TYPE, TYPE, __VA_ARGS__)
 #define CCF_JSON_TYPE_WITH_BASE(TYPE, BASE, ...) \
