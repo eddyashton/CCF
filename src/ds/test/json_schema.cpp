@@ -7,28 +7,6 @@
 #include <nlohmann/json.hpp>
 #include <vector>
 
-struct Bing
-{};
-
-void to_json(nlohmann::json& j, const Bing& b)
-{
-  std::cout << "Trying to serialise base Bing" << std::endl;
-}
-void from_json(const nlohmann::json& j, Bing& b)
-{
-  std::cout << "Trying to deserialise base Bing" << std::endl;
-}
-
-struct Bar : public Bing
-{
-  size_t a = {};
-  std::string b = {};
-  size_t c = 100;
-};
-// DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(Bar);
-// DECLARE_JSON_REQUIRED_FIELDS(Bar, a);
-// DECLARE_JSON_OPTIONAL_FIELDS(Bar, b, c);
-
 struct JsonSerdeBehaviour
 {
   using Flags = uint8_t;
@@ -41,18 +19,12 @@ struct JsonSerdeBehaviour
     omit_write_if_default | allow_read_if_missing;
 };
 
-#define CCF_JSON_REQUIRED(x) JsonSerdeBehaviour::always_required, x
-#define CCF_JSON_OPTIONAL(x) JsonSerdeBehaviour::fully_optional, x
-
-#define CCF_JSON_OMIT_DEFAULT(x) JsonSerdeBehaviour::omit_write_if_default, x
-#define CCF_JSON_ALLOW_MISSING(x) JsonSerdeBehaviour::allow_read_if_missing, x
-
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 // CCF_TO_JSON
 #define CCF_TO_JSON_FOR_JSON_NEXT(TYPE, FLAGS, FIELD) \
   { \
     if ( \
-      !(FLAGS & JsonSerdeBehaviour::omit_write_if_default) || \
+      ((FLAGS & JsonSerdeBehaviour::omit_write_if_default) == 0) || \
       (t.FIELD != t_default.FIELD)) \
     { \
       j[#FIELD] = t.FIELD; \
@@ -60,32 +32,40 @@ struct JsonSerdeBehaviour
   }
 #define CCF_TO_JSON_FOR_JSON_FINAL(TYPE, FLAGS, FIELD) \
   CCF_TO_JSON_FOR_JSON_NEXT(TYPE, FLAGS, FIELD)
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 // CCF_FROM_JSON
 #define CCF_FROM_JSON_FOR_JSON_NEXT(TYPE, FLAGS, FIELD) \
   { \
     const auto it = j.find(#FIELD); \
-    if ( \
-      it == j.end() && (!(FLAGS & JsonSerdeBehaviour::allow_read_if_missing))) \
+    if (it == j.end()) \
     { \
-      throw JsonParseError( \
-        "Missing required field '" #FIELD "' in object: " + j.dump()); \
+      if constexpr ((FLAGS & JsonSerdeBehaviour::allow_read_if_missing) == 0) \
+      { \
+        throw JsonParseError( \
+          "Missing required field '" #FIELD "' in object: " + j.dump()); \
+      } \
+      else \
+      { /* Missing value allowed */ \
+      } \
     } \
-    try \
+    else \
     { \
-      t.FIELD = it->get<decltype(TYPE::FIELD)>(); \
-    } \
-    catch (JsonParseError & jpe) \
-    { \
-      jpe.pointer_elements.push_back(#FIELD); \
-      throw; \
+      try \
+      { \
+        t.FIELD = it->get<decltype(TYPE::FIELD)>(); \
+      } \
+      catch (JsonParseError & jpe) \
+      { \
+        jpe.pointer_elements.push_back(#FIELD); \
+        throw; \
+      } \
     } \
   }
 #define CCF_FROM_JSON_FOR_JSON_FINAL(TYPE, FLAGS, FIELD) \
   CCF_FROM_JSON_FOR_JSON_NEXT(TYPE, FLAGS, FIELD)
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 #define CCF_JSON_TYPE_(TYPE, BASE, ...) \
   inline void to_json(nlohmann::json& j, const TYPE& t) \
@@ -103,6 +83,10 @@ struct JsonSerdeBehaviour
   } \
   inline void from_json(const nlohmann::json& j, TYPE& t) \
   { \
+    if (!j.is_object()) \
+    { \
+      throw JsonParseError("Expected object, found: " + j.dump()); \
+    } \
     if constexpr (!std::is_same_v<BASE, TYPE>) \
     { \
       from_json(j, static_cast<BASE&>(t)); \
@@ -114,45 +98,46 @@ struct JsonSerdeBehaviour
     _FOR_JSON_COUNT_NN(__VA_ARGS__)(POP2)(CCF_FROM_JSON, TYPE, ##__VA_ARGS__) \
   }
 
+#define CCF_JSON_REQUIRED(x) JsonSerdeBehaviour::always_required, x
+#define CCF_JSON_OPTIONAL(x) JsonSerdeBehaviour::fully_optional, x
+
+#define CCF_JSON_OMIT_DEFAULT(x) JsonSerdeBehaviour::omit_write_if_default, x
+#define CCF_JSON_ALLOW_MISSING(x) JsonSerdeBehaviour::allow_read_if_missing, x
+
 #define CCF_JSON_TYPE(TYPE, ...) CCF_JSON_TYPE_(TYPE, TYPE, __VA_ARGS__)
 #define CCF_JSON_TYPE_WITH_BASE(TYPE, BASE, ...) \
   CCF_JSON_TYPE_(TYPE, BASE, __VA_ARGS__)
 
-CCF_JSON_TYPE_WITH_BASE(
-  Bar, Bing, CCF_JSON_REQUIRED(a), CCF_JSON_OPTIONAL(b), CCF_JSON_OPTIONAL(c))
-
-TEST_CASE("foo")
+struct Bar
 {
-  Bar bar;
-  bar.a = 42;
-  bar.b = "hello";
-  bar.c = 100;
+  size_t a = {};
+  std::string b = {};
+  size_t c = {};
+};
+CCF_JSON_TYPE(
+  Bar, CCF_JSON_REQUIRED(a), CCF_JSON_OPTIONAL(b), CCF_JSON_OPTIONAL(c))
 
-  nlohmann::json j = bar;
-  std::cout << j.dump(2) << std::endl;
+TEST_CASE("basic macro parser generation")
+{
+  const Bar default_bar = {};
+  nlohmann::json j;
+
+  REQUIRE_THROWS_AS(j.get<Bar>(), std::invalid_argument);
+
+  j["a"] = 42;
+
+  const Bar bar_0 = j;
+  REQUIRE(bar_0.a == j["a"]);
+  REQUIRE(bar_0.b == default_bar.b);
+  REQUIRE(bar_0.c == default_bar.c);
+
+  j["b"] = "Test";
+  j["c"] = 100;
+  const Bar bar_1 = j;
+  REQUIRE(bar_1.a == j["a"]);
+  REQUIRE(bar_1.b == j["b"]);
+  REQUIRE(bar_1.c == j["c"]);
 }
-
-// TEST_CASE("basic macro parser generation")
-// {
-//   const Bar default_bar = {};
-//   nlohmann::json j;
-
-//   REQUIRE_THROWS_AS(j.get<Bar>(), std::invalid_argument);
-
-//   j["a"] = 42;
-
-//   const Bar bar_0 = j;
-//   REQUIRE(bar_0.a == j["a"]);
-//   REQUIRE(bar_0.b == default_bar.b);
-//   REQUIRE(bar_0.c == default_bar.c);
-
-//   j["b"] = "Test";
-//   j["c"] = 100;
-//   const Bar bar_1 = j;
-//   REQUIRE(bar_1.a == j["a"]);
-//   REQUIRE(bar_1.b == j["b"]);
-//   REQUIRE(bar_1.c == j["c"]);
-// }
 
 // struct Biz : public Bar
 // {
