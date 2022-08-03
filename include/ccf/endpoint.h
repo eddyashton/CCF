@@ -19,7 +19,7 @@ namespace ccf::endpoints
   struct EndpointKey
   {
     /// URI path to endpoint
-    URI uri_path;
+    URI uri_path = {};
     /// HTTP Verb
     RESTVerb verb = HTTP_POST;
   };
