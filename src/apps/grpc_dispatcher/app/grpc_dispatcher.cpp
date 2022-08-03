@@ -11,28 +11,17 @@
 
 namespace grpc
 {
-  using ExecutorAttestation = std::vector<uint8_t>;
+  using ExecutorCodeID = std::vector<uint8_t>;
 
   namespace requestbodies
   {
     struct RegisterExecutor
     {
-      ExecutorAttestation attestation;
+      ExecutorCodeID code_id;
       crypto::Pem identity;
     };
     DECLARE_JSON_TYPE(RegisterExecutor);
-    DECLARE_JSON_REQUIRED_FIELDS(RegisterExecutor, attestation, identity);
-  }
-
-  struct ExecutorInfo
-  {};
-  DECLARE_JSON_TYPE(ExecutorInfo);
-  DECLARE_JSON_REQUIRED_FIELDS(ExecutorInfo);
-
-  namespace tables
-  {
-    using Executors = kv::Map<crypto::Pem, ExecutorInfo>;
-    static constexpr auto EXECUTORS = "executors";
+    DECLARE_JSON_REQUIRED_FIELDS(RegisterExecutor, code_id, identity);
   }
 
   // TODO: This should all be in governance. Placeholder implementations here
@@ -42,10 +31,10 @@ namespace grpc
     using Dispatchables = std::vector<ccf::endpoints::EndpointKey>;
     struct Attestation
     {
-      ExecutorAttestation attestation;
+      ExecutorCodeID code_id;
     };
     DECLARE_JSON_TYPE(Attestation);
-    DECLARE_JSON_REQUIRED_FIELDS(Attestation, attestation);
+    DECLARE_JSON_REQUIRED_FIELDS(Attestation, code_id);
 
     struct BLInfo : public Attestation
     {
@@ -54,37 +43,34 @@ namespace grpc
     DECLARE_JSON_TYPE_WITH_BASE(BLInfo, Attestation);
     DECLARE_JSON_REQUIRED_FIELDS(BLInfo, supported_operations);
 
-    using BLInfos = kv::Map<ExecutorAttestation, Dispatchables>;
+    using BLInfos = kv::Map<ExecutorCodeID, Dispatchables>;
     static constexpr auto BL_INFOS = "business_logic_attestations";
 
     static void register_attestation_handlers(
       ccf::endpoints::EndpointRegistry* er)
     {
-      auto add_attestation = [](auto& ctx, nlohmann::json&& params) {
+      auto add_code_ids = [](auto& ctx, nlohmann::json&& params) {
         const auto body = params.get<BLInfo>();
-        CCF_APP_INFO(
-          "Inserting attestation: {:02x}", fmt::join(body.attestation, " "));
+        CCF_APP_INFO("Inserting code_id: {:02x}", fmt::join(body.code_id, " "));
         auto executor_attestations_handle =
           ctx.tx.template wo<BLInfos>(BL_INFOS);
         executor_attestations_handle->put(
-          body.attestation, body.supported_operations);
+          body.code_id, body.supported_operations);
         return ccf::make_success();
       };
       er->make_endpoint(
-          "/executors/attestations",
+          "/executors/code_ids",
           HTTP_POST,
-          ccf::json_adapter(add_attestation),
+          ccf::json_adapter(add_code_ids),
           ccf::no_auth_required)
         .install();
 
-      auto remove_attestation = [](auto& ctx, nlohmann::json&& params) {
+      auto remove_code_ids = [](auto& ctx, nlohmann::json&& params) {
         const auto body = params.get<Attestation>();
-        CCF_APP_INFO(
-          "Removing attestation: {:02x}", fmt::join(body.attestation, " "));
+        CCF_APP_INFO("Removing code_id: {:02x}", fmt::join(body.code_id, " "));
         auto executor_attestations_handle =
           ctx.tx.template wo<BLInfos>(BL_INFOS);
-        const auto deleted =
-          executor_attestations_handle->remove(body.attestation);
+        const auto deleted = executor_attestations_handle->remove(body.code_id);
         if (!deleted)
         {
           return ccf::make_error(
@@ -93,28 +79,28 @@ namespace grpc
         return ccf::make_success();
       };
       er->make_endpoint(
-          "/executors/attestations",
+          "/executors/code_ids",
           HTTP_DELETE,
-          ccf::json_adapter(remove_attestation),
+          ccf::json_adapter(remove_code_ids),
           ccf::no_auth_required)
         .install();
 
-      auto list_attestations = [](auto& ctx, nlohmann::json&& params) {
-        CCF_APP_INFO("Listing attestations");
+      auto list_code_ids = [](auto& ctx, nlohmann::json&& params) {
+        CCF_APP_INFO("Listing code_ids");
         auto executor_attestations_handle =
           ctx.tx.template ro<BLInfos>(BL_INFOS);
-        std::map<ExecutorAttestation, Dispatchables> response;
+        std::map<ExecutorCodeID, Dispatchables> response;
         executor_attestations_handle->foreach(
-          [&response](const auto& attestation, const auto& dispatch) {
-            response[attestation] = dispatch;
+          [&response](const auto& code_id, const auto& dispatch) {
+            response[code_id] = dispatch;
             return true;
           });
         return ccf::make_success(response);
       };
       er->make_endpoint(
-          "/executors/attestations",
+          "/executors/code_ids",
           HTTP_GET,
-          ccf::json_adapter(list_attestations),
+          ccf::json_adapter(list_code_ids),
           ccf::no_auth_required)
         .install();
     }
@@ -122,6 +108,12 @@ namespace grpc
 
   class DispatcherHandlers : public ccf::UserEndpointRegistry
   {
+  protected:
+    struct ExecutorInfo
+    {};
+
+    std::unordered_map<crypto::Pem, ExecutorInfo> registered_executors;
+
   public:
     DispatcherHandlers(ccfapp::AbstractNodeContext& context) :
       ccf::UserEndpointRegistry(context)
@@ -132,23 +124,21 @@ namespace grpc
         CCF_APP_INFO("Registering new executor: {}", params.dump());
         const auto body = params.get<requestbodies::RegisterExecutor>();
 
-        // Check attestation is known and trusted
+        // Check code_id is known and trusted
         auto executor_attestations_handle =
           ctx.tx.template ro<gov::TODO::BLInfos>(gov::TODO::BL_INFOS);
-        if (!executor_attestations_handle->has(body.attestation))
+        if (!executor_attestations_handle->has(body.code_id))
         {
-          CCF_APP_INFO("Unrecognised attestation");
+          CCF_APP_INFO("Unrecognised code_id");
           return ccf::make_error(
             HTTP_STATUS_FORBIDDEN,
             ccf::errors::InvalidInput,
             fmt::format(
-              "Unrecognised attestation: {:02x}",
-              fmt::join(body.attestation, " ")));
+              "Unrecognised code_id: {:02x}", fmt::join(body.code_id, " ")));
         }
 
-        auto executors_handle =
-          ctx.tx.template rw<tables::Executors>(tables::EXECUTORS);
-        if (executors_handle->has(body.identity))
+        auto it = registered_executors.find(body.identity);
+        if (it != registered_executors.end())
         {
           CCF_APP_INFO("Already exists");
           return ccf::make_error(
@@ -156,15 +146,16 @@ namespace grpc
             "AlreadyExists",
             "An executor with this identity already exists.");
         }
-        executors_handle->put(body.identity, {});
+
+        registered_executors.emplace_hint(it, body.identity, ExecutorInfo{});
 
         CCF_APP_INFO("Successfully registered");
         return ccf::make_success();
       };
-      make_endpoint(
+      make_read_only_endpoint(
         "/register",
         HTTP_POST,
-        ccf::json_adapter(register_executor),
+        ccf::json_read_only_adapter(register_executor),
         ccf::no_auth_required)
         .install();
     }
