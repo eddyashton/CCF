@@ -39,6 +39,7 @@ namespace grpc
   // for prototyping.
   namespace gov::TODO
   {
+    using Dispatchables = std::vector<ccf::endpoints::EndpointKey>;
     struct Attestation
     {
       ExecutorAttestation attestation;
@@ -46,19 +47,27 @@ namespace grpc
     DECLARE_JSON_TYPE(Attestation);
     DECLARE_JSON_REQUIRED_FIELDS(Attestation, attestation);
 
-    using Attestations = kv::Set<ExecutorAttestation>;
-    static constexpr auto ATTESTATIONS = "attestations";
+    struct BLInfo : public Attestation
+    {
+      Dispatchables supported_operations;
+    };
+    DECLARE_JSON_TYPE_WITH_BASE(BLInfo, Attestation);
+    DECLARE_JSON_REQUIRED_FIELDS(BLInfo, supported_operations);
+
+    using BLInfos = kv::Map<ExecutorAttestation, Dispatchables>;
+    static constexpr auto BL_INFOS = "business_logic_attestations";
 
     static void register_attestation_handlers(
       ccf::endpoints::EndpointRegistry* er)
     {
       auto add_attestation = [](auto& ctx, nlohmann::json&& params) {
-        const auto body = params.get<Attestation>();
+        const auto body = params.get<BLInfo>();
         CCF_APP_INFO(
           "Inserting attestation: {:02x}", fmt::join(body.attestation, " "));
         auto executor_attestations_handle =
-          ctx.tx.template wo<Attestations>(ATTESTATIONS);
-        executor_attestations_handle->insert(body.attestation);
+          ctx.tx.template wo<BLInfos>(BL_INFOS);
+        executor_attestations_handle->put(
+          body.attestation, body.supported_operations);
         return ccf::make_success();
       };
       er->make_endpoint(
@@ -73,7 +82,7 @@ namespace grpc
         CCF_APP_INFO(
           "Removing attestation: {:02x}", fmt::join(body.attestation, " "));
         auto executor_attestations_handle =
-          ctx.tx.template wo<Attestations>(ATTESTATIONS);
+          ctx.tx.template wo<BLInfos>(BL_INFOS);
         const auto deleted =
           executor_attestations_handle->remove(body.attestation);
         if (!deleted)
@@ -93,17 +102,13 @@ namespace grpc
       auto list_attestations = [](auto& ctx, nlohmann::json&& params) {
         CCF_APP_INFO("Listing attestations");
         auto executor_attestations_handle =
-          ctx.tx.template ro<Attestations>(ATTESTATIONS);
-        std::vector<Attestation> response;
+          ctx.tx.template ro<BLInfos>(BL_INFOS);
+        std::map<ExecutorAttestation, Dispatchables> response;
         executor_attestations_handle->foreach(
-          [&response](const auto& attestation) {
-            response.emplace_back(Attestation{attestation});
+          [&response](const auto& attestation, const auto& dispatch) {
+            response[attestation] = dispatch;
             return true;
           });
-        for (const auto& att : response)
-        {
-          CCF_APP_INFO(" - {:02x}", fmt::join(att.attestation, " "));
-        }
         return ccf::make_success(response);
       };
       er->make_endpoint(
@@ -129,8 +134,8 @@ namespace grpc
 
         // Check attestation is known and trusted
         auto executor_attestations_handle =
-          ctx.tx.template ro<gov::TODO::Attestations>(gov::TODO::ATTESTATIONS);
-        if (!executor_attestations_handle->contains(body.attestation))
+          ctx.tx.template ro<gov::TODO::BLInfos>(gov::TODO::BL_INFOS);
+        if (!executor_attestations_handle->has(body.attestation))
         {
           CCF_APP_INFO("Unrecognised attestation");
           return ccf::make_error(
