@@ -687,6 +687,9 @@ if(BUILD_TESTS)
     include(${CMAKE_CURRENT_SOURCE_DIR}/src/apps/tpcc/tpcc.cmake)
   endif()
 
+  include(${CMAKE_CURRENT_SOURCE_DIR}/src/apps/grpc_dispatcher/grpc_dispatcher.cmake)
+
+
   if(TLS_TEST)
     add_custom_command(
       OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/testssl/testssl.sh
