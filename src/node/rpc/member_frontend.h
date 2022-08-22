@@ -6,6 +6,7 @@
 #include "ccf/crypto/base64.h"
 #include "ccf/crypto/key_pair.h"
 #include "ccf/ds/nonstd.h"
+#include "ccf/http_query.h"
 #include "ccf/json_handler.h"
 #include "ccf/node/quote.h"
 #include "ccf/service/tables/gov.h"
@@ -1462,6 +1463,82 @@ namespace ccf
         json_read_only_adapter(get_all_members),
         ccf::no_auth_required)
         .set_auto_schema<void, AllMemberDetails>()
+        .install();
+
+      auto kv_get = [this](
+                      endpoints::ReadOnlyEndpointContext& ctx,
+                      nlohmann::json&& params) {
+        std::string table_name;
+        std::string error;
+        if (!get_path_param(
+              ctx.rpc_ctx->get_request_path_params(),
+              "table",
+              table_name,
+              error))
+        {
+          return make_error(
+            HTTP_STATUS_BAD_REQUEST,
+            ccf::errors::InvalidResourceName,
+            std::move(error));
+        }
+
+        const auto full_table_name =
+          fmt::format("public:ccf.gov.{}", table_name);
+        auto j = nlohmann::json::object();
+
+        const auto parsed_query =
+          http::parse_query(ctx.rpc_ctx->get_request_query());
+        const auto k_display_method =
+          http::get_query_value_opt<std::string>(parsed_query, "k", error)
+            .value_or("hex");
+        const auto v_display_method =
+          http::get_query_value_opt<std::string>(parsed_query, "v", error)
+            .value_or("hex");
+
+        using RawMap =
+          kv::RawCopySerialisedMap<std::vector<uint8_t>, std::vector<uint8_t>>;
+        auto handle = ctx.tx.ro<RawMap>(full_table_name);
+
+        handle->foreach([&](const auto& k, const auto& v) {
+          std::string k_s;
+          if (k_display_method == "ascii")
+          {
+            k_s = std::string(k.begin(), k.end());
+          }
+          else if (k_display_method == "json")
+          {
+            k_s = nlohmann::json::parse(k);
+          }
+          else
+          {
+            k_s = ds::to_hex(k);
+          }
+
+          nlohmann::json v_j;
+          if (v_display_method == "ascii")
+          {
+            v_j = std::string(v.begin(), v.end());
+          }
+          else if (v_display_method == "json")
+          {
+            v_j = nlohmann::json::parse(v);
+          }
+          else
+          {
+            v_j = ds::to_hex(v);
+          }
+
+          j[k_s] = v_j;
+          return true;
+        });
+
+        return make_success(j);
+      };
+      make_read_only_endpoint(
+        "/kv/{table}",
+        HTTP_GET,
+        json_read_only_adapter(kv_get),
+        ccf::no_auth_required)
         .install();
     }
   };
