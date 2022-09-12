@@ -1,0 +1,41 @@
+%%{init: { 'logLevel': 'debug', 'theme': 'base', 'gitGraph': {'showBranches': true, 'showCommitLabel':true, 'mainBranchName': 'KVStore'}} }%%
+gitGraph
+    commit tag:"2.5" id:" "
+
+    branch POST/set/a/42
+    commit id:"Write A=42"
+    commit id:"TxID=2.6" type:HIGHLIGHT
+
+    checkout KVStore
+    merge POST/set/a/42
+    commit tag:"2.6" id: "  "
+
+    checkout POST/set/a/42
+    commit id:"200 OK {Wrote}" type:REVERSE
+
+    checkout KVStore
+    branch POST/copy/a/b
+    checkout POST/copy/a/b
+    commit id:"Read A=42"
+    commit id:"Write B=42"
+    commit id:"TxID=2.7" type:HIGHLIGHT
+
+    checkout KVStore
+    merge POST/copy/a/b
+    commit tag:"2.7" id: "   "
+
+    checkout POST/copy/a/b
+    commit id:"200 OK {Copied}" type:REVERSE
+
+    checkout KVStore
+    branch GET/b
+    checkout GET/b
+    commit id:"Read B=42"
+    commit id:"ReadOnly=>TxID=2.7" type:HIGHLIGHT
+
+    checkout KVStore
+    merge GET/b
+    commit tag:"2.7" id: "    "
+
+    checkout GET/b
+    commit id:"200 OK {B: 42}" type:REVERSE

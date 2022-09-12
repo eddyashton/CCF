@@ -1,0 +1,62 @@
+%%{init: { 'logLevel': 'debug', 'theme': 'base', 'gitGraph': {'showBranches': true, 'showCommitLabel':true, 'mainBranchName': 'KVStore'}} }%%
+gitGraph
+    commit tag:"2.6" id:" "
+
+    checkout KVStore
+    branch POST/copy/a/b
+    checkout POST/copy/a/b
+    commit id:"pending_txs.append(Tx, Ctx)"
+    commit id:"Forward"
+    commit id:"Join"
+
+    checkout KVStore
+    commit id:"??"
+
+    branch KV.StartTx
+    checkout KV.StartTx
+    commit id:"txs[Ex]=Tx"
+    commit id:"gRPC OK {Ctx}" type:REVERSE
+
+    checkout KVStore
+    commit id:"???"
+
+    branch KV.Get
+    checkout KV.Get
+    commit id:"tx=txs[Ex]"
+    commit id:"a=tx.get(A)"
+    commit id:"gRPC OK {a}" type:REVERSE
+
+    checkout KVStore
+    commit id:"????"
+
+    branch KV.Put
+    checkout KV.Put
+    commit id:"tx=txs[Ex] "
+    commit id:"tx.put(b, a)"
+    commit id:"gRPC OK {empty}" type:REVERSE
+
+    checkout KVStore
+    commit id:"?????"
+
+    branch KV.EndTx
+    checkout KV.EndTx
+    commit id:"tx=txs[Ex]  "
+    commit id:"pending_responses[??]=(response, tx)"
+
+    checkout KV.EndTx
+    commit id:"gRPC OK {empty} " type:REVERSE
+
+    checkout POST/copy/a/b
+    commit id:"Join"
+    commit id:"response, Tx=pending_responses[??]"
+    commit id:"TxID=2.7" type:HIGHLIGHT
+
+    checkout KVStore
+    merge POST/copy/a/b
+
+    checkout POST/copy/a/b
+    commit id:"200 OK {response}" type:REVERSE
+
+    checkout KVStore
+    commit id: "  " tag:"2.7"
+
