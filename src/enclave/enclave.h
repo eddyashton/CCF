@@ -30,7 +30,93 @@
 #include "rpc_sessions.h"
 #include "verify.h"
 
+#include <exception>
+#include <experimental/coroutine>
+#include <iostream>
 #include <openssl/engine.h>
+
+template <typename T>
+struct Generator
+{
+  struct promise_type;
+  using handle_type = std::experimental::coroutine_handle<promise_type>;
+
+  struct promise_type
+  {
+    T value_;
+    std::exception_ptr exception_;
+
+    Generator get_return_object()
+    {
+      return Generator(handle_type::from_promise(*this));
+    }
+    std::experimental::suspend_always initial_suspend()
+    {
+      return {};
+    }
+    std::experimental::suspend_always final_suspend() noexcept
+    {
+      return {};
+    }
+    void unhandled_exception()
+    {
+      exception_ = std::current_exception();
+    }
+    // template <std::convertible_to<T> From> // C++20 concept
+    std::experimental::suspend_always yield_value(T&& from)
+    {
+      value_ = std::forward<T>(from);
+      return {};
+    }
+    void return_void() {}
+  };
+
+  handle_type h_;
+
+  Generator(handle_type h) : h_(h) {}
+  ~Generator()
+  {
+    h_.destroy();
+  }
+  explicit operator bool()
+  {
+    fill();
+    return !h_.done();
+  }
+  T operator()()
+  {
+    fill();
+    full_ = false;
+    return std::move(h_.promise().value_);
+  }
+
+private:
+  bool full_ = false;
+
+  void fill()
+  {
+    if (!full_)
+    {
+      h_();
+      if (h_.promise().exception_)
+        std::rethrow_exception(h_.promise().exception_);
+      full_ = true;
+    }
+  }
+};
+
+Generator<unsigned> counter6()
+{
+  for (unsigned i = 0; i < 3;)
+    co_yield i++;
+}
+
+void main6()
+{
+  auto gen = counter6();
+  while (gen)
+    LOG_INFO_FMT("counter6: {}", gen());
+}
 
 namespace ccf
 {
@@ -109,6 +195,9 @@ namespace ccf
       }
 
       to_host = writer_factory->create_writer_to_outside();
+
+      main6();
+      throw std::logic_error("Deliberate");
 
       LOG_TRACE_FMT("Creating ledger secrets");
       network.ledger_secrets = std::make_shared<ccf::LedgerSecrets>();
