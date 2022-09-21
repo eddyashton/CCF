@@ -8,7 +8,7 @@
 
 struct TaskPromise;
 
-class [[nodiscard]] Task
+class Task
 {
 public:
   using promise_type = TaskPromise;
