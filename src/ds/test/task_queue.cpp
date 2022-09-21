@@ -28,15 +28,16 @@ Task bar(TaskQueue& tq)
   std::cout << "  Ending bar" << std::endl;
 }
 
-void baz(TaskQueue& tq)
+Task baz(TaskQueue& tq)
 {
   std::cout << "  Beginning baz" << std::endl;
-  bar(tq);
+  co_await bar(tq);
   std::cout << "  Ending baz" << std::endl;
 }
 
 TEST_CASE("TestA" * doctest::test_suite("taskqueue"))
 {
+  std::cout << "==TestA==" << std::endl;
   TaskQueue tq;
 
   std::cout << "AAA" << std::endl;
@@ -53,6 +54,7 @@ TEST_CASE("TestA" * doctest::test_suite("taskqueue"))
 
 TEST_CASE("TestB" * doctest::test_suite("taskqueue"))
 {
+  std::cout << "==TestB==" << std::endl;
   TaskQueue tq;
 
   std::cout << "AAA" << std::endl;
