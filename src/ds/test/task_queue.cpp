@@ -31,7 +31,11 @@ Task bar(TaskQueue& tq)
 Task baz(TaskQueue& tq)
 {
   std::cout << "  Beginning baz" << std::endl;
+  co_await tq.schedule();
+  std::cout << "  Mid-baz A" << std::endl;
   co_await bar(tq);
+  std::cout << "  Mid-baz B" << std::endl;
+  co_await tq.schedule();
   std::cout << "  Ending baz" << std::endl;
 }
 
@@ -41,13 +45,16 @@ TEST_CASE("TestA" * doctest::test_suite("taskqueue"))
   TaskQueue tq;
 
   std::cout << "AAA" << std::endl;
-  bar(tq);
+  Task t1 = bar(tq);
   std::cout << "BBB" << std::endl;
 
-  while (tq.advance_all())
-  {
-    std::cout << "Looping" << std::endl;
-  }
+  tq.advance_all();
+  tq.advance_all();
+
+  // while (tq.advance_all())
+  // {
+  //   std::cout << "Looping" << std::endl;
+  // }
 
   std::cout << "Done" << std::endl;
 }
@@ -58,13 +65,16 @@ TEST_CASE("TestB" * doctest::test_suite("taskqueue"))
   TaskQueue tq;
 
   std::cout << "AAA" << std::endl;
-  baz(tq);
+  Task t1 = baz(tq);
   std::cout << "BBB" << std::endl;
 
-  while (tq.advance_all())
-  {
-    std::cout << "Looping" << std::endl;
-  }
+  tq.advance_all();
+  tq.advance_all();
+
+  // while (tq.advance_all())
+  // {
+  //   std::cout << "Looping" << std::endl;
+  // }
 
   std::cout << "Done" << std::endl;
 }

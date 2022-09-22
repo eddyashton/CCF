@@ -28,7 +28,7 @@ struct TaskPromise
 
   Task get_return_object() noexcept;
 
-  std::experimental::suspend_always initial_suspend() const noexcept
+  std::experimental::suspend_never initial_suspend() const noexcept
   {
     return {};
   }

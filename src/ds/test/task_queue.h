@@ -12,7 +12,7 @@ class TaskQueue
 public:
   auto schedule()
   {
-    struct awaiter
+    struct Awaiter
     {
       TaskQueue* owning_task_queue;
 
@@ -29,7 +29,8 @@ public:
         owning_task_queue->enqueue_task(coro);
       }
     };
-    return awaiter{this};
+
+    return Awaiter{this};
   }
 
   bool advance_all()
