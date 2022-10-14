@@ -36,6 +36,8 @@ import os
 import contextlib
 import random
 import time
+import statistics
+import threading
 
 from loguru import logger as LOG
 
@@ -253,7 +255,8 @@ def test_streaming(network, args):
 
     return network
 
-def run_logging_perf_test(node):
+
+def run_logging_perf_test(node, name, total_requests=100, clients=5):
     with node.client("user0") as c:
         log_id = 42
         log_msg = "Hello world"
@@ -264,28 +267,72 @@ def run_logging_perf_test(node):
         assert r.status_code == http.HTTPStatus.OK, r
         assert r.body.json()["msg"] == log_msg, r
 
-        n_repeats = 100
-        start_time = time.time()
+    requests_per_client = total_requests // clients
+    logs = []
 
-        for i in range(n_repeats):
-            c.post("/app/log/public", {"id": i % 10, "msg": f"Message {i}"})
+    post_times = []
 
-        mid_time = time.time()
+    def post():
+        with node.client("user0") as c:
+            for i in range(requests_per_client):
+                time_before = time.time()
+                c.post(
+                    "/app/log/public",
+                    {"id": i % 10, "msg": f"Message {i}"},
+                    log_capture=logs,
+                )
+                post_times.append(time.time() - time_before)
 
-        for i in range(n_repeats):
-            c.get(f"/app/log/public?id={i % 10}")
+    get_times = []
 
-        end_time = time.time()
+    def get():
+        with node.client("user0") as c:
+            for i in range(requests_per_client):
+                time_before = time.time()
+                c.get(
+                    f"/app/log/public?id={i % 10}",
+                    log_capture=logs,
+                )
+                get_times.append(time.time() - time_before)
 
-        LOG.success(f"Completed {n_repeats} POSTs in {mid_time - start_time}s")
-        LOG.success(f"Completed {n_repeats} GETs in {end_time - mid_time}s")
+    start_time = time.time()
+
+    threads = [threading.Thread(target=post) for _ in range(clients)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    mid_time = time.time()
+
+    threads = [threading.Thread(target=get) for _ in range(clients)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    end_time = time.time()
+
+    LOG.success(
+        f"[{name}] Completed {total_requests} total POSTs from {clients} clients in {mid_time - start_time:.02f}s"
+    )
+    LOG.success(
+        f"[{name}]  - POST latencies: min {min(post_times):.04f}s, mean {statistics.mean(post_times):.04f}s, max {max(post_times):.04f}s, stdev {statistics.stdev(post_times):.04f}s"
+    )
+    LOG.success(
+        f"[{name}] Completed {total_requests} total GETs from {clients} clients in {end_time - mid_time:.02f}s"
+    )
+    LOG.success(
+        f"[{name}]  - GET latencies: min {min(get_times):.04f}s, mean {statistics.mean(get_times):.04f}s, max {max(get_times):.04f}s, stdev {statistics.stdev(get_times):.04f}s"
+    )
 
 
 def test_perf(network, credentials, args):
     primary, _ = network.find_primary()
 
     with executor_thread(LoggingExecutor(primary, credentials)):
-        run_logging_perf_test(primary)
+        run_logging_perf_test(primary, "external", clients=1)
+        run_logging_perf_test(primary, "external", clients=5)
 
     return network
 
@@ -332,7 +379,8 @@ if __name__ == "__main__":
     ) as network:
         network.start_and_open(args)
         primary, _ = network.find_primary()
-        run_logging_perf_test(primary)
+        run_logging_perf_test(primary, "cpp", clients=1)
+        run_logging_perf_test(primary, "cpp", clients=5)
 
     args.package = "src/apps/external_executor/libexternal_executor"
     run(args)
