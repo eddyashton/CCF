@@ -462,6 +462,7 @@ namespace externalexecutor
           pr.request_description;
         rd.set_method(endpoint_ctx.rpc_ctx->get_request_verb().c_str());
         rd.set_uri(endpoint_ctx.rpc_ctx->get_request_path());
+        rd.set_query(endpoint_ctx.rpc_ctx->get_request_query());
         for (const auto& [k, v] : endpoint_ctx.rpc_ctx->get_request_headers())
         {
           externalexecutor::protobuf::Header* header = rd.add_headers();
