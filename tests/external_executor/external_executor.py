@@ -5,7 +5,9 @@ import infra.e2e_args
 import infra.interfaces
 import suite.test_requirements as reqs
 
-from executors.wiki_cacher import executor_thread, WikiCacherExecutor
+from executors.wiki_cacher import WikiCacherExecutor
+from executors.logging import LoggingExecutor
+from executors.util import executor_thread
 
 # pylint: disable=import-error
 import kv_pb2 as KV
@@ -248,6 +250,19 @@ def test_streaming(network, args):
         compare_op_results(stub, 30)
         compare_op_results(stub, 1000)
 
+    return network
+
+
+def test_perf(network, credentials, args):
+    primary, _ = network.find_primary()
+
+    with executor_thread(LoggingExecutor(primary, credentials)):
+        with primary.client() as c:
+            c.post("/app/log/public", {"id": 42, "msg": "Hello world"})
+            c.get("/app/log/public?id=42")
+
+    return network
+
 
 def run(args):
     key_priv_pem, _ = infra.crypto.generate_ec_keypair("secp256r1")
@@ -268,9 +283,11 @@ def run(args):
             certificate_chain=cert.encode(),
         )
         network = test_executor_registration(network, cert, args)
-        network = test_put_get(network, credentials, args)
-        network = test_simple_executor(network, credentials, args)
-        network = test_streaming(network, args)
+        # network = test_put_get(network, credentials, args)
+        # network = test_simple_executor(network, credentials, args)
+        # network = test_streaming(network, args)
+        # TODO
+        network = test_perf(network, credentials, args)
 
 
 if __name__ == "__main__":
