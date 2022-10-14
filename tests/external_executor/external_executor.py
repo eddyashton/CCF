@@ -31,6 +31,7 @@ import executor_registration_pb2_grpc as RegistrationService
 from google.protobuf.empty_pb2 import Empty as Empty
 
 import grpc
+import http
 import os
 import contextlib
 import random
@@ -252,14 +253,39 @@ def test_streaming(network, args):
 
     return network
 
+def run_logging_perf_test(node):
+    with node.client("user0") as c:
+        log_id = 42
+        log_msg = "Hello world"
+        r = c.post("/app/log/public", {"id": log_id, "msg": log_msg})
+        assert r.status_code == http.HTTPStatus.OK
+
+        r = c.get(f"/app/log/public?id={log_id}")
+        assert r.status_code == http.HTTPStatus.OK, r
+        assert r.body.json()["msg"] == log_msg, r
+
+        n_repeats = 100
+        start_time = time.time()
+
+        for i in range(n_repeats):
+            c.post("/app/log/public", {"id": i % 10, "msg": f"Message {i}"})
+
+        mid_time = time.time()
+
+        for i in range(n_repeats):
+            c.get(f"/app/log/public?id={i % 10}")
+
+        end_time = time.time()
+
+        LOG.success(f"Completed {n_repeats} POSTs in {mid_time - start_time}s")
+        LOG.success(f"Completed {n_repeats} GETs in {end_time - mid_time}s")
+
 
 def test_perf(network, credentials, args):
     primary, _ = network.find_primary()
 
     with executor_thread(LoggingExecutor(primary, credentials)):
-        with primary.client() as c:
-            c.post("/app/log/public", {"id": 42, "msg": "Hello world"})
-            c.get("/app/log/public?id=42")
+        run_logging_perf_test(primary)
 
     return network
 
@@ -293,8 +319,20 @@ def run(args):
 if __name__ == "__main__":
     args = infra.e2e_args.cli_args()
 
-    args.package = "src/apps/external_executor/libexternal_executor"
     args.http2 = True  # gRPC interface
     args.nodes = infra.e2e_args.min_nodes(args, f=0)
 
+    args.package = "samples/apps/logging/liblogging"
+
+    with infra.network.network(
+        args.nodes,
+        args.binary_dir,
+        args.debug_nodes,
+        args.perf_nodes,
+    ) as network:
+        network.start_and_open(args)
+        primary, _ = network.find_primary()
+        run_logging_perf_test(primary)
+
+    args.package = "src/apps/external_executor/libexternal_executor"
     run(args)
