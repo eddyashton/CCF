@@ -111,39 +111,40 @@ def test_executor_registration(network, args):
         open(os.path.join(network.common_dir, "service_cert.pem"), "rb").read()
     )
 
-    # Confirm that these credentials (and NOT anoymous credentials) provide
-    # access to the KV service on the target node, but no other nodes
-    for node in (
-        primary,
-        backup,
-    ):
-        for credentials in (
-            anonymous_credentials,
-            executor_credentials,
+    # Repeat a few times, because its only ~80% failure rate and I really want to see a failure
+    for _ in range(5):
+        # Confirm that these credentials (and NOT anoymous credentials) provide
+        # access to the KV service on the target node, but no other nodes
+        for node in (
+            primary,
+            # backup,
         ):
-            with grpc.secure_channel(
-                target=node.get_public_rpc_address(),
-                credentials=credentials,
-            ) as channel:
-                should_pass = node == primary and credentials == executor_credentials
-                LOG.warning(f"node={node}, credentials={credentials}, should_pass={should_pass}")
-                try:
-                    LOG.info("Is everything ok if I sleep here?")
-                    time.sleep(2)
-                    rd = Service.KVStub(channel).StartTx(Empty())
-                    LOG.warning("StartTx call succeeded")
-                    assert should_pass, "Expected StartTx to fail"
-                    assert not rd.HasField("optional")
-                except grpc.RpcError as e:
-                    LOG.warning(f"StartTx call produced error: {e}")
-                    # NB: This failure will have printed errors like:
-                    #   Error parsing metadata: error=invalid value key=content-type value=application/json
-                    # These are harmless and expected, and I haven't found a way to swallow them
-                    assert not should_pass
-                    # pylint: disable=no-member
-                    assert e.code() == grpc.StatusCode.UNAUTHENTICATED, e
+            for credentials in (
+                anonymous_credentials,
+                # executor_credentials,
+            ):
+                with grpc.secure_channel(
+                    target=node.get_public_rpc_address(),
+                    credentials=credentials,
+                ) as channel:
+                    should_pass = node == primary and credentials == executor_credentials
+                    LOG.warning(f"node={node}, credentials={credentials}, should_pass={should_pass}")
+                    try:
+                        LOG.error("Is everything ok if I sleep here?")
+                        time.sleep(2)
+                        rd = Service.KVStub(channel).StartTx(Empty())
+                        LOG.warning("StartTx call succeeded")
+                        assert should_pass, "Expected StartTx to fail"
+                        assert not rd.HasField("optional")
+                    except grpc.RpcError as e:
+                        LOG.warning(f"StartTx call produced error: {e}")
+                        # NB: This failure will have printed errors like:
+                        #   Error parsing metadata: error=invalid value key=content-type value=application/json
+                        # These are harmless and expected, and I haven't found a way to swallow them
+                        assert not should_pass
+                        # pylint: disable=no-member
+                        assert e.code() == grpc.StatusCode.UNAUTHENTICATED, e
 
-    raise ValueError("Fail regardless")
     return network
 
 
