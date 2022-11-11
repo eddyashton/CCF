@@ -28,11 +28,27 @@ namespace http
       session_id(session_id_)
     {}
 
+    static std::string stringify(std::span<const uint8_t> data)
+    {
+      std::string s(data.size(), '.');
+      for (auto i = 0ull; i < data.size(); ++i)
+      {
+        const auto c = data[i];
+        if (std::isprint(c) != 0)
+        {
+          s[i] = c;
+        }
+      }
+      return s;
+    }
+
   public:
     virtual bool parse(std::span<const uint8_t> data) = 0;
 
     void send_data(std::span<const uint8_t> data) override
     {
+      LOG_INFO_FMT(
+        "Sending {} bytes of data to TLS: {}", data.size(), stringify(data));
       tls_io->send_raw(data.data(), data.size());
     }
 
@@ -171,9 +187,7 @@ namespace http
       responder_lookup(responder_lookup_)
     {
       server_parser.set_outgoing_data_handler(
-        [this](std::span<const uint8_t> data) {
-          this->tls_io->send_raw(data.data(), data.size());
-        });
+        [this](std::span<const uint8_t> data) { send_data(data); });
     }
 
     ~HTTP2ServerSession()
@@ -325,9 +339,7 @@ namespace http
       client_parser(*this)
     {
       client_parser.set_outgoing_data_handler(
-        [this](std::span<const uint8_t> data) {
-          this->tls_io->send_raw(data.data(), data.size());
-        });
+        [this](std::span<const uint8_t> data) { send_data(data); });
     }
 
     bool parse(std::span<const uint8_t> data) override
