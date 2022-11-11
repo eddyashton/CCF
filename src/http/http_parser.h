@@ -31,7 +31,7 @@ namespace http
 
   inline auto split_url_path(const std::string_view& url)
   {
-    LOG_TRACE_FMT("Received url to parse: {}", std::string_view(url));
+    LOG_INFO_FMT("Received url to parse: {}", std::string_view(url));
 
     const auto path_end = url.find('?');
     const auto query_start =

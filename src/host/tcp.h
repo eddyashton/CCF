@@ -353,7 +353,7 @@ namespace asynchost
 
         case DISCONNECTED:
         {
-          LOG_DEBUG_FMT("Disconnected: Ignoring write of size {}", len);
+          LOG_INFO_FMT("Disconnected: Ignoring write of size {}", len);
           free_write(req);
           break;
         }

@@ -33,7 +33,7 @@ namespace http2
 
     // Note: Explore zero-copy alternative (NGHTTP2_DATA_FLAG_NO_COPY)
     size_t to_read = std::min(ds->body.size(), length);
-    LOG_TRACE_FMT(
+    LOG_INFO_FMT(
       "http2::read_body_from_span_callback: Reading {} bytes", to_read);
 
     if (to_read > 0)
@@ -58,7 +58,7 @@ namespace http2
   static int on_frame_recv_callback(
     nghttp2_session* session, const nghttp2_frame* frame, void* user_data)
   {
-    LOG_TRACE_FMT("http2::on_frame_recv_callback, type: {}", frame->hd.type);
+    LOG_INFO_FMT("http2::on_frame_recv_callback, type: {}", frame->hd.type);
 
     const auto stream_id = frame->hd.stream_id;
     auto* stream_data = get_stream_data(session, stream_id);
@@ -68,7 +68,7 @@ namespace http2
       case NGHTTP2_DATA:
       case NGHTTP2_HEADERS:
       {
-        LOG_TRACE_FMT("Headers/Data frame");
+        LOG_INFO_FMT("Headers/Data frame");
         // For DATA and HEADERS frame, this callback may be called after
         // on_stream_close_callback so check that stream_data still alive.
         if (stream_data == nullptr)
@@ -97,7 +97,7 @@ namespace http2
   static int on_begin_headers_callback(
     nghttp2_session* session, const nghttp2_frame* frame, void* user_data)
   {
-    LOG_TRACE_FMT("http2::on_begin_headers_callback");
+    LOG_INFO_FMT("http2::on_begin_headers_callback");
 
     auto* p = get_parser(user_data);
     auto stream_data = p->create_stream(frame->hd.stream_id);
@@ -126,7 +126,7 @@ namespace http2
   {
     auto k = std::string(name, name + namelen);
     auto v = std::string(value, value + valuelen);
-    LOG_TRACE_FMT("http2::on_header_callback: {}:{}", k, v);
+    LOG_INFO_FMT("http2::on_header_callback: {}:{}", k, v);
 
     auto* stream_data = get_stream_data(session, frame->hd.stream_id);
     stream_data->headers.emplace(k, v);
@@ -142,7 +142,7 @@ namespace http2
     size_t len,
     void* user_data)
   {
-    LOG_TRACE_FMT("http2::on_data_callback: {}", stream_id);
+    LOG_INFO_FMT("http2::on_data_callback: {}", stream_id);
 
     auto* stream_data = get_stream_data(session, stream_id);
     stream_data->body.insert(stream_data->body.end(), data, data + len);
@@ -156,7 +156,7 @@ namespace http2
     uint32_t error_code,
     void* user_data)
   {
-    LOG_TRACE_FMT(
+    LOG_INFO_FMT(
       "http2::on_stream_close_callback: {}, {}", stream_id, error_code);
 
     auto* p = get_parser(user_data);
@@ -174,7 +174,7 @@ namespace http2
     uint32_t remote_max_frame_size,
     void* user_data)
   {
-    LOG_TRACE_FMT(
+    LOG_INFO_FMT(
       "http2::on_data_source_read_length_callback: {}, {}, allowed [1, "
       "min({},{},{})]",
       stream_id,

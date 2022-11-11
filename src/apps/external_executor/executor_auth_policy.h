@@ -23,6 +23,7 @@ public:
     const auto& executor_cert = ctx->get_session_context()->caller_cert;
     if (executor_cert.empty())
     {
+      LOG_FAIL_FMT("No Executor certificate!");
       error_reason = "No Executor certificate";
       return nullptr;
     }
