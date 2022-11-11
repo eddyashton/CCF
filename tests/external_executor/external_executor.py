@@ -128,6 +128,8 @@ def test_executor_registration(network, args):
                 should_pass = node == primary and credentials == executor_credentials
                 LOG.warning(f"node={node}, credentials={credentials}, should_pass={should_pass}")
                 try:
+                    LOG.info("Is everything ok if I sleep here?")
+                    time.sleep(2)
                     rd = Service.KVStub(channel).StartTx(Empty())
                     LOG.warning("StartTx call succeeded")
                     assert should_pass, "Expected StartTx to fail"
