@@ -47,8 +47,9 @@ namespace http
 
     void send_data(std::span<const uint8_t> data) override
     {
-      LOG_INFO_FMT(
-        "Sending {} bytes of data to TLS: {}", data.size(), stringify(data));
+      LOG_INFO_FMT("Sending {} bytes of data to TLS", data.size());
+      LOG_INFO_FMT("As ASCII: {}", stringify(data));
+      LOG_INFO_FMT("As hex: {:02x}", fmt::join(data, " "));
       tls_io->send_raw(data.data(), data.size());
     }
 
