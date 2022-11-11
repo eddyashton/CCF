@@ -267,9 +267,7 @@ namespace ccf
       else
       {
         // Close inline immediately
-        LOG_INFO_FMT(
-          "Closing inline on thread {}",
-          execution_thread);
+        LOG_INFO_FMT("Closing inline on thread {}", execution_thread);
         close_thread();
       }
     }
@@ -346,6 +344,7 @@ namespace ccf
       else
       {
         // Send inline immediately
+        LOG_INFO_FMT("Sending inline immediately!");
         send_raw_thread(data, size);
       }
     }
@@ -371,6 +370,7 @@ namespace ccf
 
       if (status == handshake)
       {
+        LOG_INFO_FMT("Still handshaking, so queuing that as a pending write");
         pending_write.insert(pending_write.end(), data, data + size);
         return;
       }
@@ -415,6 +415,7 @@ namespace ccf
 
         if (r > 0)
         {
+          LOG_INFO_FMT("In flush, wrote {} bytes", r);
           pending_write.erase(pending_write.begin(), pending_write.begin() + r);
         }
         else if (r == 0)
@@ -561,6 +562,7 @@ namespace ccf
 
     int handle_send(const uint8_t* buf, size_t len)
     {
+      LOG_INFO_FMT("Sending {} bytes of encrypted data to host", len);
       // Either write all of the data or none of it.
       auto wrote = RINGBUFFER_TRY_WRITE_MESSAGE(
         tls::tls_outbound,
