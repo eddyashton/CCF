@@ -33,6 +33,8 @@
 
 #define CHANNEL_RECV_FAIL(s, ...) \
   LOG_FAIL_FMT("<- {} ({}): " s, peer_id, status.value(), ##__VA_ARGS__)
+#define CHANNEL_SEND_FAIL(s, ...) \
+  LOG_FAIL_FMT("-> {} ({}): " s, peer_id, status.value(), ##__VA_ARGS__)
 
 namespace ccf
 {
@@ -124,7 +126,9 @@ namespace ccf
     // In debug mode, we use a small message limit to ensure that key rotation
     // is triggered during CI and test runs where we usually wouldn't see enough
     // messages.
-    static constexpr size_t default_message_limit = 2048;
+    // TODO: Temporarily reduced
+    static constexpr size_t default_message_limit = 100;
+    // static constexpr size_t default_message_limit = 2048;
 #else
     // 2**24.5 as per RFC8446 Section 5.5
     static constexpr size_t default_message_limit = 23726566;
@@ -175,9 +179,12 @@ namespace ccf
     // Incremented for each tagged/encrypted message
     std::atomic<SendNonce> send_nonce{1};
 
-    // Used to buffer at most one message sent on the channel before it is
-    // established
-    std::optional<OutgoingMsg> outgoing_msg;
+    // Used to buffer a small number of messages sent on the channel before it
+    // is established. If this queue fills, then additional send attempts while
+    // the channel is still being established will not be buffered, and the
+    // caller should react appropriately.
+    static constexpr size_t outgoing_message_queue_size = 10;
+    std::vector<OutgoingMsg> outgoing_msgs;
 
     // Used to prevent replayed messages.
     // Set to the latest successfully received nonce.
@@ -808,12 +815,13 @@ namespace ccf
         node_cv->serial_number(),
         peer_cv->serial_number());
 
-      if (outgoing_msg.has_value())
+      CHANNEL_SEND_TRACE(
+        "Sending {} buffered outgoing messages", outgoing_msgs.size());
+      for (auto&& msg : outgoing_msgs)
       {
-        send(
-          outgoing_msg->type, outgoing_msg->raw_aad, outgoing_msg->raw_plain);
-        outgoing_msg.reset();
+        send(msg.type, msg.raw_aad, msg.raw_plain);
       }
+      outgoing_msgs.clear();
     }
 
     void initiate()
@@ -847,16 +855,26 @@ namespace ccf
       if (!status.check(ESTABLISHED))
       {
         advance_connection_attempt();
-        if (outgoing_msg.has_value())
+        if (outgoing_msgs.size() < outgoing_message_queue_size)
         {
-          LOG_DEBUG_FMT(
-            "Dropping outgoing message of type {} - replaced by new outgoing "
-            "send of type {}",
-            outgoing_msg->type,
-            type);
+          outgoing_msgs.emplace_back(type, aad, plain);
+          CHANNEL_SEND_TRACE(
+            "Queuing outgoing message of type {} - this is the {}/{} buffered "
+            "message",
+            type,
+            outgoing_msgs.size(),
+            outgoing_message_queue_size);
+          return true;
         }
-        outgoing_msg = OutgoingMsg(type, aad, plain);
-        return false;
+        else
+        {
+          CHANNEL_SEND_TRACE(
+            "Unable to queue outgoing message of type {} - already queued "
+            "maximum {} messages",
+            type,
+            outgoing_message_queue_size);
+          return false;
+        }
       }
 
       RecvNonce nonce(
@@ -989,7 +1007,7 @@ namespace ccf
     {
       RINGBUFFER_WRITE_MESSAGE(close_node_outbound, to_host, peer_id.value());
       reset();
-      outgoing_msg.reset();
+      outgoing_msgs.clear();
     }
 
     void reset()
