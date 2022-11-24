@@ -1157,6 +1157,24 @@ def test_forwarding_frontends_without_app_prefix(network, args):
     return network
 
 
+@reqs.description("Testing forwarding on long-lived connection")
+@reqs.supports_methods("/app/log/private")
+@reqs.at_least_n_nodes(2)
+@reqs.no_http2()
+@app.scoped_txs()
+def test_long_lived_forwarding(network, args):
+    backup = network.find_any_backup()
+
+    with backup.client("user0") as c:
+        msg = "Will be forwarded"
+        log_id = 42
+        for _ in range(10000):
+            r = c.post("/app/log/private", {"id": log_id, "msg": msg})
+            assert r.status_code == http.HTTPStatus.OK, r
+
+    return network
+
+
 @reqs.description("Testing signed queries with escaped queries")
 @reqs.installed_package("samples/apps/logging/liblogging")
 @reqs.at_least_n_nodes(2)
@@ -1646,6 +1664,7 @@ def run(args):
         # test_record_count(network, args)
         test_forwarding_frontends(network, args)
         test_forwarding_frontends_without_app_prefix(network, args)
+        test_long_lived_forwarding(network, args)
         # test_signed_escapes(network, args)
         # test_user_data_ACL(network, args)
         # test_cert_prefix(network, args)
