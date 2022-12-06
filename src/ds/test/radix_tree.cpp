@@ -104,3 +104,29 @@ TEST_CASE("Radix tree B" * doctest::test_suite("radixtree"))
     REQUIRE(lookup_6 == nullptr);
   }
 }
+
+// TODO: Move the below to a separate issue
+// To be able to handle paths with multiple templates, like:
+//   /foo/{student}/address/{street}/{number}/count
+// We need some kind of recursive matchers. So we have insert an entry for
+// "/foo/" into our radix tree, and when that matches it does a regex check of
+// the next element, and if _that_ matches it directs to another prefix tree,
+// where we insert "/address", and so on.
+// Note that non-templated URIs will always be preferred, so if we have
+//   /foo/bar   AND   /foo/{id}
+// then /foo/bar will match the first, while /foo/ba and /foo/baz will match the
+// second.
+
+TEST_CASE("Regex lookup" * doctest::test_suite("radixtree"))
+{
+  ds::RadixTree rt;
+
+  auto data_a = 42;
+  auto data_b = 100;
+
+  rt.insert("POST /foo", &data_a);
+  rt.insert("POST /foo/bar", &data_b);
+
+  REQUIRE(rt.prefix_lookup("POST /foo/bar") == &data_b);
+  REQUIRE(rt.prefix_lookup("POST /foo/any/other/string") == &data_a);
+}
