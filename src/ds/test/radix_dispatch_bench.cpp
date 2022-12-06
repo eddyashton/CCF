@@ -72,9 +72,4 @@ const std::vector<int> dispatch_sizes = {
 };
 
 PICOBENCH_SUITE("radix_dispatch");
-// auto hash_vec = hash<std::vector<uint8_t>>;
 PICOBENCH(dispatch_10k_paths).iterations(dispatch_sizes).baseline();
-// auto hash_small_vec_16 = hash<llvm_vecsmall::SmallVector<uint8_t, 16>>;
-// PICOBENCH(hash_small_vec_16).iterations(dispatch_sizes).baseline();
-// auto hash_small_vec_128 = hash<llvm_vecsmall::SmallVector<uint8_t, 128>>;
-// PICOBENCH(hash_small_vec_128).iterations(dispatch_sizes).baseline();

@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-TEST_CASE("Hmmm" * doctest::test_suite("radixtree"))
+TEST_CASE("Radix Tree A" * doctest::test_suite("radixtree"))
 {
   std::vector<char const*> strings = {
     "a",
@@ -39,8 +39,6 @@ TEST_CASE("Hmmm" * doctest::test_suite("radixtree"))
     rt.insert(s, s);
   }
 
-  // std::random_device rd;
-  // std::mt19937 g(rd());
   std::shuffle(strings.begin(), strings.end(), g);
   for (char const* s : strings)
   {
@@ -50,7 +48,7 @@ TEST_CASE("Hmmm" * doctest::test_suite("radixtree"))
   }
 }
 
-TEST_CASE("TODO" * doctest::test_suite("radixtree"))
+TEST_CASE("Radix tree B" * doctest::test_suite("radixtree"))
 {
   ds::RadixTree rt;
 
