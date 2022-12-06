@@ -9,9 +9,6 @@
 #include <string>
 #include <vector>
 
-#define FMT_HEADER_ONLY
-#include <fmt/format.h>
-
 TEST_CASE("Hmmm" * doctest::test_suite("radixtree"))
 {
   std::vector<char const*> strings = {
@@ -108,72 +105,4 @@ TEST_CASE("TODO" * doctest::test_suite("radixtree"))
     auto lookup_6 = rt.exact_lookup("POST /fo");
     REQUIRE(lookup_6 == nullptr);
   }
-}
-
-TEST_CASE("benchmark" * doctest::test_suite("radixtree"))
-{
-  std::vector<std::string> elements = {
-    "foo", "bar", "baz", "qux", "quux", "corge", "grault", "garply"};
-  std::vector<std::string> paths;
-  for (auto i = 0; i < elements.size(); ++i)
-  {
-    const auto first = elements[i];
-    for (auto j = 0; j < elements.size(); ++j)
-    {
-      if (i != j)
-      {
-        const auto second = elements[j];
-        for (auto k = 0; k < elements.size(); ++k)
-        {
-          if (i != k && j != k)
-          {
-            const auto third = elements[k];
-            paths.push_back(fmt::format("/{}/{}/{}", first, second, third));
-          }
-        }
-      }
-    }
-  }
-
-  ds::RadixTree rt;
-  for (const auto& s : paths)
-  {
-    rt.insert(s, s.data());
-  }
-
-  using Clock = std::chrono::system_clock;
-
-  static constexpr auto num_attempts = 5;
-  static constexpr auto iterations_per_attempt = 10'000;
-  const auto start_time = Clock::now();
-  for (auto attempt = 0; attempt < num_attempts; ++attempt)
-  {
-    for (auto i = 0; i < iterations_per_attempt; ++i)
-    {
-      for (const auto& s : paths)
-      {
-        auto d = rt.prefix_lookup(s);
-      }
-    }
-  }
-  const auto end_time = Clock::now();
-  const auto total_time_ms =
-    std::chrono::duration_cast<std::chrono::milliseconds>(
-      end_time - start_time);
-  const float total_time_s = total_time_ms.count() / 1000.f;
-
-  fmt::print(
-    "{} runs, {} lookups of {} paths each run, finished in {}s\n",
-    num_attempts,
-    iterations_per_attempt,
-    paths.size(),
-    total_time_s);
-
-  const auto total_dispatches =
-    num_attempts * iterations_per_attempt * paths.size();
-  const auto dispatch_rate = total_dispatches / total_time_s;
-  // Actual obsereved rates are > 15'000'000. Add a big buffer for variance and
-  // slower hardware, just try to confirm we've not completely lost performance
-  // here
-  REQUIRE(dispatch_rate > 10'000'000);
 }
