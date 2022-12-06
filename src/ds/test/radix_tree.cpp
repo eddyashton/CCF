@@ -44,7 +44,7 @@ TEST_CASE("Hmmm" * doctest::test_suite("radixtree"))
   std::shuffle(strings.begin(), strings.end(), g);
   for (char const* s : strings)
   {
-    auto p = rt.lookup(s);
+    auto p = rt.prefix_lookup(s);
     REQUIRE(p != nullptr);
     REQUIRE(s == p);
   }
@@ -61,42 +61,48 @@ TEST_CASE("TODO" * doctest::test_suite("radixtree"))
   rt.insert("POST /foobar", &data_b);
 
   {
-    auto lookup_0 = rt.lookup("POST /foo");
+    auto lookup_0 = rt.prefix_lookup("POST /foo");
     REQUIRE(lookup_0 == &data_a);
 
-    auto lookup_1 = rt.lookup("POST /foob");
+    auto lookup_1 = rt.prefix_lookup("POST /foob");
     REQUIRE(lookup_1 == &data_a);
 
-    auto lookup_2 = rt.lookup("POST /foobar");
+    auto lookup_2 = rt.prefix_lookup("POST /foobar");
     REQUIRE(lookup_2 == &data_b);
 
-    auto lookup_3 = rt.lookup("NOPE");
+    auto lookup_3 = rt.prefix_lookup("NOPE");
     REQUIRE(lookup_3 == nullptr);
 
-    auto lookup_4 = rt.lookup("POST /foobab");
+    auto lookup_4 = rt.prefix_lookup("POST /foobab");
     REQUIRE(lookup_4 == &data_a);
 
-    auto lookup_5 = rt.lookup("POST /foobarr");
+    auto lookup_5 = rt.prefix_lookup("POST /foobarr");
     REQUIRE(lookup_5 == &data_b);
+
+    auto lookup_6 = rt.prefix_lookup("POST /fo");
+    REQUIRE(lookup_6 == nullptr);
   }
 
   {
-    auto lookup_0 = rt.lookup_exact("POST /foo");
+    auto lookup_0 = rt.exact_lookup("POST /foo");
     REQUIRE(lookup_0 == &data_a);
 
-    auto lookup_1 = rt.lookup_exact("POST /foob");
+    auto lookup_1 = rt.exact_lookup("POST /foob");
     REQUIRE(lookup_1 == nullptr);
 
-    auto lookup_2 = rt.lookup_exact("POST /foobar");
+    auto lookup_2 = rt.exact_lookup("POST /foobar");
     REQUIRE(lookup_2 == &data_b);
 
-    auto lookup_3 = rt.lookup_exact("NOPE");
+    auto lookup_3 = rt.exact_lookup("NOPE");
     REQUIRE(lookup_3 == nullptr);
 
-    auto lookup_4 = rt.lookup_exact("POST /foobab");
+    auto lookup_4 = rt.exact_lookup("POST /foobab");
     REQUIRE(lookup_4 == nullptr);
 
-    auto lookup_5 = rt.lookup_exact("POST /foobarr");
+    auto lookup_5 = rt.exact_lookup("POST /foobarr");
     REQUIRE(lookup_5 == nullptr);
+
+    auto lookup_6 = rt.exact_lookup("POST /fo");
+    REQUIRE(lookup_6 == nullptr);
   }
 }

@@ -29,30 +29,41 @@ namespace ds
       li_radixtree_free(tree, nullptr, nullptr);
     }
 
-    using Target = const void*;
-    using Path = std::string_view;
+    using Value = const void*;
+    using Key = std::string_view;
 
-    // Returns pointer to previous element, if already present, after
-    // overwriting
-    Target insert(const Path& p, Target t)
+    // Inserts a key and value into the tree. Returns pointer to previous
+    // element after overwriting, if already present, or nullptr if this is a
+    // new key.
+    Value insert(const Key& key, Value value)
     {
-      return li_radixtree_insert(tree, TO_LI_KEY(p), const_cast<void*>(t));
+      return li_radixtree_insert(
+        tree, TO_LI_KEY(key), const_cast<void*>(value));
     }
 
-    Target remove(const Path& p)
+    // Removes a key and associated value from the tree. Returns pointer to
+    // previous element that was removed, or nullptr if no such key existed.
+    Value remove(const Key& key)
     {
-      return li_radixtree_remove(tree, TO_LI_KEY(p));
+      return li_radixtree_remove(tree, TO_LI_KEY(key));
     }
 
-    Target lookup(const Path& p)
+    // Returns a value previously inserted into the tree, whose key is the
+    // longest possible prefix of the given path. If no key in the tree is a
+    // prefix of the one given, returns nullptr.
+    Value prefix_lookup(const Key& key)
     {
-      return li_radixtree_lookup(tree, TO_LI_KEY(p));
+      return li_radixtree_lookup(tree, TO_LI_KEY(key));
     }
 
-    Target lookup_exact(const Path& p)
+    // Returns value inserted at key exactly matching the key given. If there is
+    // no exact match, returns nullptr.
+    Value exact_lookup(const Key& key)
     {
-      return li_radixtree_lookup_exact(tree, TO_LI_KEY(p));
+      return li_radixtree_lookup_exact(tree, TO_LI_KEY(key));
     }
+
+    // TODO: foreach?
   };
 }
 
