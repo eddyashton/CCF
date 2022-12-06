@@ -367,7 +367,9 @@ if(BUILD_TESTS)
       ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/radix.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/radix_tree.cpp
     )
-    target_link_libraries(ds_test PRIVATE ${CMAKE_THREAD_LIBS_INIT} lighttpd.host)
+    target_link_libraries(
+      ds_test PRIVATE ${CMAKE_THREAD_LIBS_INIT} lighttpd.host
+    )
 
     add_unit_test(
       ledger_test ${CMAKE_CURRENT_SOURCE_DIR}/src/host/test/ledger.cpp
@@ -607,6 +609,11 @@ if(BUILD_TESTS)
     history_bench
     SRCS src/node/test/history_bench.cpp
     LINK_LIBS ccf_kv.host
+  )
+  add_picobench(
+    radix_dispatch_bench
+    SRCS src/ds/test/radix_dispatch_bench.cpp
+    LINK_LIBS lighttpd.host
   )
 
   if(LONG_TESTS)
