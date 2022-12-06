@@ -43,14 +43,15 @@ ds::RadixTree construct_tree(const std::vector<std::string>& paths)
   return tree;
 }
 
-static void dispatch(picobench::state& s)
+static void dispatch_10k_paths(picobench::state& s)
 {
   auto paths = generate_paths(s.iterations());
   auto tree = construct_tree(paths);
 
   s.start_timer();
-  for (const auto& path : paths)
+  for (auto i = 0; i < 10'000; ++i)
   {
+    const auto path = paths[i % paths.size()];
     auto d = tree.prefix_lookup(path);
     if (d != &real_data)
     {
@@ -66,13 +67,13 @@ const std::vector<int> dispatch_sizes = {
   2,
   3,
   4,
-  5
+  5,
   //
 };
 
 PICOBENCH_SUITE("radix_dispatch");
 // auto hash_vec = hash<std::vector<uint8_t>>;
-PICOBENCH(dispatch).iterations(dispatch_sizes).baseline();
+PICOBENCH(dispatch_10k_paths).iterations(dispatch_sizes).baseline();
 // auto hash_small_vec_16 = hash<llvm_vecsmall::SmallVector<uint8_t, 16>>;
 // PICOBENCH(hash_small_vec_16).iterations(dispatch_sizes).baseline();
 // auto hash_small_vec_128 = hash<llvm_vecsmall::SmallVector<uint8_t, 128>>;
