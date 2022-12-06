@@ -364,8 +364,9 @@ if(BUILD_TESTS)
       ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/nonstd.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/contiguous_set.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/unit_strings.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/radix.cpp
     )
-    target_link_libraries(ds_test PRIVATE ${CMAKE_THREAD_LIBS_INIT})
+    target_link_libraries(ds_test PRIVATE ${CMAKE_THREAD_LIBS_INIT} lighttpd.host)
 
     add_unit_test(
       ledger_test ${CMAKE_CURRENT_SOURCE_DIR}/src/host/test/ledger.cpp
