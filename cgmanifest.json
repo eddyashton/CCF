@@ -153,6 +153,15 @@
           "commitHash": "e7a40d257a24d9c97066f920d419c5b11484a342"
         }
       }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/lighttpd/lighttpd2",
+          "commitHash": "29e57d3005c77c7abfa0f60568dcb59fef2aa031"
+        }
+      }
     }
   ],
   "Version": 1
