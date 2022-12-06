@@ -4,6 +4,51 @@
 #include "ds/radix_tree.h"
 
 #include <doctest/doctest.h>
+#include <iostream>
+#include <random>
+#include <string>
+#include <vector>
+
+TEST_CASE("Hmmm" * doctest::test_suite("radixtree"))
+{
+  std::vector<char const*> strings = {
+    "a",
+    "b",
+    "c",
+    "d",
+    "aa",
+    "ab",
+    "ac",
+    "ad",
+    "bb",
+    "bbb",
+    "bbbb",
+    "bbbbb",
+    "bbbbbb",
+    "bbbbbbb",
+    "dda",
+    "ddc"};
+
+  ds::RadixTree rt;
+
+  std::random_device rd;
+  std::mt19937 g(rd());
+  std::shuffle(strings.begin(), strings.end(), g);
+  for (char const* s : strings)
+  {
+    rt.insert(s, s);
+  }
+
+  // std::random_device rd;
+  // std::mt19937 g(rd());
+  std::shuffle(strings.begin(), strings.end(), g);
+  for (char const* s : strings)
+  {
+    auto p = rt.lookup(s);
+    REQUIRE(p != nullptr);
+    REQUIRE(s == p);
+  }
+}
 
 TEST_CASE("TODO" * doctest::test_suite("radixtree"))
 {
@@ -29,7 +74,7 @@ TEST_CASE("TODO" * doctest::test_suite("radixtree"))
     REQUIRE(lookup_3 == nullptr);
 
     auto lookup_4 = rt.lookup("POST /foobab");
-    REQUIRE(lookup_4 == &data_b); // TODO: Huh?
+    REQUIRE(lookup_4 == &data_a);
 
     auto lookup_5 = rt.lookup("POST /foobarr");
     REQUIRE(lookup_5 == &data_b);
@@ -49,7 +94,7 @@ TEST_CASE("TODO" * doctest::test_suite("radixtree"))
     REQUIRE(lookup_3 == nullptr);
 
     auto lookup_4 = rt.lookup_exact("POST /foobab");
-    REQUIRE(lookup_4 == &data_b); // TODO: HUHHH?
+    REQUIRE(lookup_4 == nullptr);
 
     auto lookup_5 = rt.lookup_exact("POST /foobarr");
     REQUIRE(lookup_5 == nullptr);

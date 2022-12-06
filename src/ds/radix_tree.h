@@ -12,7 +12,8 @@ extern "C"
 // Macro to convert a string_view-like to (const void *key, guint32 bits)
 // args, for passing to lighttpd radix lib functions
 #define TO_LI_KEY(SV) \
-  SV.data(), SV.size() * sizeof(std::remove_cvref_t<decltype(SV)>::value_type)
+  SV.data(), \
+    SV.size() * sizeof(std::remove_cvref_t<decltype(SV)>::value_type) * 8
 
 namespace ds
 {
@@ -28,14 +29,14 @@ namespace ds
       li_radixtree_free(tree, nullptr, nullptr);
     }
 
-    using Target = void*;
+    using Target = const void*;
     using Path = std::string_view;
 
     // Returns pointer to previous element, if already present, after
     // overwriting
     Target insert(const Path& p, Target t)
     {
-      return li_radixtree_insert(tree, TO_LI_KEY(p), t);
+      return li_radixtree_insert(tree, TO_LI_KEY(p), const_cast<void*>(t));
     }
 
     Target remove(const Path& p)
