@@ -9,7 +9,7 @@ if [ "$#" -ne 2 ]; then
 fi
 
 SOURCE_FILE=${1}
-SOURCE_DIR=$(dirname $( dirname "${SOURCE_FILE}" ))
+SOURCE_DIR=$( dirname "${SOURCE_FILE}" )
 GENERATED_DIR=${2}
 
 if [ ! -f "env/bin/activate" ]
