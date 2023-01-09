@@ -305,6 +305,12 @@ add_custom_target(
 # Add sample apps
 add_subdirectory(${CCF_DIR}/samples)
 
+# Add common protobuf targets
+add_subdirectory(src/protobuf)
+
+# Add grpc_demo app
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/apps/grpc)
+
 # Add external_executor app
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/apps/external_executor)
 
@@ -1046,6 +1052,12 @@ if(BUILD_TESTS)
     PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/historical_query_perf.py
     CONSENSUS cft
     LABEL perf
+  )
+
+  add_e2e_test(
+    NAME grpc_demo_test
+    PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/grpc_demo.py
+    CONSENSUS ${CONSENSUS_FILTER}
   )
 
   add_e2e_test(

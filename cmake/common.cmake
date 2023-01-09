@@ -199,6 +199,7 @@ include(${CCF_DIR}/cmake/t_cose.cmake)
 set(MESSAGE_QUIET ON)
 include(${CCF_DIR}/cmake/protobuf.cmake)
 unset(MESSAGE_QUIET)
+include(${CCF_DIR}/cmake/protoc.cmake)
 
 # Unit test wrapper
 function(add_unit_test name)

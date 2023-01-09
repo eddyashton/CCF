@@ -2,11 +2,11 @@ syntax = "proto3";
 
 import "google/protobuf/empty.proto";
 
-package temp;
+package demo;
 
 option optimize_for = LITE_RUNTIME;
 
-service Test
+service Demo
 {
   rpc RunOps(stream OpIn) returns (stream OpOut) {}
 
