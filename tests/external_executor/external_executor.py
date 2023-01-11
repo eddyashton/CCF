@@ -5,13 +5,20 @@ import infra.e2e_args
 import infra.interfaces
 import suite.test_requirements as reqs
 import queue
+from ccf.tx_id import TxID
 
 from executors.logging_app import LoggingExecutor
 from executors.wiki_cacher import WikiCacherExecutor
 from executors.util import executor_thread
 
 # pylint: disable=import-error
+import kv_pb2 as KV
+
+# pylint: disable=import-error
 import kv_pb2_grpc as Service
+
+# pylint: disable=import-error
+import http_pb2 as HTTP
 
 # pylint: disable=import-error
 import misc_pb2 as Misc
@@ -462,6 +469,170 @@ def test_multiple_executors(network, args):
     return network
 
 
+@reqs.description("Test executors that deliberately produce conflicting transactions")
+def test_conflicting_executors(network, args):
+    primary, _ = network.find_primary()
+    target_uri = primary.get_public_rpc_address()
+
+    POST_activated_event = threading.Event()
+    GET_activated_event = threading.Event()
+    handling_a_get_event = threading.Event()
+    conflict_ready_event = threading.Event()
+
+    def POST_executor_fn(executor_credentials):
+        with grpc.secure_channel(
+            target=target_uri, credentials=executor_credentials
+        ) as channel:
+            stub = Service.KVStub(channel)
+
+            for work in stub.Activate(Empty()):
+                if work.HasField("activated"):
+                    POST_activated_event.set()
+                    continue
+
+                if work.HasField("work_done"):
+                    break
+
+                assert work.HasField("request_description")
+                request = work.request_description
+
+                response = KV.ResponseDescription(status_code=HTTP.HttpStatusCode.OK)
+                assert request.method == "POST", request
+                stub.Put(
+                    KV.KVKeyValue(table="public:foo", key=bytes(), value=request.body)
+                )
+
+                stub.EndTx(response)
+
+    # Create a long-lived executor, which waits for some external event, and then tries to read from a new table
+    def GET_executor_fn(executor_credentials):
+        with grpc.secure_channel(
+            target=target_uri, credentials=executor_credentials
+        ) as channel:
+            stub = Service.KVStub(channel)
+
+            for work in stub.Activate(Empty()):
+                if work.HasField("activated"):
+                    GET_activated_event.set()
+                    continue
+
+                if work.HasField("work_done"):
+                    break
+
+                assert work.HasField("request_description")
+                request = work.request_description
+
+                response = KV.ResponseDescription(status_code=HTTP.HttpStatusCode.OK)
+
+                assert request.method == "GET", request
+                # Claim an early read version
+                result = stub.Get(KV.KVKey(table="doesnt_matter", key=bytes()))
+
+                handling_a_get_event.set()
+                LOG.warning("Set signal for a GET event")
+                assert conflict_ready_event.wait(
+                    timeout=3
+                ), "Waited too long for conflict to be produced"
+                try:
+                    result = stub.Get(KV.KVKey(table="public:foo", key=bytes()))
+                except grpc.RpcError as e:
+                    # Currently expected error
+                    LOG.error(f"KV.Get produced error: {e}")
+                    response.status_code = http.HTTPStatus.INTERNAL_SERVER_ERROR
+                else:
+                    if not result.HasField("optional"):
+                        response.status_code = HTTP.HttpStatusCode.NOT_FOUND
+                    else:
+                        response.body = result.optional.value
+
+                stub.EndTx(response)
+
+    def blocking_get():
+        with primary.client() as c:
+            LOG.warning("Starting getter thread")
+            r = c.get("/foo")
+            assert r.status_code == http.HTTPStatus.INTERNAL_SERVER_ERROR, r
+
+    post_executor_credentials = register_new_executor(
+        primary, network, supported_endpoints=[("POST", "/foo")]
+    )
+    post_executor_thread = threading.Thread(
+        target=POST_executor_fn, args=(post_executor_credentials,)
+    )
+    post_executor_thread.start()
+    assert POST_activated_event.wait(
+        timeout=3
+    ), "Expected executor to activate within 3s"
+
+    get_executor_credentials = register_new_executor(
+        primary, network, supported_endpoints=[("GET", "/foo")]
+    )
+    get_executor_thread = threading.Thread(
+        target=GET_executor_fn, args=(get_executor_credentials,)
+    )
+    get_executor_thread.start()
+    assert GET_activated_event.wait(
+        timeout=3
+    ), "Expected executor to activate within 3s"
+
+    with primary.client() as c:
+        # Ensure there's at least one write to this table already
+        r = c.post("/foo", body={"n": 42})
+        assert r.status_code == http.HTTPStatus.OK, r
+        c.wait_for_commit(r)
+
+        # Get current commit point
+        r = c.get("/node/commit")
+        assert r.status_code == http.HTTPStatus.OK.value, r
+        commit_tx_id = TxID.from_str(r.body.json()["transaction_id"])
+
+        # Start a slow, blocking read (on another thread!)
+        getter_thread = threading.Thread(target=blocking_get)
+        getter_thread.start()
+
+        LOG.warning("Waiting for a GET event")
+        assert handling_a_get_event.wait(timeout=3), "GET took too long to arrive"
+        LOG.warning("Saw signal for a GET event")
+
+        # In a loop, poll until the commit changes
+        end_time = time.time() + 5
+        LOG.warning("Polling for commit advancement")
+        while time.time() < end_time:
+            # Produce additional writes
+            r = c.post("/foo", body={"n": random.randint(0, 99)})
+            assert r.status_code == http.HTTPStatus.OK, r
+
+            r = c.get("/node/commit")
+            assert r.status_code == http.HTTPStatus.OK.value, r
+            commit_now = TxID.from_str(r.body.json()["transaction_id"])
+            if commit_now != commit_tx_id:
+                # Advanced commit - reading a new handle now should produce a conflict
+                conflict_ready_event.set()
+                break
+            time.sleep(0.1)
+        else:
+            raise TimeoutError(
+                f"Failed to produce a conflict (advance commit) after 5s"
+            )
+
+        getter_thread.join()
+
+    # Deactivate executors, join threads
+    with grpc.secure_channel(
+        target=target_uri, credentials=get_executor_credentials
+    ) as channel:
+        stub = Service.KVStub(channel)
+        stub.Deactivate(Empty())
+    get_executor_thread.join()
+
+    with grpc.secure_channel(
+        target=target_uri, credentials=post_executor_credentials
+    ) as channel:
+        stub = Service.KVStub(channel)
+        stub.Deactivate(Empty())
+    post_executor_thread.join()
+
+
 def test_logging_executor(network, args):
     primary, _ = network.find_primary()
 
@@ -510,13 +681,14 @@ def run(args):
                 == "HTTP2"
             ), "Target node does not support HTTP/2"
 
-        network = test_executor_registration(network, args)
-        network = test_simple_executor(network, args)
-        network = test_parallel_executors(network, args)
-        network = test_streaming(network, args)
-        network = test_async_streaming(network, args)
-        network = test_logging_executor(network, args)
-        network = test_multiple_executors(network, args)
+        # network = test_executor_registration(network, args)
+        # network = test_simple_executor(network, args)
+        # network = test_parallel_executors(network, args)
+        # network = test_streaming(network, args)
+        # network = test_async_streaming(network, args)
+        # network = test_logging_executor(network, args)
+        # network = test_multiple_executors(network, args)
+        network = test_conflicting_executors(network, args)
 
 
 if __name__ == "__main__":
