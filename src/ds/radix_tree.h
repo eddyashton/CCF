@@ -29,6 +29,8 @@ namespace ds
       li_radixtree_free(tree, nullptr, nullptr);
     }
 
+    RadixTree(const RadixTree& other) = delete;
+
     using Value = const void*;
     using Key = std::string_view;
 
