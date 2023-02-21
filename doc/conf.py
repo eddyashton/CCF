@@ -283,7 +283,9 @@ tokenizer_lang = "en_UK"
 spelling_word_list_filename = ["spelling_wordlist.txt"]
 
 # sphinxcontrib-mermaid options
-mermaid_init_js = """mermaid.initialize({startOnLoad:true});
+mermaid_init_js = """import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+
+mermaid.initialize({startOnLoad:true});
 
 // Remove height from all mermaid diagrams
 window.addEventListener(
