@@ -677,6 +677,9 @@
       },
       "description": "This section includes configuration for the host-enclave ring-buffer memory (modify with care!)",
       "additionalProperties": false
+    },
+    "app_settings": {
+      "description": "Free-form, but generally an object. Accessible to application at startup, to configure application-specific values"
     }
   },
   "required": ["enclave", "network", "command"],

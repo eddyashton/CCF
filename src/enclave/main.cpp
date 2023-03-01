@@ -247,10 +247,7 @@ extern "C"
         std::move(basic_writer_factory),
         std::move(writer_factory),
         ringbuffer_logger,
-        cc.ledger_signatures.tx_count,
-        cc.ledger_signatures.delay.count_ms(),
-        cc.consensus,
-        cc.node_certificate.curve_id);
+        std::move(cc));
     }
     catch (const ccf::ccf_oe_attester_init_error& e)
     {
@@ -293,7 +290,6 @@ extern "C"
         startup_snapshot_data, startup_snapshot_data + startup_snapshot_size);
       status = enclave->create_new_node(
         start_type,
-        std::move(cc),
         std::move(startup_snapshot),
         node_cert,
         node_cert_size,

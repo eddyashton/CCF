@@ -3,6 +3,7 @@
 #pragma once
 #include "ccf/app_interface.h"
 #include "ccf/ds/logger.h"
+#include "ccf/node/startup_config.h"
 #include "ccf/pal/enclave.h"
 #include "ccf/pal/mem.h"
 #include "ds/oversized.h"
@@ -42,6 +43,7 @@ namespace ccf
     std::unique_ptr<ringbuffer::WriterFactory> basic_writer_factory;
     std::unique_ptr<oversized::WriterFactory> writer_factory;
     RingbufferLogger* ringbuffer_logger = nullptr;
+    StartupConfig startup_config;
     ccf::NetworkState network;
     ccf::ShareManager share_manager;
     std::shared_ptr<RPCMap> rpc_map;
@@ -79,15 +81,13 @@ namespace ccf
       std::unique_ptr<ringbuffer::WriterFactory> basic_writer_factory_,
       std::unique_ptr<oversized::WriterFactory> writer_factory_,
       RingbufferLogger* ringbuffer_logger_,
-      size_t sig_tx_interval,
-      size_t sig_ms_interval,
-      const consensus::Configuration& consensus_config,
-      const crypto::CurveID& curve_id) :
+      StartupConfig&& startup_config_) :
       circuit(std::move(circuit_)),
       basic_writer_factory(std::move(basic_writer_factory_)),
       writer_factory(std::move(writer_factory_)),
       ringbuffer_logger(ringbuffer_logger_),
-      network(consensus_config.type),
+      startup_config(startup_config_),
+      network(startup_config.consensus.type),
       share_manager(network),
       rpc_map(std::make_shared<RPCMap>()),
       rpcsessions(std::make_shared<RPCSessions>(*writer_factory, rpc_map))
@@ -116,7 +116,11 @@ namespace ccf
 
       LOG_TRACE_FMT("Creating node");
       node = std::make_unique<ccf::NodeState>(
-        *writer_factory, network, rpcsessions, share_manager, curve_id);
+        *writer_factory,
+        network,
+        rpcsessions,
+        share_manager,
+        startup_config.node_certificate.curve_id);
 
       LOG_TRACE_FMT("Creating context");
       context = std::make_unique<NodeContext>(node->get_node_id());
@@ -151,9 +155,8 @@ namespace ccf
 
       context->install_subsystem(std::make_shared<ccf::ACMESubsystem>(*node));
 
-      // TODO: Get the full config from the host?
-      context->install_subsystem(
-        std::make_shared<ccf::AppSettingsHolder>("Hello world"));
+      context->install_subsystem(std::make_shared<ccf::AppSettingsHolder>(
+        std::move(startup_config.app_settings)));
 
       LOG_TRACE_FMT("Creating RPC actors / ffi");
       rpc_map->register_frontend<ccf::ActorsType::members>(
@@ -177,12 +180,12 @@ namespace ccf
 
       LOG_TRACE_FMT("Initialize node");
       node->initialize(
-        consensus_config,
+        startup_config.consensus,
         rpc_map,
         rpcsessions,
         indexer,
-        sig_tx_interval,
-        sig_ms_interval);
+        startup_config.ledger_signatures.tx_count,
+        startup_config.ledger_signatures.delay.count_ms());
     }
 
     ~Enclave()
@@ -200,7 +203,6 @@ namespace ccf
 
     CreateNodeStatus create_new_node(
       StartType start_type_,
-      StartupConfig&& ccf_config_,
       std::vector<uint8_t>&& startup_snapshot,
       uint8_t* node_cert,
       size_t node_cert_size,
@@ -215,7 +217,8 @@ namespace ccf
 
       start_type = start_type_;
 
-      rpcsessions->update_listening_interface_options(ccf_config_.network);
+      // TODO: Now a member
+      rpcsessions->update_listening_interface_options(startup_config.network);
 
       ccf::NodeCreateInfo r;
       try
@@ -223,7 +226,7 @@ namespace ccf
         LOG_TRACE_FMT(
           "Creating node with start_type {}", start_type_to_str(start_type));
         r = node->create(
-          start_type, std::move(ccf_config_), std::move(startup_snapshot));
+          start_type, std::move(startup_config), std::move(startup_snapshot));
       }
       catch (const std::exception& e)
       {
