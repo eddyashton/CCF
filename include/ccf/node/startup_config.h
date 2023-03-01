@@ -66,6 +66,8 @@ struct CCFConfig
     bool operator==(const Attestation&) const = default;
   };
   Attestation attestation = {};
+
+  nlohmann::json app_settings = {};
 };
 
 struct StartupConfig : CCFConfig

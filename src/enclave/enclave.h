@@ -12,6 +12,7 @@
 #include "interface.h"
 #include "js/wrap.h"
 #include "node/acme_challenge_frontend.h"
+#include "node/app_settings_holder.h"
 #include "node/historical_queries.h"
 #include "node/network_state.h"
 #include "node/node_state.h"
@@ -149,6 +150,10 @@ namespace ccf
         std::make_shared<ccf::NodeConfigurationSubsystem>(*node));
 
       context->install_subsystem(std::make_shared<ccf::ACMESubsystem>(*node));
+
+      // TODO: Get the full config from the host?
+      context->install_subsystem(
+        std::make_shared<ccf::AppSettingsHolder>("Hello world"));
 
       LOG_TRACE_FMT("Creating RPC actors / ffi");
       rpc_map->register_frontend<ccf::ActorsType::members>(

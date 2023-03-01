@@ -2,6 +2,7 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "ccf/app_settings_interface.h"
 #include "ccf/common_auth_policies.h"
 #include "ccf/common_endpoint_registry.h"
 #include "ccf/http_query.h"
@@ -1804,6 +1805,30 @@ namespace ccf
         HTTP_GET,
         json_adapter(list_indexing_strategies),
         no_auth_required)
+        .set_forwarding_required(endpoints::ForwardingRequired::Never)
+        .set_auto_schema<void, nlohmann::json>()
+        .install();
+
+      auto get_app_settings =
+        [this](ccf::endpoints::EndpointContext& ctx, nlohmann::json&& params) {
+          auto app_settings_subsystem =
+            this->context.get_subsystem<ccf::AppSettings>();
+          if (app_settings_subsystem == nullptr)
+          {
+            return make_error(
+              HTTP_STATUS_INTERNAL_SERVER_ERROR,
+              ccf::errors::InternalError,
+              "AppSettings subsystem is not accessible");
+          }
+
+          return make_success(app_settings_subsystem->get_app_settings());
+        };
+      make_endpoint(
+        "/app_settings",
+        HTTP_GET,
+        ccf::json_adapter(get_app_settings),
+        no_auth_required)
+        // Returns node-local information, so should never be forwarded
         .set_forwarding_required(endpoints::ForwardingRequired::Never)
         .set_auto_schema<void, nlohmann::json>()
         .install();
