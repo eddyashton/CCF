@@ -302,30 +302,6 @@ def run_tls_san_checks(args):
         assert len(sans) == 1, "Expected exactly one SAN"
         assert sans[0].value == ipaddress.ip_address(dummy_public_rpc_host)
 
-# TODO: Move this elsewhere, in prep for testing logging custom settings?
-def run_custom_configurations(args):
-    with infra.network.network(
-        args.nodes, args.binary_dir, args.debug_nodes, args.perf_nodes, pdb=args.pdb
-    ) as network:
-        LOG.info("Check app_settings are passed through to application code")
-        network.start_and_open(args)
-        primary, _ = network.find_primary()
-        with primary.client() as c:
-            r = c.get("/node/app_settings")
-            assert r.status_code == http.HTTPStatus.NO_CONTENT, r
-
-        new_node = network.create_node("local://localhost")
-
-        target_settings = {"splines": "reticulated", "foo": [42, 100]}
-        network.join_node(new_node, args.package, args, app_settings=target_settings)
-        
-        network.trust_node(new_node, args)
-
-        with new_node.client() as c:
-            r = c.get("/node/app_settings")
-            assert r.status_code == http.HTTPStatus.OK, r
-            assert r.body.json() == target_settings
-
 
 def run_configuration_file_checks(args):
     LOG.info(
@@ -349,5 +325,4 @@ def run_configuration_file_checks(args):
 def run(args):
     run_file_operations(args)
     run_tls_san_checks(args)
-    run_custom_configurations(args)
     run_configuration_file_checks(args)

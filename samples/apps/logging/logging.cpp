@@ -6,6 +6,7 @@
 
 // CCF
 #include "ccf/app_interface.h"
+#include "ccf/app_settings_interface.h"
 #include "ccf/common_auth_policies.h"
 #include "ccf/crypto/verifier.h"
 #include "ccf/ds/hash.h"
@@ -314,8 +315,25 @@ namespace loggingapp
 
       openapi_info.document_version = "1.20.0";
 
-      index_per_public_key = std::make_shared<RecordsIndexingStrategy>(
-        PUBLIC_RECORDS, context, 10000, 20);
+      {
+        auto app_settings_subsystem = context.get_subsystem<ccf::AppSettings>();
+        if (app_settings_subsystem == nullptr)
+        {
+          throw std::logic_error("Missing AppSettings subsystem");
+        }
+        const auto& app_settings = app_settings_subsystem->get_app_settings();
+        const auto bucket_size_it = app_settings.find("index_bucket_size");
+        const size_t bucket_size = bucket_size_it == app_settings.end() ?
+          10'000 :
+          bucket_size_it.value().get<size_t>();
+        const auto bucket_count_it = app_settings.find("index_bucket_count");
+        const size_t bucket_count = bucket_count_it == app_settings.end() ?
+          20 :
+          bucket_count_it.value().get<size_t>();
+        index_per_public_key = std::make_shared<RecordsIndexingStrategy>(
+          PUBLIC_RECORDS, context, bucket_size, bucket_count);
+      }
+
       context.get_indexing_strategies().install_strategy(index_per_public_key);
 
       const ccf::AuthnPolicies auth_policies = {
@@ -1350,7 +1368,8 @@ namespace loggingapp
         }
 
         // Set a maximum range, paginate larger requests
-        static constexpr size_t max_seqno_per_page = 10000;
+        const size_t max_seqno_per_page =
+          std::min(10'000ul, index_per_public_key->max_requestable_range());
         const auto range_begin = from_seqno;
         const auto range_end =
           std::min(to_seqno, range_begin + max_seqno_per_page);
@@ -1369,7 +1388,7 @@ namespace loggingapp
           ctx.rpc_ctx->set_response_header(
             http::headers::CONTENT_TYPE, http::headervalues::contenttype::TEXT);
           ctx.rpc_ctx->set_response_body(fmt::format(
-            "Still constructing index for private records at {}", id));
+            "Still constructing index for public records at {}", id));
           return;
         }
 

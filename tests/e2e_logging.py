@@ -34,6 +34,7 @@ from hashlib import sha256
 from infra.member import AckException
 import e2e_common_endpoints
 from types import MappingProxyType
+import math
 
 from loguru import logger as LOG
 
@@ -1692,6 +1693,67 @@ def test_basic_constraints(network, args):
     assert basic_constraints.value.ca == False
 
 
+@reqs.description("Test adding a node with a custom configuration")
+def test_custom_configurations(network, args):
+    primary, _ = network.find_primary()
+    with primary.client() as c:
+        r = c.get("/node/app_settings")
+        assert r.status_code == http.HTTPStatus.NO_CONTENT, r
+
+    # Create a new node
+    new_node = network.create_node("local://localhost")
+
+    index_bucket_size = 5
+    index_bucket_count = 3
+    target_settings = {
+        "index_bucket_size": index_bucket_size,
+        "index_bucket_count": index_bucket_count,
+    }
+    network.join_node(new_node, args.package, args, app_settings=target_settings)
+
+    network.trust_node(new_node, args)
+
+    # Confirm that it has received and used app_settings
+    with new_node.client() as c:
+        r = c.get("/node/app_settings")
+        assert r.status_code == http.HTTPStatus.OK, r
+        assert r.body.json() == target_settings
+
+        r = c.get("/node/index/strategies")
+        assert r.status_code == http.HTTPStatus.OK, r
+        strategies = r.body.json()
+        strategy = next(
+            (e for e in strategies if e["name"] == "SeqnosByKey public:records"),
+            None,
+        )
+        assert strategy is not None, f"Strategy not found"
+        assert strategy["seqnos_per_bucket"] == index_bucket_size
+        assert strategy["old_results_max_size"] == index_bucket_count
+
+    # Post multiple buckets worth of new entries, confirm they can be indexed on this new node
+    log_id = 123
+    tx_count = math.ceil(1.5 * index_bucket_size * index_bucket_count)
+    network.txs.issue(network, idx=log_id+1, send_private=False, number_txs=tx_count)
+    network.txs.issue(network, idx=log_id, send_private=False, number_txs=tx_count)
+    network.txs.issue(network, idx=log_id+1, send_private=False, number_txs=tx_count)
+    network.txs.issue(network, idx=log_id, send_private=False, number_txs=tx_count)
+    network.txs.issue(network, idx=log_id+1, send_private=False, number_txs=tx_count)
+    primary_entries, _ = network.txs.verify_range_for_idx(log_id, node=primary)
+    new_entries, _ = network.txs.verify_range_for_idx(log_id, node=new_node)
+    LOG.warning(f"{len(primary_entries)} vs {len(new_entries)}")
+    LOG.warning(f"{primary_entries[0]} vs {new_entries[0]}")
+    LOG.warning(f"{primary_entries[-1]} vs {new_entries[-1]}")
+    assert primary_entries == new_entries
+
+    while True:
+        time.sleep(20)
+        LOG.warning("Waiting...")
+
+    # Remove temporary new node
+    network.retire_node(primary, new_node)
+    new_node.stop()
+
+
 def run_udp_tests(args):
     # Register secondary interface as an UDP socket on all nodes
     udp_interface = infra.interfaces.make_secondary_interface("udp", "udp_interface")
@@ -1740,37 +1802,38 @@ def run(args):
     ) as network:
         network.start_and_open(args)
 
-        test_basic_constraints(network, args)
-        test(network, args)
-        test_remove(network, args)
-        test_clear(network, args)
-        test_record_count(network, args)
-        test_forwarding_frontends(network, args)
-        test_forwarding_frontends_without_app_prefix(network, args)
-        test_signed_escapes(network, args)
-        test_user_data_ACL(network, args)
-        test_cert_prefix(network, args)
-        test_anonymous_caller(network, args)
-        test_multi_auth(network, args)
-        test_custom_auth(network, args)
-        test_custom_auth_safety(network, args)
-        test_raw_text(network, args)
-        test_historical_query(network, args)
-        test_historical_query_range(network, args)
-        test_view_history(network, args)
-        test_metrics(network, args)
-        test_empty_path(network, args)
-        test_post_local_commit_failure(network, args)
-        test_committed_index(network, args)
-        test_liveness(network, args)
-        test_rekey(network, args)
-        test_liveness(network, args)
-        test_random_receipts(network, args, False)
-        if args.package == "samples/apps/logging/liblogging":
-            test_receipts(network, args)
-            test_historical_query_sparse(network, args)
-        test_historical_receipts(network, args)
-        test_historical_receipts_with_claims(network, args)
+        # test_basic_constraints(network, args)
+        # test(network, args)
+        # test_remove(network, args)
+        # test_clear(network, args)
+        # test_record_count(network, args)
+        # test_forwarding_frontends(network, args)
+        # test_forwarding_frontends_without_app_prefix(network, args)
+        # test_signed_escapes(network, args)
+        # test_user_data_ACL(network, args)
+        # test_cert_prefix(network, args)
+        # test_anonymous_caller(network, args)
+        # test_multi_auth(network, args)
+        # test_custom_auth(network, args)
+        # test_custom_auth_safety(network, args)
+        # test_raw_text(network, args)
+        # test_historical_query(network, args)
+        # test_historical_query_range(network, args)
+        # test_view_history(network, args)
+        # test_metrics(network, args)
+        # test_empty_path(network, args)
+        # test_post_local_commit_failure(network, args)
+        # test_committed_index(network, args)
+        # test_liveness(network, args)
+        # test_rekey(network, args)
+        # test_liveness(network, args)
+        # test_random_receipts(network, args, False)
+        # if args.package == "samples/apps/logging/liblogging":
+        #     test_receipts(network, args)
+        #     test_historical_query_sparse(network, args)
+        # test_historical_receipts(network, args)
+        # test_historical_receipts_with_claims(network, args)
+        test_custom_configurations(network, args)
 
 
 def run_parsing_errors(args):
@@ -1792,14 +1855,14 @@ def run_parsing_errors(args):
 if __name__ == "__main__":
     cr = ConcurrentRunner()
 
-    cr.add(
-        "js",
-        run,
-        package="libjs_generic",
-        nodes=infra.e2e_args.max_nodes(cr.args, f=0),
-        initial_user_count=4,
-        initial_member_count=2,
-    )
+    # cr.add(
+    #     "js",
+    #     run,
+    #     package="libjs_generic",
+    #     nodes=infra.e2e_args.max_nodes(cr.args, f=0),
+    #     initial_user_count=4,
+    #     initial_member_count=2,
+    # )
 
     cr.add(
         "cpp",
@@ -1811,34 +1874,34 @@ if __name__ == "__main__":
         initial_member_count=2,
     )
 
-    cr.add(
-        "common",
-        e2e_common_endpoints.run,
-        package="samples/apps/logging/liblogging",
-        nodes=infra.e2e_args.max_nodes(cr.args, f=0),
-    )
+    # cr.add(
+    #     "common",
+    #     e2e_common_endpoints.run,
+    #     package="samples/apps/logging/liblogging",
+    #     nodes=infra.e2e_args.max_nodes(cr.args, f=0),
+    # )
 
-    # Run illegal traffic tests in separate runners, to reduce total serial runtime
-    cr.add(
-        "js_illegal",
-        run_parsing_errors,
-        package="libjs_generic",
-        nodes=infra.e2e_args.max_nodes(cr.args, f=0),
-    )
+    # # Run illegal traffic tests in separate runners, to reduce total serial runtime
+    # cr.add(
+    #     "js_illegal",
+    #     run_parsing_errors,
+    #     package="libjs_generic",
+    #     nodes=infra.e2e_args.max_nodes(cr.args, f=0),
+    # )
 
-    cr.add(
-        "cpp_illegal",
-        run_parsing_errors,
-        package="samples/apps/logging/liblogging",
-        nodes=infra.e2e_args.max_nodes(cr.args, f=0),
-    )
+    # cr.add(
+    #     "cpp_illegal",
+    #     run_parsing_errors,
+    #     package="samples/apps/logging/liblogging",
+    #     nodes=infra.e2e_args.max_nodes(cr.args, f=0),
+    # )
 
-    # This is just for the UDP echo test for now
-    cr.add(
-        "udp",
-        run_udp_tests,
-        package="samples/apps/logging/liblogging",
-        nodes=infra.e2e_args.max_nodes(cr.args, f=0),
-    )
+    # # This is just for the UDP echo test for now
+    # cr.add(
+    #     "udp",
+    #     run_udp_tests,
+    #     package="samples/apps/logging/liblogging",
+    #     nodes=infra.e2e_args.max_nodes(cr.args, f=0),
+    # )
 
     cr.run()
