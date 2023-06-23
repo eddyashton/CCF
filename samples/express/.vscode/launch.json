@@ -7,14 +7,15 @@
     {
       "type": "node",
       "request": "launch",
+      "cwd": "${workspaceFolder}/samples/express/",
       "name": "Host current bundle with Express",
       "skipFiles": ["<node_internals>/**"],
       "args": ["--bundle", "${file}"],
       "runtimeArgs": [
         "--experimental-loader",
-        "${workspaceFolder}/bundle_loader.js"
+        "./bundle_loader.js"
       ],
-      "program": "${workspaceFolder}/host.js"
+      "program": "./main.js"
     }
   ]
 }

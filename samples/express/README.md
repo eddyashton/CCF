@@ -102,26 +102,6 @@ $ curl https://localhost:8000/app/count/foo --cacert ./service_cert.pem
 
 ## VSCode integration
 
-This folder contains a `.vscode/launch.json` demonstrating how this tool may be hooked up to the VSCode debugger:
+This folder contains a [`.vscode/launch.json`](.vscode/launch.json) demonstrating how this tool may be hooked up to the VSCode debugger.
 
-```json
-{
-  "version": "0.2.0",
-  "configurations": [
-    {
-      "type": "node",
-      "request": "launch",
-      "name": "Host current bundle with Express",
-      "skipFiles": ["<node_internals>/**"],
-      "args": ["--bundle", "${file}"],
-      "runtimeArgs": [
-        "--experimental-loader",
-        "${workspaceFolder}/bundle_loader.js"
-      ],
-      "program": "${workspaceFolder}/host.js"
-    }
-  ]
-}
-```
-
-To use this configuration, first select a `bundle.json` as the active file. For instance if `my_bundle.json` is the active window, then this configuration will run `node --experimental-loader ./bundle_loader.js ./host.js --bundle ./my_bundle.json` with the VSCode debugger attached.
+To use this configuration, first select a `bundle.json` as the active file, and then then run this configuration from VSCode's Run and Debug tab. For instance if `my_bundle.json` is the active window, then this configuration will launch `node --experimental-loader ./bundle_loader.js ./host.js --bundle ./my_bundle.json` with the VSCode debugger attached. Note that while the `bundle_loader.js` is used to resolve imports, the debugger is executing the source under `dist/` - breakpoints must be placed in the appropriate file.
