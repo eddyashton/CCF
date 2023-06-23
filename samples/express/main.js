@@ -170,7 +170,7 @@ pem.createCertificate({ days: 1, selfSigned: true }, function (err, keys) {
   console.log(`Writing server certificate to ${argv.cert}`);
   writeFileSync(argv.cert, keys.certificate);
 
-  https
+  const server = https
     .createServer(
       {
         key: keys.clientKey,
@@ -182,5 +182,9 @@ pem.createCertificate({ days: 1, selfSigned: true }, function (err, keys) {
       expressApp
     )
     .listen(port);
-  console.log(`CCF express app listening on port ${port}!`);
+  console.log(
+    `CCF express app listening on ${server.address().address}:${
+      server.address().port
+    }!`
+  );
 });

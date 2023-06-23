@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "endpoints": {
+      "/increment/{id}": {
+        "post": {
+          "js_module": "endpoints/increment.js",
+          "js_function": "increment",
+          "forwarding_required": "sometimes",
+          "authn_policies": [],
+          "mode": "readwrite",
+          "openapi": {}
+        }
+      },
+      "/count/{id}": {
+        "get": {
+          "js_module": "endpoints/count.js",
+          "js_function": "count",
+          "forwarding_required": "sometimes",
+          "authn_policies": [],
+          "mode": "readwrite",
+          "openapi": {}
+        }
+      }
+    }
+  },
+  "modules": [
+    {
+      "name": "endpoints/all.js",
+      "module": "export { increment } from './increment.js';\nexport { count } from './count.js';\n"
+    },
+    {
+      "name": "endpoints/count.js",
+      "module": "import { ccf } from '../js/ccf-app/global.js';\n\nfunction count(request) {\n    let counts = ccf.kv[\"counts\"];\n    const id = ccf.jsonCompatibleToBuf(request.params.id);\n    if (counts.has(id)) {\n        return {\n            body: {\n                count: ccf.bufToJsonCompatible(counts.get(id))\n            }\n        };\n    }\n    else {\n        return {\n            statusCode: 404,\n            body: `No count found for ${request.params.id}`\n        };\n    }\n}\n\nexport { count };\n"
+    },
+    {
+      "name": "endpoints/increment.js",
+      "module": "import { ccf } from '../js/ccf-app/global.js';\n\nfunction increment(request) {\n    let counts = ccf.kv[\"counts\"];\n    const id = ccf.jsonCompatibleToBuf(request.params.id);\n    const prevCount = counts.has(id) ? ccf.bufToJsonCompatible(counts.get(id)) : 0;\n    counts.set(id, ccf.jsonCompatibleToBuf(prevCount + 1));\n    return {};\n}\n\nexport { increment };\n"
+    },
+    {
+      "name": "js/ccf-app/global.js",
+      "module": "// Copyright (c) Microsoft Corporation. All rights reserved.\n// Licensed under the Apache 2.0 License.\n/**\n * This module describes the global {@linkcode ccf} variable.\n * Direct access of this module or the {@linkcode ccf} variable is\n * typically not needed as all of its functionality is exposed\n * via other, often more high-level, modules.\n *\n * Accessing the {@linkcode ccf} global in a type-safe way is done\n * as follows:\n *\n * ```\n * import { ccf } from '@microsoft/ccf-app/global.js';\n * ```\n *\n * @module\n */\n// The global ccf variable and associated types are exported\n// as a regular module instead of using an ambient namespace\n// in a .d.ts definition file.\n// This avoids polluting the global namespace.\nconst ccf = globalThis.ccf;\n\nexport { ccf };\n"
+    }
+  ]
+}
