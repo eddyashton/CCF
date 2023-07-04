@@ -5,9 +5,9 @@
 #include "ccf/crypto/key_pair.h"
 #include "ccf/crypto/verifier.h"
 #include "ccf/ds/logger.h"
-#include "ccf/pal/locking.h"
 #include "ccf/tx_status.h"
 #include "consensus/aft/raft_types.h"
+#include "ds/named_mutex.h"
 #include "kv/kv_types.h"
 
 #include <map>
@@ -151,7 +151,7 @@ namespace aft
   {
     State(const ccf::NodeId& node_id_) : node_id(node_id_) {}
 
-    ccf::pal::Mutex lock;
+    ds::NamedMutex lock = ds::NamedMutex("raft_lock");
 
     ccf::NodeId node_id;
     ccf::View current_view = 0;
