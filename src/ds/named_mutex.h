@@ -5,14 +5,17 @@
 #include "ccf/ds/logger.h"
 #include "ccf/pal/locking.h"
 
-#include <stack>
+#include <deque>
+#include <set>
 
 #define ASSERT_MUTEX_ORDER
 
 namespace ds
 {
 #ifdef ASSERT_MUTEX_ORDER
-  static thread_local std::stack<std::string> locked_stack;
+  static thread_local std::deque<std::string> locked_stack;
+  using PrecedingLock = std::pair<std::string, std::string>;
+  static std::set<PrecedingLock> lock_precedences;
 #endif
 
   class NamedMutex
@@ -24,7 +27,27 @@ namespace ds
 #ifdef ASSERT_MUTEX_ORDER
     void check_lock_safety()
     {
-      locked_stack.push(label);
+      for (const auto& locked : locked_stack)
+      {
+        const auto inverted = std::make_pair(label, locked);
+        const auto it = lock_precedences.find(inverted);
+        if (it != lock_precedences.end())
+        {
+          LOG_FATAL_FMT(
+            "Mutexes locked in inconsistent order - this may cause deadlock!");
+          LOG_FATAL_FMT(
+            "Currently attempting to lock {} while holding {} - previously "
+            "held {} while trying to lock {}",
+            label,
+            locked,
+            locked,
+            label);
+        }
+
+        const auto ordered = std::make_pair(locked, label);
+        lock_precedences.insert(ordered);
+      }
+      locked_stack.push_back(label);
     }
 #endif
 
@@ -52,13 +75,14 @@ namespace ds
     void unlock()
     {
 #ifdef ASSERT_MUTEX_ORDER
-      if (locked_stack.top() != label)
+      if (locked_stack.back() != label)
       {
-        LOG_FAIL_FMT("Unexpected unlock order - {} is not the last-locked", label);
+        LOG_FAIL_FMT(
+          "Unexpected unlock order - {} is not the last-locked", label);
       }
       else
       {
-        locked_stack.pop();
+        locked_stack.pop_back();
       }
 #endif
 
