@@ -16,8 +16,27 @@ namespace tls
   class Context
   {
   protected:
+    bool closed = false;
+
     crypto::OpenSSL::Unique_SSL_CTX cfg;
     crypto::OpenSSL::Unique_SSL ssl;
+
+    void flush_errors()
+    {
+      while (true)
+      {
+        const auto err = ERR_get_error();
+
+        if (err == 0)
+        {
+          LOG_INFO_FMT("No more errors");
+          return;
+        }
+
+        LOG_INFO_FMT(
+          "OpenSSL error {}: {}", err, crypto::OpenSSL::error_string(err));
+      }
+    }
 
   public:
     Context(bool client) :
@@ -76,7 +95,16 @@ namespace tls
         SSL_set_accept_state(ssl);
     }
 
-    virtual ~Context() = default;
+    virtual ~Context() {
+      if (closed)
+      {
+        LOG_INFO_FMT("Safe Context destruction");
+      }
+      else
+      {
+        LOG_INFO_FMT("!!! Context destroyed without calling close first!");
+      }
+    }
 
     virtual void set_bio(
       void* cb_obj, BIO_callback_fn_ex send, BIO_callback_fn_ex recv)
@@ -125,7 +153,9 @@ namespace tls
       }
 
       // Everything else falls here.
-      LOG_TRACE_FMT("Context::handshake() : Error code {}", rc);
+      LOG_INFO_FMT("Context::handshake() : Error code {}", rc);
+
+      flush_errors();
 
       // As an MBedTLS emulation, we return negative for errors.
       return -SSL_get_error(ssl, rc);
@@ -147,7 +177,9 @@ namespace tls
       }
 
       // Everything else falls here.
-      LOG_TRACE_FMT("Context::read() : Error code {}", rc);
+      LOG_INFO_FMT("Context::read() : Error code {}", rc);
+
+      flush_errors();
 
       // As an MBedTLS emulation, we return negative for errors.
       return -SSL_get_error(ssl, rc);
@@ -169,7 +201,9 @@ namespace tls
       }
 
       // Everything else falls here.
-      LOG_TRACE_FMT("Context::write() : Error code {}", rc);
+      LOG_INFO_FMT("Context::write() : Error code {}", rc);
+
+      flush_errors();
 
       // As an MBedTLS emulation, we return negative for errors.
       return -SSL_get_error(ssl, rc);
@@ -178,6 +212,7 @@ namespace tls
     virtual int close()
     {
       LOG_TRACE_FMT("Context::close() : Shutdown");
+      closed = true;
       return SSL_shutdown(ssl);
     }
 

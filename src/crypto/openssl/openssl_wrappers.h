@@ -33,6 +33,13 @@ namespace crypto
     /// Returns the error string from an error code
     inline std::string error_string(int ec)
     {
+      static bool strings_loaded = false;
+      if (!strings_loaded)
+      {
+        SSL_load_error_strings();
+        strings_loaded = true;
+      }
+
       // ERR_error_string doesn't really expect the code could actually be zero
       // and uses the `static char buf[256]` which is NOT cleaned nor checked
       // if it has changed. So we use ERR_error_string_n directly.

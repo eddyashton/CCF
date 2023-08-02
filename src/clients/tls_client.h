@@ -142,7 +142,12 @@ namespace client
       init();
     }
 
-    virtual ~TlsClient() {}
+    virtual ~TlsClient()
+    {
+      SSL* ssl;
+      BIO_get_ssl(bio, &ssl);
+      SSL_shutdown(ssl);
+    }
 
     auto get_ciphersuite_name()
     {

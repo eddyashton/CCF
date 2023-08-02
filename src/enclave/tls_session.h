@@ -212,8 +212,7 @@ namespace ccf
 
       if (r < 0)
       {
-        LOG_TRACE_FMT(
-          "TLS {} error on read: {}", session_id, tls::error_string(r));
+        LOG_TRACE_FMT("TLS {} error on read: {}", session_id, -r);
         stop(error);
         return 0;
       }
@@ -283,6 +282,7 @@ namespace ccf
       {
         case handshake:
         {
+          ctx->close();
           LOG_TRACE_FMT("TLS {} closed during handshake", session_id);
           stop(closed);
           break;

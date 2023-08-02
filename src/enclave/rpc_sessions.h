@@ -537,7 +537,7 @@ namespace ccf
     void remove_session(tls::ConnID id)
     {
       std::lock_guard<ccf::pal::Mutex> guard(lock);
-      LOG_DEBUG_FMT("Closing a session inside the enclave: {}", id);
+      LOG_INFO_FMT("Closing a session inside the enclave: {}", id);
       const auto search = sessions.find(id);
       if (search != sessions.end())
       {
