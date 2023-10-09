@@ -8,12 +8,11 @@
 
 namespace ccf
 {
-  class NodeToNodeChannelManager : public NodeToNode
+  // Abstracts all actual IO work, so that they may use ringbuffer or
+  // alternative (direct) IO
+  class AbstractNodeToNodeChannelManager : public NodeToNode
   {
-  private:
-    ringbuffer::AbstractWriterFactory& writer_factory;
-    ringbuffer::WriterPtr to_host;
-
+  protected:
     struct ChannelInfo
     {
       std::shared_ptr<Channel> channel;
@@ -48,20 +47,6 @@ namespace ccf
 
     std::shared_ptr<Channel> get_channel(const NodeId& peer_id)
     {
-      CCF_ASSERT_FMT(
-        this_node == nullptr || this_node->node_id != peer_id,
-        "Requested channel with self {}",
-        peer_id);
-
-      CCF_ASSERT_FMT(
-        message_limit.has_value(),
-        "Node-to-node message limit has not yet been set");
-
-      std::lock_guard<ccf::pal::Mutex> guard(lock);
-      CCF_ASSERT_FMT(
-        this_node != nullptr && this_node->endorsed_node_cert.has_value(),
-        "Endorsed node certificate has not yet been set");
-
       auto search = channels.find(peer_id);
       if (search != channels.end())
       {
@@ -70,27 +55,16 @@ namespace ccf
         return channel_info.channel;
       }
 
-      // Create channel
-      auto channel = std::make_shared<Channel>(
-        writer_factory,
-        this_node->service_cert,
-        this_node->node_kp,
-        this_node->endorsed_node_cert.value(),
-        this_node->node_id,
-        peer_id,
-        message_limit.value());
+      // Create new channel
+      auto channel = make_channel(peer_id);
       auto info = ChannelInfo{channel, std::chrono::milliseconds(0)};
       channels.try_emplace(peer_id, info);
       return channel;
     }
 
-  public:
-    NodeToNodeChannelManager(
-      ringbuffer::AbstractWriterFactory& writer_factory_) :
-      writer_factory(writer_factory_),
-      to_host(writer_factory_.create_writer_to_outside())
-    {}
+    virtual std::shared_ptr<Channel> make_channel(const NodeId& peer_id) = 0;
 
+  public:
     void initialize(
       const NodeId& self_id,
       const crypto::Pem& service_cert,
@@ -161,19 +135,6 @@ namespace ccf
           }
         }
       }
-    }
-
-    virtual void associate_node_address(
-      const NodeId& peer_id,
-      const std::string& peer_hostname,
-      const std::string& peer_service) override
-    {
-      RINGBUFFER_WRITE_MESSAGE(
-        ccf::associate_node_address,
-        to_host,
-        peer_id.value(),
-        peer_hostname,
-        peer_service);
     }
 
     bool have_channel(const ccf::NodeId& nid) override
@@ -290,6 +251,59 @@ namespace ccf
     bool channel_open(const NodeId& peer_id)
     {
       return get_channel(peer_id)->channel_open();
+    }
+  };
+
+  class NodeToNodeChannelManager : public AbstractNodeToNodeChannelManager
+  {
+  private:
+    ringbuffer::AbstractWriterFactory& writer_factory;
+    ringbuffer::WriterPtr to_host;
+
+  public:
+    NodeToNodeChannelManager(
+      ringbuffer::AbstractWriterFactory& writer_factory_) :
+      writer_factory(writer_factory_),
+      to_host(writer_factory_.create_writer_to_outside())
+    {}
+
+    void associate_node_address(
+      const NodeId& peer_id,
+      const std::string& peer_hostname,
+      const std::string& peer_service) override
+    {
+      RINGBUFFER_WRITE_MESSAGE(
+        ccf::associate_node_address,
+        to_host,
+        peer_id.value(),
+        peer_hostname,
+        peer_service);
+    }
+
+    std::shared_ptr<Channel> make_channel(const NodeId& peer_id) override
+    {
+      CCF_ASSERT_FMT(
+        this_node == nullptr || this_node->node_id != peer_id,
+        "Requested channel with self {}",
+        peer_id);
+
+      CCF_ASSERT_FMT(
+        message_limit.has_value(),
+        "Node-to-node message limit has not yet been set");
+
+      std::lock_guard<ccf::pal::Mutex> guard(lock);
+      CCF_ASSERT_FMT(
+        this_node != nullptr && this_node->endorsed_node_cert.has_value(),
+        "Endorsed node certificate has not yet been set");
+
+      return std::make_shared<RingbufferIOChannel>(
+        writer_factory,
+        this_node->service_cert,
+        this_node->node_kp,
+        this_node->endorsed_node_cert.value(),
+        this_node->node_id,
+        peer_id,
+        message_limit.value());
     }
   };
 }

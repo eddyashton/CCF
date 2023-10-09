@@ -164,7 +164,7 @@ namespace ccf
   public:
     static std::chrono::microseconds min_gap_between_initiation_attempts;
 
-  private:
+  protected:
     struct OutgoingMsg
     {
       NodeMsgType type;
@@ -190,7 +190,6 @@ namespace ccf
     crypto::VerifierPtr peer_cv;
     crypto::Pem peer_cert;
 
-    ringbuffer::WriterPtr to_host;
     NodeId peer_id;
 
     // Used for key exchange
@@ -223,6 +222,11 @@ namespace ccf
     // Used to prevent replayed messages.
     // Set to the latest successfully received nonce.
     MsgNonce local_recv_nonce = {0};
+
+    virtual void write_channel_message(const std::span<uint8_t>& payload) = 0;
+    virtual void write_close_message() = 0;
+    virtual void write_message(
+      NodeMsgType msg_type, const serializer::ByteRange (&payload)[3]) = 0;
 
     void check_message_limit()
     {
@@ -329,13 +333,7 @@ namespace ccf
         "send_key_exchange_init: node serial: {}",
         make_verifier(node_cert)->serial_number());
 
-      RINGBUFFER_WRITE_MESSAGE(
-        node_outbound,
-        to_host,
-        peer_id.value(),
-        NodeMsgType::channel_msg,
-        self.value(),
-        payload);
+      write_channel_message(payload);
     }
 
     void send_key_exchange_response()
@@ -364,13 +362,7 @@ namespace ccf
         ds::to_hex(kex_ctx.get_own_key_share()),
         ds::to_hex(payload));
 
-      RINGBUFFER_WRITE_MESSAGE(
-        node_outbound,
-        to_host,
-        peer_id.value(),
-        NodeMsgType::channel_msg,
-        self.value(),
-        payload);
+      write_channel_message(payload);
     }
 
     void send_key_exchange_final()
@@ -389,13 +381,7 @@ namespace ccf
         ds::to_hex(kex_ctx.get_peer_key_share()),
         ds::to_hex(payload));
 
-      RINGBUFFER_WRITE_MESSAGE(
-        node_outbound,
-        to_host,
-        peer_id.value(),
-        NodeMsgType::channel_msg,
-        self.value(),
-        payload);
+      write_channel_message(payload);
     }
 
     void advance_connection_attempt()
@@ -945,8 +931,7 @@ namespace ccf
          static_cast<size_t>(gcm_hdr_serialised.size())},
         {cipher.data(), static_cast<size_t>(cipher.size())}};
 
-      RINGBUFFER_WRITE_MESSAGE(
-        node_outbound, to_host, peer_id.value(), type, self.value(), payload);
+      write_message(type, payload);
 
       check_message_limit();
 
@@ -957,7 +942,6 @@ namespace ccf
     static constexpr size_t protocol_version = 1;
 
     Channel(
-      ringbuffer::AbstractWriterFactory& writer_factory,
       const crypto::Pem& service_cert_,
       crypto::KeyPairPtr node_kp_,
       const crypto::Pem& node_cert_,
@@ -968,7 +952,6 @@ namespace ccf
       service_cert(service_cert_),
       node_kp(node_kp_),
       node_cert(node_cert_),
-      to_host(writer_factory.create_writer_to_outside()),
       peer_id(peer_id_),
       status(fmt::format("Channel to {}", peer_id_), INACTIVE),
       message_limit(message_limit_)
@@ -1104,7 +1087,7 @@ namespace ccf
     {
       std::lock_guard<ccf::pal::Mutex> guard(lock);
 
-      RINGBUFFER_WRITE_MESSAGE(close_node_outbound, to_host, peer_id.value());
+      write_close_message();
       reset_key_exchange();
       outgoing_consensus_msg.reset();
 
@@ -1154,6 +1137,54 @@ namespace ccf
         return false;
       }
     }
+  };
+
+  class RingbufferIOChannel : public Channel
+  {
+  protected:
+    ringbuffer::WriterPtr to_host;
+
+    void write_channel_message(const std::span<uint8_t>& payload) override
+    {
+      RINGBUFFER_WRITE_MESSAGE(
+        node_outbound,
+        to_host,
+        peer_id.value(),
+        NodeMsgType::channel_msg,
+        self.value(),
+        serializer::ByteRange{payload.data(), payload.size()});
+    }
+
+    void write_close_message() override
+    {
+      RINGBUFFER_WRITE_MESSAGE(close_node_outbound, to_host, peer_id.value());
+    }
+
+    void write_message(
+      NodeMsgType msg_type, const serializer::ByteRange (&payload)[3]) override
+    {
+      RINGBUFFER_WRITE_MESSAGE(
+        node_outbound,
+        to_host,
+        peer_id.value(),
+        msg_type,
+        self.value(),
+        payload);
+    }
+
+  public:
+    RingbufferIOChannel(
+      ringbuffer::AbstractWriterFactory& writer_factory,
+      const crypto::Pem& service_cert_,
+      crypto::KeyPairPtr node_kp_,
+      const crypto::Pem& node_cert_,
+      const NodeId& self_,
+      const NodeId& peer_id_,
+      size_t message_limit_) :
+      Channel(
+        service_cert_, node_kp_, node_cert_, self_, peer_id_, message_limit_),
+      to_host(writer_factory.create_writer_to_outside())
+    {}
   };
 }
 

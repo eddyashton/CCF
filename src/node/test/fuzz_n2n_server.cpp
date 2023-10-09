@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
+#include "crypto/certs.h"
 #include "host/signal.h"
 #include "host/tcp.h"
 #include "node/node_to_node_channel_manager.h"
@@ -8,89 +9,236 @@
 #include <CLI11/CLI11.hpp>
 
 size_t asynchost::TCPImpl::remaining_read_quota;
+std::chrono::microseconds ccf::Channel::min_gap_between_initiation_attempts(
+  2'000'000);
 
 namespace fuzz
 {
-  class N2NImpl : public ccf::NodeToNode
+  class DirectChannel : public ccf::Channel
   {
+  protected:
+    void write_channel_message(const std::span<uint8_t>& payload) override
+    {
+      LOG_INFO_FMT("Want to write channel message");
+    }
+
+    void write_close_message() override
+    {
+      LOG_INFO_FMT("Want to write close message");
+    }
+
+    void write_message(
+      ccf::NodeMsgType msg_type,
+      const serializer::ByteRange (&payload)[3]) override
+    {
+      LOG_INFO_FMT("Want to write 'normal' message");
+    }
+
   public:
-    virtual bool have_channel(const ccf::NodeId& nid)
+    DirectChannel(
+      const crypto::Pem& service_cert_,
+      crypto::KeyPairPtr node_kp_,
+      const crypto::Pem& node_cert_,
+      const ccf::NodeId& self_,
+      const ccf::NodeId& peer_id_,
+      size_t message_limit_) :
+      Channel(
+        service_cert_, node_kp_, node_cert_, self_, peer_id_, message_limit_)
+    {}
+  };
+
+  class N2NImpl : public ccf::AbstractNodeToNodeChannelManager
+  {
+  private:
+    static constexpr size_t certificate_validity_period_days = 365;
+
+    static crypto::Pem generate_self_signed_cert(
+      const crypto::KeyPairPtr& kp, const std::string& name)
     {
-      throw std::logic_error("Not implemented");
+      using namespace std::literals;
+      auto valid_from =
+        ds::to_x509_time_string(std::chrono::system_clock::now() - 24h);
+
+      return crypto::create_self_signed_cert(
+        kp, name, {}, valid_from, certificate_validity_period_days);
     }
 
-    virtual bool send_authenticated(
-      const ccf::NodeId& to,
-      ccf::NodeMsgType type,
-      const uint8_t* data,
-      size_t size)
+    static crypto::Pem endorse_cert(
+      const crypto::KeyPairPtr& endorser,
+      const crypto::Pem& endorser_cert,
+      const crypto::KeyPairPtr& endorsee)
     {
-      throw std::logic_error("Not implemented");
+      using namespace std::literals;
+      auto valid_from =
+        ds::to_x509_time_string(std::chrono::system_clock::now() - 24h);
+
+      auto csr = endorsee->create_csr("CN=Fuzz node");
+      return crypto::create_endorsed_cert(
+        csr,
+        valid_from,
+        certificate_validity_period_days,
+        endorser->private_key_pem(),
+        endorser_cert);
     }
 
-    virtual bool recv_authenticated_with_load(
-      const ccf::NodeId& from, const uint8_t*& data, size_t& size)
+  public:
+    N2NImpl()
     {
-      throw std::logic_error("Not implemented");
+      ccf::NodeId self_node_id;
+      auto service_kp = crypto::make_key_pair();
+      auto service_cert = generate_self_signed_cert(service_kp, "CN=Fuzz service");
+
+      auto node_kp = crypto::make_key_pair();
+      auto endorsed_node_cert = endorse_cert(service_kp, service_cert, node_kp);
+
+      initialize(self_node_id, service_cert, node_kp, endorsed_node_cert);
+      set_message_limit(50);
     }
 
-    virtual bool recv_authenticated(
-      const ccf::NodeId& from,
-      std::span<const uint8_t> header,
-      const uint8_t*& data,
-      size_t& size)
+    virtual void associate_node_address(
+      const ccf::NodeId& peer_id,
+      const std::string& peer_hostname,
+      const std::string& peer_service) override
     {
-      throw std::logic_error("Not implemented");
+      throw std::logic_error("Not implemented: associate_node_address");
     }
 
-    virtual bool recv_channel_message(
-      const ccf::NodeId& from, const uint8_t* data, size_t size)
+    std::shared_ptr<ccf::Channel> make_channel(
+      const ccf::NodeId& peer_id) override
     {
-      throw std::logic_error("Not implemented");
-    }
+      CCF_ASSERT_FMT(
+        this_node == nullptr || this_node->node_id != peer_id,
+        "Requested channel with self {}",
+        peer_id);
 
-    virtual bool send_encrypted(
-      const ccf::NodeId& to,
-      ccf::NodeMsgType type,
-      std::span<const uint8_t> header,
-      const std::vector<uint8_t>& data)
-    {
-      throw std::logic_error("Not implemented");
-    }
+      CCF_ASSERT_FMT(
+        message_limit.has_value(),
+        "Node-to-node message limit has not yet been set");
 
-    virtual std::vector<uint8_t> recv_encrypted(
-      const ccf::NodeId& from,
-      std::span<const uint8_t> header,
-      const uint8_t* data,
-      size_t size)
-    {
-      throw std::logic_error("Not implemented");
+      std::lock_guard<ccf::pal::Mutex> guard(lock);
+      CCF_ASSERT_FMT(
+        this_node != nullptr && this_node->endorsed_node_cert.has_value(),
+        "Endorsed node certificate has not yet been set");
+
+      return std::make_shared<DirectChannel>(
+        this_node->service_cert,
+        this_node->node_kp,
+        this_node->endorsed_node_cert.value_or(crypto::Pem{}),
+        this_node->node_id,
+        peer_id,
+        message_limit.value());
     }
   };
 
   namespace tcp
   {
+    using ConnID = size_t;
+
     class PeerBehaviour : public asynchost::SocketBehaviour<asynchost::TCP>
     {
+    private:
+      fuzz::N2NImpl& n2n;
+      ConnID id;
+
+      std::optional<size_t> msg_size = std::nullopt;
+      std::vector<uint8_t> pending;
+
     public:
-      PeerBehaviour() :
-        asynchost::SocketBehaviour<asynchost::TCP>("Fuzz Peer", "TCP")
+      PeerBehaviour(fuzz::N2NImpl& n2n_, ConnID id_) :
+        asynchost::SocketBehaviour<asynchost::TCP>("Fuzz Peer", "TCP"),
+        n2n(n2n_),
+        id(id_)
       {}
 
-      virtual void on_read(size_t n, uint8_t*& d, sockaddr)
+      virtual void on_read(size_t len, uint8_t*& incoming, sockaddr)
       {
-        LOG_INFO_FMT("{} on_read([{}]): {}", conn_name, n, std::string((char const*)d, n));
+        LOG_INFO_FMT("[{}] on_read([{} bytes])", id, len);
+
+        pending.insert(pending.end(), incoming, incoming + len);
+
+        const uint8_t* data = pending.data();
+        size_t size = pending.size();
+        const auto size_before = size;
+
+        while (true)
+        {
+          if (!msg_size.has_value())
+          {
+            if (size < sizeof(uint32_t))
+            {
+              break;
+            }
+
+            msg_size = serialized::read<uint32_t>(data, size);
+          }
+
+          if (size < msg_size.value())
+          {
+            LOG_DEBUG_FMT("[{}] Have {}/{} bytes", id, size, msg_size.value());
+            break;
+          }
+
+          const auto size_pre_headers = size;
+          auto msg_type = serialized::read<ccf::NodeMsgType>(data, size);
+          ccf::NodeId from = serialized::read<ccf::NodeId::Value>(data, size);
+          const auto size_post_headers = size;
+          const size_t payload_size =
+            msg_size.value() - (size_pre_headers - size_post_headers);
+
+          LOG_DEBUG_FMT(
+            "Receiving message: from node {}, size {}, type {}",
+            from,
+            msg_size.value(),
+            msg_type);
+
+          switch (msg_type)
+          {
+            case ccf::NodeMsgType::channel_msg:
+            {
+              n2n.recv_channel_message(from, data, payload_size);
+              break;
+            }
+
+            case ccf::NodeMsgType::consensus_msg:
+            {
+              LOG_INFO_FMT(
+                "Processing (ignoring) consensus message of {} bytes",
+                payload_size);
+              break;
+            }
+
+            default:
+            {
+              LOG_FAIL_FMT("Unhandled node message type: {}", msg_type);
+              break;
+            }
+          }
+
+          data += payload_size;
+          size -= payload_size;
+          msg_size.reset();
+        }
+
+        const auto size_after = size;
+        const auto used = size_before - size_after;
+        if (used > 0)
+        {
+          pending.erase(pending.begin(), pending.begin() + used);
+        }
       }
     };
 
     class ServerBehaviour : public asynchost::SocketBehaviour<asynchost::TCP>
     {
-      size_t next_id = 0;
+      fuzz::N2NImpl& n2n;
+
+      ConnID next_id = 0;
       std::map<size_t, asynchost::TCP> peers;
 
     public:
-      ServerBehaviour() :
-        asynchost::SocketBehaviour<asynchost::TCP>("Fuzz Server", "TCP")
+      ServerBehaviour(fuzz::N2NImpl& n2n_) :
+        asynchost::SocketBehaviour<asynchost::TCP>("Fuzz Server", "TCP"),
+        n2n(n2n_)
       {}
 
       virtual void on_read(size_t n, uint8_t*&, sockaddr)
@@ -102,7 +250,7 @@ namespace fuzz
       {
         LOG_INFO_FMT("{} on_accept()", conn_name);
         const auto id = ++next_id;
-        peer->set_behaviour(std::make_unique<PeerBehaviour>());
+        peer->set_behaviour(std::make_unique<PeerBehaviour>(n2n, id));
         peers[id] = peer;
         LOG_INFO_FMT("Saving peer as {}", id);
       }
@@ -147,7 +295,8 @@ int main(int argc, char** argv)
 
   // Listen for incoming TCP traffic
   asynchost::TCP tcp;
-  tcp->set_behaviour(std::make_unique<fuzz::tcp::ServerBehaviour>());
+  tcp->set_behaviour(
+    std::make_unique<fuzz::tcp::ServerBehaviour>(node_manager));
   tcp->listen("localhost", port);
 
   // Terminate loop politely

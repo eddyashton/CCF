@@ -1167,9 +1167,11 @@ if(BUILD_TESTS)
       PROPERTY ENVIRONMENT "ASAN_OPTIONS=alloc_dealloc_mismatch=0"
     )
 
-    add_executable(fuzz_n2n_server src/node/test/fuzz_n2n_server.cpp)
+    add_executable(fuzz_n2n_server ${CCF_DIR}/src/node/test/fuzz_n2n_server.cpp
+    ${CCF_DIR}/src/enclave/enclave_time.cpp
+    )
     target_link_libraries(
-      fuzz_n2n_server PRIVATE uv)
+      fuzz_n2n_server PRIVATE uv  ccfcrypto.host)
 
     if(NOT UNSAFE_VERSION)
       # Unsafe builds do not follow normal version conventions
