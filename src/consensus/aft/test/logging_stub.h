@@ -186,16 +186,6 @@ namespace aft
       return std::nullopt;
     }
 
-    void associate_node_address(
-      const ccf::NodeId& peer_id,
-      const std::string& peer_hostname,
-      const std::string& peer_service) override
-    {}
-
-    void close_channel(const ccf::NodeId& peer_id) override {}
-
-    void set_endorsed_node_cert(const crypto::Pem&) override {}
-
     bool have_channel(const ccf::NodeId& nid) override
     {
       return true;
@@ -227,13 +217,6 @@ namespace aft
       return true;
     }
 
-    void initialize(
-      const ccf::NodeId& self_id,
-      const crypto::Pem& service_cert,
-      crypto::KeyPairPtr node_kp,
-      const std::optional<crypto::Pem>& node_cert = std::nullopt) override
-    {}
-
     bool send_encrypted(
       const ccf::NodeId& to,
       ccf::NodeMsgType msg_type,
@@ -251,11 +234,6 @@ namespace aft
     {
       return {};
     }
-
-    void set_message_limit(size_t message_limit) override {}
-    void set_idle_timeout(std::chrono::milliseconds idle_timeout) override {}
-
-    void tick(std::chrono::milliseconds elapsed) override {}
 
     bool recv_authenticated_with_load(
       const ccf::NodeId& from, const uint8_t*& data, size_t& size) override

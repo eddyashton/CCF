@@ -28,9 +28,10 @@ namespace ccf
     virtual void associate_node_address(
       const NodeId& peer_id,
       const std::string& peer_hostname,
-      const std::string& peer_service) = 0;
+      const std::string& peer_service)
+    {}
 
-    virtual void close_channel(const NodeId& peer_id) = 0;
+    virtual void close_channel(const NodeId& peer_id) {}
 
     virtual bool have_channel(const NodeId& nid) = 0;
 
@@ -100,10 +101,11 @@ namespace ccf
       const NodeId& self_id,
       const crypto::Pem& service_cert,
       crypto::KeyPairPtr node_kp,
-      const std::optional<crypto::Pem>& node_cert = std::nullopt) = 0;
+      const std::optional<crypto::Pem>& node_cert = std::nullopt)
+    {}
 
-    virtual void set_endorsed_node_cert(
-      const crypto::Pem& endorsed_node_cert) = 0;
+    virtual void set_endorsed_node_cert(const crypto::Pem& endorsed_node_cert)
+    {}
 
     virtual bool send_encrypted(
       const NodeId& to,
@@ -140,9 +142,9 @@ namespace ccf
       const uint8_t* data,
       size_t size) = 0;
 
-    virtual void set_message_limit(size_t message_limit) = 0;
-    virtual void set_idle_timeout(std::chrono::milliseconds idle_timeout) = 0;
+    virtual void set_message_limit(size_t message_limit) {}
+    virtual void set_idle_timeout(std::chrono::milliseconds idle_timeout) {}
 
-    virtual void tick(std::chrono::milliseconds elapsed) = 0;
+    virtual void tick(std::chrono::milliseconds elapsed) {}
   };
 }

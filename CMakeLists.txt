@@ -1167,6 +1167,10 @@ if(BUILD_TESTS)
       PROPERTY ENVIRONMENT "ASAN_OPTIONS=alloc_dealloc_mismatch=0"
     )
 
+    add_executable(fuzz_n2n_server src/node/test/fuzz_n2n_server.cpp)
+    target_link_libraries(
+      fuzz_n2n_server PRIVATE uv)
+
     if(NOT UNSAFE_VERSION)
       # Unsafe builds do not follow normal version conventions
       add_test(NAME versionifier_test
