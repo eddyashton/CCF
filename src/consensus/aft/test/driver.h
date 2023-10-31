@@ -63,16 +63,16 @@ struct LedgerStubProxy_Mermaid : public aft::LedgerStubProxy
   }
 };
 
-struct LoggingStubStoreSig_Mermaid : public aft::LoggingStubStoreSigConfig
+struct LoggingStubStore_Mermaid : public aft::LoggingStubStoreConfig
 {
-  using LoggingStubStoreSigConfig::LoggingStubStoreSigConfig;
+  using LoggingStubStoreConfig::LoggingStubStoreConfig;
 
   void compact(aft::Index idx) override
   {
     RAFT_DRIVER_OUT << fmt::format(
                          "  {}->>{}: [KV] compacting to {}", _id, _id, idx)
                     << std::endl;
-    aft::LoggingStubStoreSigConfig::compact(idx);
+    aft::LoggingStubStoreConfig::compact(idx);
   }
 
   void rollback(const kv::TxID& tx_id, aft::Term t) override
@@ -85,7 +85,7 @@ struct LoggingStubStoreSig_Mermaid : public aft::LoggingStubStoreSigConfig
                          tx_id.version,
                          t)
                     << std::endl;
-    aft::LoggingStubStoreSigConfig::rollback(tx_id, t);
+    aft::LoggingStubStoreConfig::rollback(tx_id, t);
   }
 
   void initialise_term(aft::Term t) override
@@ -93,13 +93,13 @@ struct LoggingStubStoreSig_Mermaid : public aft::LoggingStubStoreSigConfig
     RAFT_DRIVER_OUT << fmt::format(
                          "  {}->>{}: [KV] initialising in term {}", _id, _id, t)
                     << std::endl;
-    aft::LoggingStubStoreSigConfig::initialise_term(t);
+    aft::LoggingStubStoreConfig::initialise_term(t);
   }
 };
 
 using ms = std::chrono::milliseconds;
 using TRaft = aft::Aft<LedgerStubProxy_Mermaid>;
-using Store = LoggingStubStoreSig_Mermaid;
+using Store = LoggingStubStore_Mermaid;
 using Adaptor = aft::Adaptor<Store>;
 
 aft::ChannelStubProxy* channel_stub_proxy(const TRaft& r)
@@ -337,6 +337,16 @@ public:
   void log_msg_details(
     ccf::NodeId node_id,
     ccf::NodeId tgt_node_id,
+    aft::ProposeRequestVote prv,
+    bool dropped)
+  {
+    const auto s = fmt::format("propose_request_vote for term {}", prv.term);
+    log(node_id, tgt_node_id, s, dropped);
+  }
+
+  void log_msg_details(
+    ccf::NodeId node_id,
+    ccf::NodeId tgt_node_id,
     const std::vector<uint8_t>& contents,
     bool dropped = false)
   {
@@ -368,6 +378,12 @@ public:
       {
         auto aer = *(aft::AppendEntriesResponse*)data;
         log_msg_details(node_id, tgt_node_id, aer, dropped);
+        break;
+      }
+      case (aft::RaftMsgType::raft_propose_request_vote):
+      {
+        auto prv = *(aft::ProposeRequestVote*)data;
+        log_msg_details(node_id, tgt_node_id, prv, dropped);
         break;
       }
       default:

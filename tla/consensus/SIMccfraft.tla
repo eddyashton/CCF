@@ -1,6 +1,9 @@
 ---------- MODULE SIMccfraft ----------
 EXTENDS ccfraft, TLC, Integers
 
+CONSTANTS
+    NodeOne, NodeTwo, NodeThree, NodeFour, NodeFive
+
 Servers_mc == {NodeOne, NodeTwo, NodeThree, NodeFour, NodeFive}
 
 ----
@@ -42,8 +45,8 @@ SIMSpec ==
 \* The state constraint  StopAfter  stops TLC after the alloted
 \* time budget is up, unless TLC encounteres an error first.
 StopAfter ==
-    (* The smoke test has a time budget of 10 minutes. *)
-    TLCSet("exit", TLCGet("duration") > 600)
+    (* The smoke test has a time budget of 50 minutes. *)
+    TLCSet("exit", TLCGet("duration") > 3000)
 
 =============================================================================
 

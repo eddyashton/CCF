@@ -19,7 +19,6 @@
 #include "service/tables/signatures.h"
 
 #include <algorithm>
-#include <deque>
 #include <list>
 #include <random>
 #include <unordered_map>
@@ -115,13 +114,6 @@ namespace aft
 
     std::optional<kv::RetirementPhase> retirement_phase = std::nullopt;
     std::chrono::milliseconds timeout_elapsed;
-    // Last (committable) index preceding the node's election, this is
-    // used to decide when to start issuing signatures. While commit_idx
-    // hasn't caught up with election_index, a newly elected leader is
-    // effectively finishing establishing commit over the previous term
-    // or even previous terms, and can therefore not meaningfully sign
-    // over the commit level.
-    kv::Version election_index = 0;
 
     // When this node receives append entries from a new primary, it may need to
     // roll back a committable but uncommitted suffix it holds. The
@@ -175,9 +167,6 @@ namespace aft
     Index entries_batch_size = 20;
     static constexpr int batch_window_size = 100;
     int batch_window_sum = 0;
-
-    // Indices that are eligible for global commit, from a Node's perspective
-    std::deque<Index> committable_indices;
 
     // When this is set, only public domain is deserialised when receiving
     // append entries
@@ -310,8 +299,36 @@ namespace aft
 
     Index last_committable_index() const
     {
-      return committable_indices.empty() ? state->commit_idx :
-                                           committable_indices.back();
+      return state->committable_indices.empty() ?
+        state->commit_idx :
+        state->committable_indices.back();
+    }
+
+    // Returns the highest committable index which is not greater than the
+    // given idx.
+    std::optional<Index> find_highest_possible_committable_index(
+      Index idx) const
+    {
+      const auto it = std::upper_bound(
+        state->committable_indices.rbegin(),
+        state->committable_indices.rend(),
+        idx,
+        [](const auto& l, const auto& r) { return l >= r; });
+      if (it == state->committable_indices.rend())
+      {
+        return std::nullopt;
+      }
+
+      return *it;
+    }
+
+    void compact_committable_indices(Index idx)
+    {
+      while (!state->committable_indices.empty() &&
+             (state->committable_indices.front() <= idx))
+      {
+        state->committable_indices.pop_front();
+      }
     }
 
     void enable_all_domains() override
@@ -405,12 +422,6 @@ namespace aft
       return {get_term_internal(commit_idx), commit_idx};
     }
 
-    ccf::SeqNo get_previous_committable_seqno() override
-    {
-      std::lock_guard<ccf::pal::Mutex> guard(state->lock);
-      return last_committable_index();
-    }
-
     Term get_view(Index idx) override
     {
       std::lock_guard<ccf::pal::Mutex> guard(state->lock);
@@ -447,7 +458,6 @@ namespace aft
       j["state"] = *state;
       j["configurations"] = configurations;
       j["new_configuration"] = Configuration{idx, conf, idx};
-      j["committable_indices"] = committable_indices;
       RAFT_TRACE_JSON_OUT(j);
 #endif
 
@@ -587,7 +597,6 @@ namespace aft
         j["view"] = term;
         j["seqno"] = index;
         j["globally_committable"] = globally_committable;
-        j["committable_indices"] = committable_indices;
         RAFT_TRACE_JSON_OUT(j);
 #endif
 
@@ -608,7 +617,7 @@ namespace aft
           {
             become_retired(index, kv::RetirementPhase::Signed);
           }
-          committable_indices.push_back(index);
+          state->committable_indices.push_back(index);
           start_ticking_if_necessary();
 
           // Reset should_sign here - whenever we see a committable entry we
@@ -689,6 +698,15 @@ namespace aft
             break;
           }
 
+          case raft_propose_request_vote:
+          {
+            ProposeRequestVote r =
+              channels->template recv_authenticated<ProposeRequestVote>(
+                from, data, size);
+            recv_propose_request_vote(from, r);
+            break;
+          }
+
           default:
           {
             RAFT_FAIL_FMT("Unhandled AFT message type: {}", type);
@@ -698,6 +716,11 @@ namespace aft
       catch (const ccf::NodeToNode::DroppedMessageException& e)
       {
         RAFT_INFO_FMT("Dropped invalid message from {}", e.from);
+        return;
+      }
+      catch (const serialized::InsufficientSpaceException& ise)
+      {
+        RAFT_FAIL_FMT("Failed to parse message: {}", ise.what());
         return;
       }
       catch (const std::exception& e)
@@ -943,7 +966,6 @@ namespace aft
       j["to_node_id"] = to;
       j["match_idx"] = node.match_idx;
       j["sent_idx"] = node.sent_idx;
-      j["committable_indices"] = committable_indices;
       RAFT_TRACE_JSON_OUT(j);
 #endif
 
@@ -982,7 +1004,6 @@ namespace aft
       j["packet"] = r;
       j["state"] = *state;
       j["from_node_id"] = from;
-      j["committable_indices"] = committable_indices;
       RAFT_TRACE_JSON_OUT(j);
 #endif
 
@@ -1190,7 +1211,6 @@ namespace aft
         j["function"] = "execute_append_entries_sync";
         j["state"] = *state;
         j["from_node_id"] = from;
-        j["committable_indices"] = committable_indices;
         RAFT_TRACE_JSON_OUT(j);
 #endif
 
@@ -1242,7 +1262,7 @@ namespace aft
             {
               become_retired(i, kv::RetirementPhase::Signed);
             }
-            committable_indices.push_back(i);
+            state->committable_indices.push_back(i);
 
             if (ds->get_term())
             {
@@ -1347,7 +1367,6 @@ namespace aft
       j["packet"] = response;
       j["state"] = *state;
       j["to_node_id"] = to;
-      j["committable_indices"] = committable_indices;
       RAFT_TRACE_JSON_OUT(j);
 #endif
 
@@ -1389,7 +1408,6 @@ namespace aft
       j["from_node_id"] = from;
       j["match_idx"] = node->second.match_idx;
       j["sent_idx"] = node->second.sent_idx;
-      j["committable_indices"] = committable_indices;
       RAFT_TRACE_JSON_OUT(j);
 #endif
 
@@ -1506,7 +1524,6 @@ namespace aft
       j["packet"] = rv;
       j["state"] = *state;
       j["to_node_id"] = to;
-      j["committable_indices"] = committable_indices;
       RAFT_TRACE_JSON_OUT(j);
 #endif
 
@@ -1530,7 +1547,6 @@ namespace aft
       j["packet"] = r;
       j["state"] = *state;
       j["from_node_id"] = from;
-      j["committable_indices"] = committable_indices;
       RAFT_TRACE_JSON_OUT(j);
 #endif
 
@@ -1641,7 +1657,6 @@ namespace aft
       j["packet"] = r;
       j["state"] = *state;
       j["from_node_id"] = from;
-      j["committable_indices"] = committable_indices;
       RAFT_TRACE_JSON_OUT(j);
 #endif
 
@@ -1706,6 +1721,31 @@ namespace aft
       add_vote_for_me(from);
     }
 
+    void recv_propose_request_vote(
+      const ccf::NodeId& from, ProposeRequestVote r)
+    {
+      std::lock_guard<ccf::pal::Mutex> guard(state->lock);
+
+#ifdef CCF_RAFT_TRACING
+      nlohmann::json j = {};
+      j["function"] = "recv_propose_request_vote";
+      j["packet"] = r;
+      j["state"] = *state;
+      j["from_node_id"] = from;
+      RAFT_TRACE_JSON_OUT(j);
+#endif
+      if (can_endorse_primary() && ticking && r.term == state->current_view)
+      {
+        RAFT_INFO_FMT(
+          "Becoming candidate early due to propose request vote from {}", from);
+        become_candidate();
+      }
+      else
+      {
+        RAFT_INFO_FMT("Ignoring propose request vote from {}", from);
+      }
+    }
+
     void restart_election_timeout()
     {
       // Randomise timeout_elapsed to get a random election timeout
@@ -1755,7 +1795,6 @@ namespace aft
       j["function"] = "become_candidate";
       j["state"] = *state;
       j["configurations"] = configurations;
-      j["committable_indices"] = committable_indices;
       RAFT_TRACE_JSON_OUT(j);
 #endif
 
@@ -1775,17 +1814,7 @@ namespace aft
         return;
       }
 
-      // When we force to become the primary we are going around the
-      // consensus protocol. This only happens when a node starts a new network
-      // and has a genesis or recovery tx as the last transaction
-      election_index = last_committable_index();
-
-      // A newly elected leader must not advance the commit index until a
-      // transaction in the new term commits. We achieve this by clearing our
-      // list committable indices - so nothing from a previous term is now
-      // considered committable. Instead this new primary will shortly produce
-      // their own signature, which _will_ be considered committable.
-      committable_indices.clear();
+      const auto election_index = last_committable_index();
 
       RAFT_DEBUG_FMT(
         "Election index is {} in term {}", election_index, state->current_view);
@@ -1819,7 +1848,6 @@ namespace aft
       j["function"] = "become_leader";
       j["state"] = *state;
       j["configurations"] = configurations;
-      j["committable_indices"] = committable_indices;
       RAFT_TRACE_JSON_OUT(j);
 #endif
 
@@ -1857,6 +1885,9 @@ namespace aft
       restart_election_timeout();
       reset_last_ack_timeouts();
 
+      // Drop anything unsigned here, but retain all signed entries. Only do a
+      // more aggressive rollback, potentially including signatures, when
+      // receiving a conflicting AppendEntries
       rollback(last_committable_index());
 
       if (can_endorse_primary())
@@ -1873,7 +1904,6 @@ namespace aft
         j["function"] = "become_follower";
         j["state"] = *state;
         j["configurations"] = configurations;
-        j["committable_indices"] = committable_indices;
         RAFT_TRACE_JSON_OUT(j);
 #endif
       }
@@ -1932,6 +1962,53 @@ namespace aft
       {
         leader_id.reset();
         state->leadership_state = kv::LeadershipState::None;
+        ProposeRequestVote prv{
+          {raft_propose_request_vote}, state->current_view};
+
+        std::optional<ccf::NodeId> successor = std::nullopt;
+        Index max_match_idx = 0;
+        kv::ReconfigurationId reconf_id_of_max_match = 0;
+
+        // Pick the node that has the highest match_idx, and break
+        // ties by looking at the highest reconfiguration id they are
+        // part of. This can lead to nudging a node that is
+        // about to retire too, but that node will then nudge
+        // a successor, and that seems preferable to nudging a node that
+        // risks not being eligible if reconfiguration id is prioritised.
+        // Alternatively, we could pick the node with the higest match idx
+        // in the latest config, provided that match idx at least as high as a
+        // majority. That would make them both eligible and unlikely to retire
+        // soon.
+        for (auto& [node, node_state] : all_other_nodes)
+        {
+          if (node_state.match_idx >= max_match_idx)
+          {
+            kv::ReconfigurationId latest_reconf_id = 0;
+            auto conf = configurations.rbegin();
+            while (conf != configurations.rend())
+            {
+              if (conf->nodes.find(node) != conf->nodes.end())
+              {
+                latest_reconf_id = conf->idx;
+                break;
+              }
+              conf++;
+            }
+            if (!(node_state.match_idx == max_match_idx &&
+                  latest_reconf_id < reconf_id_of_max_match))
+            {
+              reconf_id_of_max_match = latest_reconf_id;
+              successor = node;
+              max_match_idx = node_state.match_idx;
+            }
+          }
+        }
+        if (successor.has_value())
+        {
+          RAFT_INFO_FMT("Node retired, nudging {}", successor.value());
+          channels->send_authenticated(
+            successor.value(), ccf::NodeMsgType::consensus_msg, prv);
+        }
       }
 
       state->membership_state = kv::MembershipState::Retired;
@@ -1987,12 +2064,18 @@ namespace aft
       }
     }
 
+    // If there exists some committable idx in the current term such that idx >
+    // commit_idx and a majority of nodes have replicated it, commit to that
+    // idx.
     void update_commit()
     {
-      // If there exists some idx in the current term such that
-      // idx > commit_idx and a majority of nodes have replicated it,
-      // commit to that idx.
-      auto new_commit_idx = std::numeric_limits<Index>::max();
+      if (state->leadership_state != kv::LeadershipState::Leader)
+      {
+        throw std::logic_error(
+          "update_commit() must only be called while this node is leader");
+      }
+
+      std::optional<Index> new_agreement_index = std::nullopt;
 
       // Obtain CFT watermarks
       for (auto const& c : configurations)
@@ -2017,31 +2100,55 @@ namespace aft
         sort(match.begin(), match.end());
         auto confirmed = match.at((match.size() - 1) / 2);
 
-        if (confirmed < new_commit_idx)
+        if (
+          !new_agreement_index.has_value() ||
+          confirmed < new_agreement_index.value())
         {
-          new_commit_idx = confirmed;
+          new_agreement_index = confirmed;
         }
       }
-      RAFT_DEBUG_FMT(
-        "In update_commit, new_commit_idx: {}, "
-        "last_idx: {}",
-        new_commit_idx,
-        state->last_idx);
 
-      if (new_commit_idx != std::numeric_limits<Index>::max())
+      if (new_agreement_index.has_value())
       {
-        state->watermark_idx = new_commit_idx;
-      }
+        if (new_agreement_index.value() > state->last_idx)
+        {
+          throw std::logic_error(
+            "Followers appear to have later match indices than leader");
+        }
 
-      if (get_commit_watermark_idx() > state->last_idx)
-      {
-        throw std::logic_error(
-          "Followers appear to have later match indices than leader");
-      }
+        const auto new_commit_idx =
+          find_highest_possible_committable_index(new_agreement_index.value());
 
-      commit_if_possible(get_commit_watermark_idx());
+        if (new_commit_idx.has_value())
+        {
+          RAFT_DEBUG_FMT(
+            "In update_commit, new_commit_idx: {}, "
+            "last_idx: {}",
+            new_commit_idx.value(),
+            state->last_idx);
+
+          const auto term_of_new = get_term_internal(new_commit_idx.value());
+          if (term_of_new == state->current_view)
+          {
+            commit(new_commit_idx.value());
+          }
+          else
+          {
+            RAFT_DEBUG_FMT(
+              "Ack quorum at {} resulted in proposed commit index {}, which "
+              "is in term {}. Waiting for agreement on committable entry in "
+              "current term {} to update commit",
+              new_agreement_index.value(),
+              new_commit_idx.value(),
+              term_of_new,
+              state->current_view);
+          }
+        }
+      }
     }
 
+    // Commits at the highest committable index which is not greater than the
+    // given idx.
     void commit_if_possible(Index idx)
     {
       RAFT_DEBUG_FMT(
@@ -2053,19 +2160,11 @@ namespace aft
         (idx > state->commit_idx) &&
         (get_term_internal(idx) <= state->current_view))
       {
-        Index highest_committable = 0;
-        bool can_commit = false;
-        while (!committable_indices.empty() &&
-               (committable_indices.front() <= idx))
+        const auto highest_committable =
+          find_highest_possible_committable_index(idx);
+        if (highest_committable.has_value())
         {
-          highest_committable = committable_indices.front();
-          committable_indices.pop_front();
-          can_commit = true;
-        }
-
-        if (can_commit)
-        {
-          commit(highest_committable);
+          commit(highest_committable.value());
         }
       }
     }
@@ -2090,6 +2189,8 @@ namespace aft
       if (idx <= state->commit_idx)
         return;
 
+      compact_committable_indices(idx);
+
       state->commit_idx = idx;
       if (
         is_retired() && retirement_phase == kv::RetirementPhase::Signed &&
@@ -2110,7 +2211,6 @@ namespace aft
       j["function"] = "commit";
       j["state"] = *state;
       j["configurations"] = configurations;
-      j["committable_indices"] = committable_indices;
       RAFT_TRACE_JSON_OUT(j);
 #endif
 
@@ -2154,11 +2254,6 @@ namespace aft
       }
     }
 
-    Index get_commit_watermark_idx()
-    {
-      return state->watermark_idx;
-    }
-
     bool is_self_in_latest_config()
     {
       bool present = false;
@@ -2200,9 +2295,10 @@ namespace aft
 
       state->view_history.rollback(idx);
 
-      while (!committable_indices.empty() && (committable_indices.back() > idx))
+      while (!state->committable_indices.empty() &&
+             (state->committable_indices.back() > idx))
       {
-        committable_indices.pop_back();
+        state->committable_indices.pop_back();
       }
 
       if (
