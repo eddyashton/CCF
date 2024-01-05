@@ -1,0 +1,105 @@
+{
+  "endpoints": {
+    "/fibonacci/reuse/none": {
+      "post": {
+        "js_module": "cache.js",
+        "js_function": "cachedFib",
+        "forwarding_required": "never",
+        "authn_policies": ["no_auth"],
+        "mode": "readonly",
+        "openapi": {}
+      }
+    },
+    "/fibonacci/reuse/a": {
+      "post": {
+        "js_module": "cache.js",
+        "js_function": "cachedFib",
+        "forwarding_required": "never",
+        "authn_policies": ["no_auth"],
+        "mode": "readonly",
+        "openapi": {},
+        "interpreter_reuse": {
+          "key": "a"
+        }
+      }
+    },
+    "/fibonacci/reuse/b": {
+      "post": {
+        "js_module": "cache.js",
+        "js_function": "cachedFib",
+        "forwarding_required": "never",
+        "authn_policies": ["no_auth"],
+        "mode": "readonly",
+        "openapi": {},
+        "interpreter_reuse": {
+          "key": "b"
+        }
+      }
+    },
+    "/fibonacci/reuse/c": {
+      "post": {
+        "js_module": "cache.js",
+        "js_function": "cachedFib",
+        "forwarding_required": "never",
+        "authn_policies": ["no_auth"],
+        "mode": "readonly",
+        "openapi": {},
+        "interpreter_reuse": {
+          "key": "c"
+        }
+      }
+    },
+    "/di": {
+      "post": {
+        "js_module": "di_sample.js",
+        "js_function": "slowCall",
+        "forwarding_required": "never",
+        "authn_policies": ["no_auth"],
+        "mode": "readonly",
+        "openapi": {},
+        "interpreter_reuse": {
+          "key": "arbitrary_string_goes_here"
+        }
+      }
+    },
+    "/increment": {
+      "post": {
+        "js_module": "global_handle.js",
+        "js_function": "increment",
+        "forwarding_required": "never",
+        "authn_policies": ["no_auth"],
+        "mode": "readwrite",
+        "openapi": {},
+        "interpreter_reuse": {
+          "key": "global_handle"
+        }
+      }
+    },
+    "/globals": {
+      "post": {
+        "js_module": "global_handle.js",
+        "js_function": "globals",
+        "forwarding_required": "never",
+        "authn_policies": ["no_auth"],
+        "mode": "readwrite",
+        "openapi": {},
+        "interpreter_reuse": {
+          "key": "global_handle"
+        }
+      }
+    },
+    "/func_caching": {
+      "get": {
+        "js_module": "func_caching.js",
+        "js_function": "func_caching",
+        "forwarding_required": "never",
+        "authn_policies": ["no_auth"],
+        "mode": "readonly",
+        "openapi": {},
+        "interpreter_reuse": {
+          "key": "func_caching"
+        }
+      }
+    }
+  }
+}

@@ -165,6 +165,7 @@ class Network:
         "enclave_type",
         "enclave_platform",
         "host_log_level",
+        "enclave_log_level",
         "sig_tx_interval",
         "sig_ms_interval",
         "election_timeout_ms",
@@ -195,6 +196,8 @@ class Network:
         "node_to_node_message_limit",
         "tick_ms",
         "max_msg_size_bytes",
+        "snp_security_policy_file",
+        "snp_uvm_endorsements_file",
     ]
 
     # Maximum delay (seconds) for updates to propagate from the primary to backups
@@ -216,6 +219,11 @@ class Network:
         node_data_json_file=None,
         nodes_in_container=False,
     ):
+        # Map of node id to dict of node arg to override value
+        # for example, to set the election timeout to 2s for node 3:
+        # per_node_args_override = {3: {"election_timeout_ms": 2000}}
+        self.per_node_args_override = {}
+
         if existing_network is None:
             self.consortium = None
             self.users = []
@@ -312,7 +320,7 @@ class Network:
         self.nodes.append(node)
         return node
 
-    def _add_node(
+    def _setup_node(
         self,
         node,
         lib_name,
@@ -364,7 +372,7 @@ class Network:
         if not node.version_after("ccf-2.0.3") and read_only_snapshots_dir is not None:
             snapshots_dir = read_only_snapshots_dir
 
-        node.join(
+        node.prepare_join(
             lib_name=lib_name,
             workspace=args.workspace,
             label=args.label,
@@ -376,6 +384,35 @@ class Network:
             read_only_ledger_dirs=committed_ledger_dirs,
             **kwargs,
         )
+
+    def _add_node(
+        self,
+        node,
+        lib_name,
+        args,
+        target_node=None,
+        recovery=False,
+        ledger_dir=None,
+        copy_ledger=True,
+        read_only_ledger_dirs=None,
+        from_snapshot=True,
+        snapshots_dir=None,
+        **kwargs,
+    ):
+        self._setup_node(
+            node,
+            lib_name,
+            args,
+            target_node,
+            recovery,
+            ledger_dir,
+            copy_ledger,
+            read_only_ledger_dirs,
+            from_snapshot,
+            snapshots_dir,
+            **kwargs,
+        )
+        node.complete_join()
 
         # If the network is opening or recovering, nodes are trusted without consortium approval
         if (
@@ -414,6 +451,8 @@ class Network:
         }
 
         for i, node in enumerate(self.nodes):
+            forwarded_args_with_overrides = forwarded_args.copy()
+            forwarded_args_with_overrides.update(self.per_node_args_override.get(i, {}))
             try:
                 if i == 0:
                     if not recovery:
@@ -423,7 +462,7 @@ class Network:
                             label=args.label,
                             common_dir=self.common_dir,
                             members_info=self.consortium.get_members_info(),
-                            **forwarded_args,
+                            **forwarded_args_with_overrides,
                             **kwargs,
                         )
                     else:
@@ -435,7 +474,7 @@ class Network:
                             ledger_dir=ledger_dir,
                             read_only_ledger_dirs=read_only_ledger_dirs,
                             snapshots_dir=snapshots_dir,
-                            **forwarded_args,
+                            **forwarded_args_with_overrides,
                             **kwargs,
                         )
                         self.wait_for_state(
@@ -454,7 +493,7 @@ class Network:
                         from_snapshot=snapshots_dir is not None,
                         read_only_ledger_dirs=read_only_ledger_dirs,
                         snapshots_dir=snapshots_dir,
-                        **forwarded_args,
+                        **forwarded_args_with_overrides,
                         **kwargs,
                     )
             except Exception:
@@ -493,7 +532,7 @@ class Network:
         # It is more convenient to create a symlink in the common directory than generate
         # certs and keys in the top directory and move them across
         cmd = ["cp"] if IS_SNP else ["ln", "-s"]
-        cmd += [os.path.join(os.getcwd(), self.KEY_GEN), self.common_dir]
+        cmd += [self.key_generator, self.common_dir]
         assert (
             infra.proc.ccall(*cmd).returncode == 0
         ), f"Could not symlink {self.KEY_GEN} to {self.common_dir}"
@@ -545,6 +584,8 @@ class Network:
         set_authenticate_session = kwargs.pop("set_authenticate_session", None)
         if set_authenticate_session is not None:
             self.consortium.set_authenticate_session(set_authenticate_session)
+
+        self.consortium.set_gov_api_version(args.gov_api_version)
 
         primary = self._start_all_nodes(args, **kwargs)
         self.wait_for_all_nodes_to_commit(primary=primary)
@@ -643,6 +684,8 @@ class Network:
 
         if set_authenticate_session is not None:
             self.consortium.set_authenticate_session(set_authenticate_session)
+
+        self.consortium.set_gov_api_version(args.gov_api_version)
 
         for node in self.get_joined_nodes():
             self.wait_for_state(
@@ -824,6 +867,63 @@ class Network:
                     "Fatal error found during node shutdown", node_errors
                 )
 
+    def setup_join_node(
+        self,
+        node,
+        lib_name,
+        args,
+        target_node=None,
+        **kwargs,
+    ):
+        forwarded_args = {
+            arg: getattr(args, arg, None)
+            for arg in infra.network.Network.node_args_to_forward
+        }
+        self._setup_node(node, lib_name, args, target_node, **forwarded_args, **kwargs)
+
+    def run_join_node(
+        self,
+        node,
+        timeout=JOIN_TIMEOUT,
+        stop_on_error=False,
+        wait_for_node_in_store=True,
+    ):
+        node.complete_join()
+        if wait_for_node_in_store:
+            primary, _ = self.find_primary()
+            try:
+                self.wait_for_node_in_store(
+                    primary,
+                    node.node_id,
+                    node_status=(
+                        ccf.ledger.NodeStatus.PENDING
+                        if self.status == ServiceStatus.OPEN
+                        else ccf.ledger.NodeStatus.TRUSTED
+                    ),
+                    timeout=timeout,
+                )
+            except TimeoutError as e:
+                LOG.error(f"New pending node {node.node_id} failed to join the network")
+                if stop_on_error:
+                    assert node.remote.check_done()
+                node.stop()
+                out_path, err_path = node.get_logs()
+                if out_path is not None and err_path is not None:
+                    errors, _ = log_errors(out_path, err_path)
+                else:
+                    errors = []
+                self.nodes.remove(node)
+                if errors:
+                    # Throw accurate exceptions if known errors found in
+                    for error in errors:
+                        if "Quote does not contain known enclave measurement" in error:
+                            raise CodeIdNotFound from e
+                        if "StartupSeqnoIsOld" in error:
+                            raise StartupSeqnoIsOld from e
+                        if "invalid cert on handshake" in error:
+                            raise ServiceCertificateInvalid from e
+                raise
+
     def join_node(
         self,
         node,
@@ -834,45 +934,8 @@ class Network:
         stop_on_error=False,
         **kwargs,
     ):
-        forwarded_args = {
-            arg: getattr(args, arg, None)
-            for arg in infra.network.Network.node_args_to_forward
-        }
-        self._add_node(node, lib_name, args, target_node, **forwarded_args, **kwargs)
-
-        primary, _ = self.find_primary()
-        try:
-            self.wait_for_node_in_store(
-                primary,
-                node.node_id,
-                node_status=(
-                    ccf.ledger.NodeStatus.PENDING
-                    if self.status == ServiceStatus.OPEN
-                    else ccf.ledger.NodeStatus.TRUSTED
-                ),
-                timeout=timeout,
-            )
-        except TimeoutError as e:
-            LOG.error(f"New pending node {node.node_id} failed to join the network")
-            if stop_on_error:
-                assert node.remote.check_done()
-            node.stop()
-            out_path, err_path = node.get_logs()
-            if out_path is not None and err_path is not None:
-                errors, _ = log_errors(out_path, err_path)
-            else:
-                errors = []
-            self.nodes.remove(node)
-            if errors:
-                # Throw accurate exceptions if known errors found in
-                for error in errors:
-                    if "Quote does not contain known enclave measurement" in error:
-                        raise CodeIdNotFound from e
-                    if "StartupSeqnoIsOld" in error:
-                        raise StartupSeqnoIsOld from e
-                    if "invalid cert on handshake" in error:
-                        raise ServiceCertificateInvalid from e
-            raise
+        self.setup_join_node(node, lib_name, args, target_node, **kwargs)
+        self.run_join_node(node, timeout, stop_on_error)
 
     def trust_node(
         self,
@@ -948,6 +1011,71 @@ class Network:
 
         self.nodes.remove(node_to_retire)
 
+    def replace_stopped_node(
+        self,
+        node_to_retire,
+        node_to_add,
+        args,
+        valid_from=None,
+        validity_period_days=None,
+        timeout=5,
+        statistics=None,
+    ):
+        primary, _ = self.find_primary()
+        try:
+            if self.status is ServiceStatus.OPEN:
+                valid_from = valid_from or datetime.utcnow()
+                # Note: Timeout is function of the ledger size here since
+                # the commit of the trust_node proposal may rely on the new node
+                # catching up (e.g. adding 1 node to a 1-node network).
+                if statistics is not None:
+                    statistics[
+                        "node_replacement_governance_start"
+                    ] = datetime.now().isoformat()
+                self.consortium.replace_node(
+                    primary,
+                    node_to_retire,
+                    node_to_add,
+                    valid_from=valid_from,
+                    validity_period_days=validity_period_days,
+                    timeout=args.ledger_recovery_timeout,
+                )
+                if statistics is not None:
+                    statistics[
+                        "node_replacement_governance_committed"
+                    ] = datetime.now().isoformat()
+        except (ValueError, TimeoutError):
+            LOG.error(
+                f"NFailed to replace {node_to_retire.node_id} with {node_to_add.node_id}"
+            )
+            node_to_add.stop()
+            raise
+
+        node_to_add.network_state = infra.node.NodeNetworkState.joined
+        end_time = time.time() + timeout
+        r = None
+        while time.time() < end_time:
+            try:
+                with primary.client() as c:
+                    r = c.get("/node/network/removable_nodes").body.json()
+                    if node_to_retire.node_id in {n["node_id"] for n in r["nodes"]}:
+                        check_commit = infra.checker.Checker(c)
+                        r = c.delete(f"/node/network/nodes/{node_to_retire.node_id}")
+                        check_commit(r)
+                        break
+                    else:
+                        r = c.get(
+                            f"/node/network/nodes/{node_to_retire.node_id}"
+                        ).body.json()
+            except ConnectionRefusedError:
+                pass
+            time.sleep(0.1)
+        else:
+            raise TimeoutError(f"Timed out waiting for node to become removed: {r}")
+        if statistics is not None:
+            statistics["old_node_removal_committed"] = datetime.now().isoformat()
+        self.nodes.remove(node_to_retire)
+
     def create_user(self, local_user_id, curve, record=True):
         infra.proc.ccall(
             self.key_generator,
@@ -977,7 +1105,11 @@ class Network:
         return self.consortium.members
 
     def get_joined_nodes(self):
-        return [node for node in self.nodes if node.is_joined() and not node.suspended]
+        return [
+            node
+            for node in self.nodes
+            if node.is_joined() and not (node.is_stopped() or node.suspended)
+        ]
 
     def get_stopped_nodes(self):
         return [node for node in self.nodes if node.is_stopped()]
@@ -1401,13 +1533,11 @@ class Network:
                     )
                     return False
 
-                with node.client(self.consortium.get_any_active_member().local_id) as c:
-                    logs = []
-                    for _ in range(self.args.snapshot_tx_interval // 2):
-                        r = c.post("/gov/ack/update_state_digest", log_capture=logs)
-                        assert (
-                            r.status_code == http.HTTPStatus.OK.value
-                        ), f"Error ack/update_state_digest: {r}"
+                # Update state digest as a neutral write operation, to advance commit
+                member = self.consortium.get_any_active_member()
+                for _ in range(self.args.snapshot_tx_interval // 2):
+                    r = member.update_ack_state_digest(node)
+                with node.client() as c:
                     c.wait_for_commit(r)
                 time.sleep(0.1)
 

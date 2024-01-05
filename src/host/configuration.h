@@ -64,6 +64,8 @@ namespace host
       std::string file;
       EnclaveType type;
       EnclavePlatform platform;
+
+      bool operator==(const Enclave&) const = default;
     };
     Enclave enclave = {};
 
@@ -111,7 +113,7 @@ namespace host
 
     struct Logging
     {
-      logger::Level host_level = logger::Level::INFO;
+      LoggerLevel host_level = LoggerLevel::INFO;
       LogFormat format = LogFormat::TEXT;
 
       bool operator==(const Logging&) const = default;
@@ -120,9 +122,9 @@ namespace host
 
     struct Memory
     {
-      ds::SizeString circuit_size = {"4MB"};
-      ds::SizeString max_msg_size = {"16MB"};
-      ds::SizeString max_fragment_size = {"64KB"};
+      ds::SizeString circuit_size = {"16MB"};
+      ds::SizeString max_msg_size = {"64MB"};
+      ds::SizeString max_fragment_size = {"256KB"};
 
       bool operator==(const Memory&) const = default;
     };
@@ -148,6 +150,7 @@ namespace host
       {
         ccf::NodeInfoNetwork::NetAddress target_rpc_address;
         ds::TimeString retry_timeout = {"1000ms"};
+        bool follow_redirect = true;
 
         bool operator==(const Join&) const = default;
       };
@@ -165,8 +168,8 @@ namespace host
   };
 
   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(CCHostConfig::Enclave);
-  DECLARE_JSON_REQUIRED_FIELDS(CCHostConfig::Enclave, type, file);
-  DECLARE_JSON_OPTIONAL_FIELDS(CCHostConfig::Enclave, platform);
+  DECLARE_JSON_REQUIRED_FIELDS(CCHostConfig::Enclave, type, platform);
+  DECLARE_JSON_OPTIONAL_FIELDS(CCHostConfig::Enclave, file);
 
   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(CCHostConfig::OutputFiles);
   DECLARE_JSON_REQUIRED_FIELDS(CCHostConfig::OutputFiles);
@@ -206,7 +209,8 @@ namespace host
 
   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(CCHostConfig::Command::Join);
   DECLARE_JSON_REQUIRED_FIELDS(CCHostConfig::Command::Join, target_rpc_address);
-  DECLARE_JSON_OPTIONAL_FIELDS(CCHostConfig::Command::Join, retry_timeout);
+  DECLARE_JSON_OPTIONAL_FIELDS(
+    CCHostConfig::Command::Join, retry_timeout, follow_redirect);
 
   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(CCHostConfig::Command::Recover);
   DECLARE_JSON_REQUIRED_FIELDS(CCHostConfig::Command::Recover);

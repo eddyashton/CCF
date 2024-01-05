@@ -98,7 +98,8 @@ namespace aft
     raft_append_entries_response,
     raft_append_entries_signed_response,
     raft_request_vote,
-    raft_request_vote_response
+    raft_request_vote_response,
+    raft_propose_request_vote,
   };
   DECLARE_JSON_ENUM(
     RaftMsgType,
@@ -110,6 +111,7 @@ namespace aft
        "raft_append_entries_signed_response"},
       {RaftMsgType::raft_request_vote, "raft_request_vote"},
       {RaftMsgType::raft_request_vote_response, "raft_request_vote_response"},
+      {RaftMsgType::raft_propose_request_vote, "raft_propose_request_vote"},
     });
 
 #pragma pack(push, 1)
@@ -130,6 +132,8 @@ namespace aft
     // from prev_term, then the first entry is the first transaction in that new
     // term
     Term term_of_idx;
+    // This is unused by the current implementation, but is kept to preserve
+    // wire compatibility with previous versions of the code.
     bool contains_new_view;
   };
   DECLARE_JSON_TYPE_WITH_2BASES(
@@ -187,6 +191,15 @@ namespace aft
   };
   DECLARE_JSON_TYPE_WITH_BASE(RequestVoteResponse, RaftHeader);
   DECLARE_JSON_REQUIRED_FIELDS(RequestVoteResponse, term, vote_granted);
+
+  struct ProposeRequestVote : RaftHeader
+  {
+    // A node sends this to nudge another node to begin an election, for
+    // instance because the sender is a retiring primary
+    Term term;
+  };
+  DECLARE_JSON_TYPE_WITH_BASE(ProposeRequestVote, RaftHeader);
+  DECLARE_JSON_REQUIRED_FIELDS(ProposeRequestVote, term);
 
 #pragma pack(pop)
 }

@@ -74,11 +74,25 @@ else()
   unset(NODES)
 endif()
 
-option(VERBOSE_LOGGING "Enable verbose, unsafe logging of enclave code" OFF)
-set(TEST_HOST_LOGGING_LEVEL "info")
+option(
+  VERBOSE_LOGGING
+  "Enable verbose, potentially unsafe logging of enclave code. Affects logging level passed at run-time to end-to-end-tests, and compile-time max verbosity on SGX."
+  OFF
+)
+set(TEST_LOGGING_LEVEL "info")
 if(VERBOSE_LOGGING)
-  set(TEST_HOST_LOGGING_LEVEL "trace")
-  add_compile_definitions(VERBOSE_LOGGING)
+  set(TEST_LOGGING_LEVEL "trace")
+endif()
+
+# NB: Toggling VERBOSE_LOGGING on non-SGX platforms causes no build change, so
+# should not cause a rebuild
+if(COMPILE_TARGET STREQUAL "sgx" AND NOT VERBOSE_LOGGING)
+  # Disable verbose, unsafe logging of enclave code. On some platforms it is
+  # safe to build with this logging enabled, and then it can be disabled at
+  # run-time. However this run-time control is not possible on SGX, so to ensure
+  # a given MRENCLAVE cannot leak via debug logging it must be removed at
+  # build-time, with this option.
+  add_compile_definitions(CCF_DISABLE_VERBOSE_LOGGING)
 endif()
 
 option(USE_NULL_ENCRYPTOR "Turn off encryption of ledger updates - debug only"
@@ -233,9 +247,6 @@ set(CCF_ENDPOINTS_SOURCES
     ${CCF_DIR}/src/node/receipt.cpp
 )
 
-find_library(CRYPTO_LIBRARY crypto)
-find_library(TLS_LIBRARY ssl)
-
 include(${CCF_DIR}/cmake/crypto.cmake)
 include(${CCF_DIR}/cmake/quickjs.cmake)
 include(${CCF_DIR}/cmake/sss.cmake)
@@ -274,9 +285,6 @@ target_compile_options(
   cchost PRIVATE ${COMPILE_LIBCXX} ${SNMALLOC_COMPILE_OPTIONS}
 )
 target_include_directories(cchost PRIVATE ${CCF_GENERATED_DIR})
-
-# Host is always built with verbose logging enabled, regardless of CMake option
-target_compile_definitions(cchost PRIVATE VERBOSE_LOGGING)
 
 if(COMPILE_TARGET STREQUAL "sgx")
   target_compile_definitions(cchost PUBLIC PLATFORM_SGX)
@@ -434,8 +442,9 @@ set(CCF_NETWORK_TEST_DEFAULT_CONSTITUTION
     --constitution
     ${CCF_DIR}/samples/constitutions/default/apply.js
 )
-set(CCF_NETWORK_TEST_ARGS --host-log-level ${TEST_HOST_LOGGING_LEVEL}
-                          --worker-threads ${WORKER_THREADS}
+set(CCF_NETWORK_TEST_ARGS
+    --host-log-level ${TEST_LOGGING_LEVEL} --enclave-log-level
+    ${TEST_LOGGING_LEVEL} --worker-threads ${WORKER_THREADS}
 )
 
 if(COMPILE_TARGET STREQUAL "sgx")
@@ -444,6 +453,17 @@ if(COMPILE_TARGET STREQUAL "sgx")
   add_lvi_mitigations(js_openenclave.enclave)
   install(
     TARGETS js_openenclave.enclave
+    EXPORT ccf
+    DESTINATION lib
+  )
+
+  add_enclave_library(
+    js_snp_attestation.enclave ${CCF_DIR}/src/js/snp_attestation.cpp
+  )
+  target_link_libraries(js_snp_attestation.enclave PUBLIC ccf.enclave)
+  add_lvi_mitigations(js_snp_attestation.enclave)
+  install(
+    TARGETS js_snp_attestation.enclave
     EXPORT ccf
     DESTINATION lib
   )
@@ -482,6 +502,49 @@ elseif(COMPILE_TARGET STREQUAL "virtual" AND REQUIRE_OPENENCLAVE)
     DESTINATION lib
   )
   set(JS_OPENENCLAVE_VIRTUAL js_openenclave.virtual)
+endif()
+
+if(COMPILE_TARGET STREQUAL "snp")
+  add_library(
+    js_snp_attestation.snp STATIC ${CCF_DIR}/src/js/snp_attestation.cpp
+  )
+  add_san(js_snp_attestation.snp)
+  target_link_libraries(js_snp_attestation.snp PUBLIC ccf.snp)
+  target_compile_options(js_snp_attestation.snp PRIVATE ${COMPILE_LIBCXX})
+  target_compile_definitions(
+    js_snp_attestation.snp PUBLIC INSIDE_ENCLAVE VIRTUAL_ENCLAVE
+                                  _LIBCPP_HAS_THREAD_API_PTHREAD PLATFORM_SNP
+  )
+  set_property(
+    TARGET js_snp_attestation.snp PROPERTY POSITION_INDEPENDENT_CODE ON
+  )
+  install(
+    TARGETS js_snp_attestation.snp
+    EXPORT ccf
+    DESTINATION lib
+  )
+  set(JS_SNP_ATTESTATION_SNP js_snp_attestation.snp)
+elseif(COMPILE_TARGET STREQUAL "virtual")
+  add_library(
+    js_snp_attestation.virtual STATIC ${CCF_DIR}/src/js/snp_attestation.cpp
+  )
+  add_san(js_snp_attestation.virtual)
+  target_link_libraries(js_snp_attestation.virtual PUBLIC ccf.virtual)
+  target_compile_options(js_snp_attestation.virtual PRIVATE ${COMPILE_LIBCXX})
+  target_compile_definitions(
+    js_snp_attestation.virtual
+    PUBLIC INSIDE_ENCLAVE VIRTUAL_ENCLAVE _LIBCPP_HAS_THREAD_API_PTHREAD
+           PLATFORM_VIRTUAL
+  )
+  set_property(
+    TARGET js_snp_attestation.virtual PROPERTY POSITION_INDEPENDENT_CODE ON
+  )
+  install(
+    TARGETS js_snp_attestation.virtual
+    EXPORT ccf
+    DESTINATION lib
+  )
+  set(JS_SNP_ATTESTATION_VIRTUAL js_snp_attestation.virtual)
 endif()
 
 if(COMPILE_TARGET STREQUAL "sgx")
@@ -530,6 +593,11 @@ elseif(COMPILE_TARGET STREQUAL "virtual")
              PLATFORM_VIRTUAL
     )
   endif()
+  target_compile_definitions(
+    js_snp_attestation.virtual
+    PUBLIC INSIDE_ENCLAVE VIRTUAL_ENCLAVE _LIBCPP_HAS_THREAD_API_PTHREAD
+           PLATFORM_VIRTUAL
+  )
   set_property(
     TARGET js_generic_base.virtual PROPERTY POSITION_INDEPENDENT_CODE ON
   )
@@ -544,16 +612,17 @@ add_ccf_app(
   js_generic
   SRCS ${CCF_DIR}/src/apps/js_generic/js_generic.cpp
   LINK_LIBS_ENCLAVE js_generic_base.enclave js_openenclave.enclave
+                    js_snp_attestation.enclave
   LINK_LIBS_VIRTUAL js_generic_base.virtual ${JS_OPENENCLAVE_VIRTUAL}
-  LINK_LIBS_SNP js_generic_base.snp ${JS_OPENENCLAVE_SNP} INSTALL_LIBS ON
+                    ${JS_SNP_ATTESTATION_VIRTUAL}
+  LINK_LIBS_SNP js_generic_base.snp ${JS_OPENENCLAVE_SNP}
+                ${JS_SNP_ATTESTATION_SNP} INSTALL_LIBS ON
 )
 sign_app_library(
   js_generic.enclave ${CCF_DIR}/src/apps/js_generic/oe_sign.conf
   ${CMAKE_CURRENT_BINARY_DIR}/signing_key.pem INSTALL_LIBS ON
 )
 # SNIPPET_END: JS generic application
-
-include(${CCF_DIR}/cmake/quictls.cmake)
 
 install(DIRECTORY ${CCF_DIR}/samples/apps/logging/js
         DESTINATION samples/logging
@@ -580,6 +649,14 @@ file(READ ${CCF_DIR}/doc/host_config_schema/cchost_config.json
 )
 configure_file(
   ${CCF_DIR}/src/host/config_schema.h.in ${CCF_DIR}/src/host/config_schema.h
+  @ONLY
+)
+
+file(READ ${CCF_DIR}/doc/schemas/mccf/2023-06-01-preview/mccfgov.json
+     GOV_API_SCHEMA_2023_06_01_PREVIEW
+)
+configure_file(
+  ${CCF_DIR}/src/node/gov/api_schema.h.in ${CCF_DIR}/src/node/gov/api_schema.h
   @ONLY
 )
 
@@ -617,7 +694,11 @@ if(COMPILE_TARGET STREQUAL "sgx")
     ccf.enclave ${CCF_IMPL_SOURCE} ${CCF_GENERATED_DIR}/ccf_t.cpp
   )
 
-  target_compile_definitions(ccf.enclave PUBLIC PLATFORM_SGX)
+  # PLATFORM_SGX to initialise Open Enclave SGX enclave creation and
+  # SGX_ATTESTATION_VERIFICATION to verify SGX attestation reports.
+  target_compile_definitions(
+    ccf.enclave PUBLIC PLATFORM_SGX SGX_ATTESTATION_VERIFICATION
+  )
 
   add_warning_checks(ccf.enclave)
 
@@ -821,9 +902,6 @@ add_custom_target(
 # Add sample apps
 add_subdirectory(${CCF_DIR}/samples)
 
-# Include attestation container to copy .proto files
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/attestation-container)
-
 # Add external_executor app
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/apps/external_executor)
 
@@ -851,7 +929,6 @@ if(BUILD_TESTS)
       logger_json_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/logger_json_test.cpp
     )
-    target_compile_definitions(logger_json_test PUBLIC VERBOSE_LOGGING)
 
     add_unit_test(
       kv_test
@@ -908,6 +985,13 @@ if(BUILD_TESTS)
     target_link_libraries(crypto_test PRIVATE ccfcrypto.host)
 
     add_unit_test(
+      sharing_test
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/crypto/test/secret_sharing.cpp
+    )
+    target_include_directories(sharing_test PRIVATE ${CCFCRYPTO_INC})
+    target_link_libraries(sharing_test PRIVATE ccfcrypto.host)
+
+    add_unit_test(
       key_exchange_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/crypto/test/key_exchange.cpp
     )
@@ -946,13 +1030,13 @@ if(BUILD_TESTS)
     target_link_libraries(
       historical_queries_test PRIVATE http_parser.host sss.host ccf_kv.host
     )
-
     # Temporarily disabled flaky test
     # https://github.com/microsoft/CCF/issues/4403 add_unit_test( indexing_test
     # ${CMAKE_CURRENT_SOURCE_DIR}/src/indexing/test/indexing.cpp
     # ${CMAKE_CURRENT_SOURCE_DIR}/src/indexing/test/lfs.cpp )
     # target_link_libraries( indexing_test PRIVATE ccf_endpoints.host sss.host
-    # ccf_kv.host )
+    # ccf_kv.host ) target_link_libraries( indexing_test PRIVATE
+    # ccf_endpoints.host sss.host ccf_kv.host )
 
     add_unit_test(
       snapshot_test ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/snapshot.cpp
@@ -971,14 +1055,6 @@ if(BUILD_TESTS)
       node_info_json_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/node_info_json.cpp
     )
-
-    if(ENABLE_QUICTLS)
-      add_unit_test(
-        quic_test ${CMAKE_CURRENT_SOURCE_DIR}/src/quic/test/main.cpp
-      )
-      target_include_directories(quic_test PUBLIC ${QUICTLS_INCLUDE_DIRS})
-      target_link_libraries(quic_test PUBLIC ${QUICTLS_LIBRARIES})
-    endif()
 
     add_unit_test(tls_test ${CMAKE_CURRENT_SOURCE_DIR}/src/tls/test/main.cpp)
     target_link_libraries(tls_test PRIVATE ${CMAKE_THREAD_LIBS_INIT})
@@ -1056,7 +1132,8 @@ if(BUILD_TESTS)
     add_executable(merkle_mem src/node/test/merkle_mem.cpp)
     target_compile_options(merkle_mem PRIVATE ${COMPILE_LIBCXX})
     target_link_libraries(
-      merkle_mem PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${LINK_LIBCXX} crypto
+      merkle_mem PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${LINK_LIBCXX}
+                         ccfcrypto.host
     )
 
     # Raft driver and scenario test
@@ -1107,7 +1184,6 @@ if(BUILD_TESTS)
     # Picobench benchmarks
     add_picobench(map_bench SRCS src/ds/test/map_bench.cpp)
     add_picobench(logger_bench SRCS src/ds/test/logger_bench.cpp)
-    target_compile_definitions(logger_bench PUBLIC VERBOSE_LOGGING)
     add_picobench(json_bench SRCS src/ds/test/json_bench.cpp)
     add_picobench(ring_buffer_bench SRCS src/ds/test/ring_buffer_bench.cpp)
     add_picobench(
@@ -1149,9 +1225,16 @@ if(BUILD_TESTS)
     endif()
 
     add_e2e_test(
-      NAME recovery_test_cft
+      NAME recovery_test_cft_api_0
       PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/recovery.py
-      ADDITIONAL_ARGS ${ADDITIONAL_RECOVERY_ARGS}
+      ADDITIONAL_ARGS ${ADDITIONAL_RECOVERY_ARGS} --gov-api-version "classic"
+    )
+
+    add_e2e_test(
+      NAME recovery_test_cft_api_1
+      PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/recovery.py
+      ADDITIONAL_ARGS ${ADDITIONAL_RECOVERY_ARGS} --gov-api-version
+                      "2023-06-01-preview"
     )
 
     add_e2e_test(
@@ -1299,6 +1382,12 @@ if(BUILD_TESTS)
                       ${CMAKE_SOURCE_DIR}/samples/apps/logging/js
     )
 
+    if(NOT SAN)
+      add_e2e_test(
+        NAME e2e_limits PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/limits.py
+      )
+    endif()
+
     add_e2e_test(
       NAME e2e_logging_http2
       PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/e2e_logging.py
@@ -1307,8 +1396,17 @@ if(BUILD_TESTS)
     )
 
     add_e2e_test(
-      NAME membership PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/membership.py
+      NAME membership_api_0
+      PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/membership.py
+      ADDITIONAL_ARGS --gov-api-version "classic"
     )
+
+    add_e2e_test(
+      NAME membership_api_1
+      PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/membership.py
+      ADDITIONAL_ARGS --gov-api-version "2023-06-01-preview"
+    )
+
     set(PARTITIONS_TEST_ARGS
         # Higher snapshot interval as the test currently assumes that no
         # transactions
@@ -1392,26 +1490,28 @@ if(BUILD_TESTS)
       NAME election_test PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/election.py
     )
 
-    add_e2e_test(
-      NAME acme_endorsement_test
-      PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/acme_endorsement.py
-      LABEL ACME
-    )
+    if(LONG_TESTS)
+      add_e2e_test(
+        NAME acme_endorsement_test
+        PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/acme_endorsement.py
+        LABEL ACME
+      )
 
-    add_e2e_test(
-      NAME vegeta_stress
-      PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/vegeta_stress.py
-      LABEL vegeta
-      ADDITIONAL_ARGS -p "samples/apps/logging/liblogging"
-    )
+      add_e2e_test(
+        NAME vegeta_stress
+        PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/vegeta_stress.py
+        LABEL vegeta
+        ADDITIONAL_ARGS -p "samples/apps/logging/liblogging"
+      )
 
-    add_e2e_test(
-      NAME vegeta_long_stress
-      PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/vegeta_stress.py
-      LABEL vegeta
-      CONFIGURATIONS long_stress
-      ADDITIONAL_ARGS -p "samples/apps/logging/liblogging" --duration 45m
-    )
+      add_e2e_test(
+        NAME vegeta_long_stress
+        PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/vegeta_stress.py
+        LABEL vegeta
+        CONFIGURATIONS long_stress
+        ADDITIONAL_ARGS -p "samples/apps/logging/liblogging" --duration 45m
+      )
+    endif()
 
     add_perf_test(
       NAME ls
@@ -1438,21 +1538,29 @@ if(BUILD_TESTS)
                       --max-writes-ahead 1000 --repetitions 10000
     )
 
-    add_perf_test(
+    add_piccolo_test(
       NAME pi_basic
       PYTHON_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/tests/infra/basicperf.py
       CLIENT_BIN ./submit
-      ADDITIONAL_ARGS --package "samples/apps/basic/libbasic" --repetitions
-                      100000
+      ADDITIONAL_ARGS --package "samples/apps/basic/libbasic" --client-def
+                      "1,write,100000,primary"
+    )
+
+    add_piccolo_test(
+      NAME pi_basic_js
+      PYTHON_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/tests/infra/basicperf.py
+      CLIENT_BIN ./submit
+      ADDITIONAL_ARGS --js-app-bundle ${CMAKE_SOURCE_DIR}/samples/apps/basic/js
+                      --client-def "1,write,100000,primary"
     )
 
     if(WORKER_THREADS)
-      add_perf_test(
+      add_piccolo_test(
         NAME pi_basic_mt
         PYTHON_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/tests/infra/basicperf.py
         CLIENT_BIN ./submit
-        ADDITIONAL_ARGS --package "samples/apps/basic/libbasic" --repetitions
-                        200000 --num-localhost-clients ${WORKER_THREADS}
+        ADDITIONAL_ARGS --package "samples/apps/basic/libbasic" --client-def
+                        "${WORKER_THREADS},write,100000,primary"
       )
     endif()
 

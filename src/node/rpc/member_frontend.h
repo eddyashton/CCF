@@ -16,6 +16,7 @@
 #include "ccf/service/tables/nodes.h"
 #include "frontend.h"
 #include "js/wrap.h"
+#include "node/gov/gov_endpoint_registry.h"
 #include "node/rpc/call_types.h"
 #include "node/rpc/gov_effects_interface.h"
 #include "node/rpc/gov_logging.h"
@@ -88,7 +89,7 @@ namespace ccf
     TooOld
   };
 
-  class MemberEndpoints : public CommonEndpointRegistry
+  class MemberEndpoints : public GovEndpointRegistry
   {
   private:
     // Wrapper for reporting errors, which both logs them under the [gov] tag
@@ -108,9 +109,6 @@ namespace ccf
 
       rpc_ctx->set_error(status, code, std::move(msg));
     }
-
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc99-extensions"
 
     void remove_all_other_non_open_proposals(
       kv::Tx& tx, const ProposalId& proposal_id)
@@ -150,12 +148,8 @@ namespace ccf
       std::optional<ccf::jsgov::VoteFailures> vote_failures = std::nullopt;
       for (const auto& [mid, mb] : pi_->ballots)
       {
-        js::Runtime rt(&tx);
-        js::Context context(rt, js::TxAccess::GOV_RO);
-        rt.add_ccf_classdefs();
-        js::TxContext txctx{&tx};
-        js::init_globals(context);
-        js::populate_global_ccf_kv(&txctx, context);
+        js::Context context(js::TxAccess::GOV_RO);
+        js::populate_global_ccf_kv(tx, context);
         auto ballot_func = context.function(
           mb,
           "vote",
@@ -167,10 +161,15 @@ namespace ccf
           context.new_string_len(
             pi_->proposer_id.data(), pi_->proposer_id.size())};
 
-        auto val = context.call(ballot_func, argv);
-        if (!JS_IsException(val))
+        auto val = context.call_with_rt_options(
+          ballot_func,
+          argv,
+          &tx,
+          js::RuntimeLimitsPolicy::NO_LOWER_THAN_DEFAULTS);
+
+        if (!val.is_exception())
         {
-          votes.emplace_back(mid, JS_ToBool(context, val));
+          votes.emplace_back(mid, val.is_true());
         }
         else
         {
@@ -190,12 +189,8 @@ namespace ccf
       }
 
       {
-        js::Runtime rt(&tx);
-        js::Context js_context(rt, js::TxAccess::GOV_RO);
-        rt.add_ccf_classdefs();
-        js::TxContext txctx{&tx};
-        js::init_globals(js_context);
-        js::populate_global_ccf_kv(&txctx, js_context);
+        js::Context js_context(js::TxAccess::GOV_RO);
+        js::populate_global_ccf_kv(tx, js_context);
         auto resolve_func = js_context.function(
           constitution, "resolve", "public:ccf.gov.constitution[0]");
 
@@ -218,14 +213,18 @@ namespace ccf
           JS_DefinePropertyValueStr(
             js_context, v, "vote", vote_status, JS_PROP_C_W_E);
           JS_DefinePropertyValueUint32(
-            js_context, vs, index++, v, JS_PROP_C_W_E);
+            js_context, vs.val, index++, v, JS_PROP_C_W_E);
         }
         argv.push_back(vs);
 
-        auto val = js_context.call(resolve_func, argv);
+        auto val = js_context.call_with_rt_options(
+          resolve_func,
+          argv,
+          &tx,
+          js::RuntimeLimitsPolicy::NO_LOWER_THAN_DEFAULTS);
 
         std::optional<jsgov::Failure> failure = std::nullopt;
-        if (JS_IsException(val))
+        if (val.is_exception())
         {
           pi_.value().state = ProposalState::FAILED;
           auto [reason, trace] = js::js_error_message(js_context);
@@ -236,7 +235,7 @@ namespace ccf
           failure = ccf::jsgov::Failure{
             fmt::format("Failed to resolve(): {}", reason), trace};
         }
-        else if (JS_IsString(val))
+        else if (val.is_str())
         {
           auto status = js_context.to_str(val).value_or("");
           if (status == "Open")
@@ -289,10 +288,7 @@ namespace ccf
           }
           if (pi_.value().state == ProposalState::ACCEPTED)
           {
-            js::Runtime rt(&tx);
-            js::Context js_context(rt, js::TxAccess::GOV_RW);
-            rt.add_ccf_classdefs();
-            js::TxContext txctx{&tx};
+            js::Context apply_js_context(js::TxAccess::GOV_RW);
 
             auto gov_effects =
               context.get_subsystem<AbstractGovernanceEffects>();
@@ -302,28 +298,31 @@ namespace ccf
                 "Unexpected: Could not access GovEffects subsytem");
             }
 
-            js::init_globals(js_context);
-            js::populate_global_ccf_kv(&txctx, js_context);
-            js::populate_global_ccf_node(gov_effects.get(), js_context);
-            js::populate_global_ccf_network(&network, js_context);
-            js::populate_global_ccf_gov_actions(js_context);
+            js::populate_global_ccf_kv(tx, apply_js_context);
+            js::populate_global_ccf_node(gov_effects.get(), apply_js_context);
+            js::populate_global_ccf_network(&network, apply_js_context);
+            js::populate_global_ccf_gov_actions(apply_js_context);
 
-            auto apply_func = js_context.function(
+            auto apply_func = apply_js_context.function(
               constitution, "apply", "public:ccf.gov.constitution[0]");
 
-            std::vector<js::JSWrappedValue> argv = {
-              js_context.new_string_len(
+            std::vector<js::JSWrappedValue> apply_argv = {
+              apply_js_context.new_string_len(
                 (const char*)proposal.data(), proposal.size()),
-              js_context.new_string_len(
+              apply_js_context.new_string_len(
                 proposal_id.c_str(), proposal_id.size())};
 
-            auto val = js_context.call(apply_func, argv);
+            auto apply_val = apply_js_context.call_with_rt_options(
+              apply_func,
+              apply_argv,
+              &tx,
+              js::RuntimeLimitsPolicy::NO_LOWER_THAN_DEFAULTS);
 
-            if (JS_IsException(val))
+            if (apply_val.is_exception())
             {
               pi_.value().state = ProposalState::FAILED;
-              auto [reason, trace] = js::js_error_message(js_context);
-              if (js_context.interrupt_data.request_timed_out)
+              auto [reason, trace] = js::js_error_message(apply_js_context);
+              if (apply_js_context.interrupt_data.request_timed_out)
               {
                 reason = "Operation took too long to complete.";
               }
@@ -343,8 +342,6 @@ namespace ccf
           failure};
       }
     }
-
-#pragma clang diagnostic pop
 
     bool check_member_active(kv::ReadOnlyTx& tx, const MemberId& id)
     {
@@ -570,7 +567,7 @@ namespace ccf
   public:
     MemberEndpoints(
       NetworkState& network_, ccfapp::AbstractNodeContext& context_) :
-      CommonEndpointRegistry(get_actor_prefix(ActorsType::members), context_),
+      GovEndpointRegistry(network_, context_),
       network(network_),
       share_manager(network_.ledger_secrets)
     {
@@ -578,7 +575,7 @@ namespace ccf
       openapi_info.description =
         "This API is used to submit and query proposals which affect CCF's "
         "public governance tables.";
-      openapi_info.document_version = "4.1.1";
+      openapi_info.document_version = "4.1.3";
     }
 
     static std::optional<MemberId> get_caller_member_id(
@@ -652,7 +649,7 @@ namespace ccf
 
     void init_handlers() override
     {
-      CommonEndpointRegistry::init_handlers();
+      GovEndpointRegistry::init_handlers();
 
       //! A member acknowledges state
       auto ack = [this](ccf::endpoints::EndpointContext& ctx) {
@@ -1098,9 +1095,6 @@ namespace ccf
           "endpoints.")
         .install();
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc99-extensions"
-
       auto post_proposals_js = [this](ccf::endpoints::EndpointContext& ctx) {
         std::optional<ccf::MemberCOSESign1AuthnIdentity> cose_auth_id =
           std::nullopt;
@@ -1123,8 +1117,8 @@ namespace ccf
         std::vector<uint8_t> request_digest;
         if (cose_auth_id.has_value())
         {
-          request_digest = crypto::sha256(
-            {cose_auth_id->signature.begin(), cose_auth_id->signature.end()});
+          std::span<const uint8_t> sig = cose_auth_id->signature;
+          request_digest = crypto::sha256(sig);
         }
 
         ProposalId proposal_id;
@@ -1162,12 +1156,8 @@ namespace ccf
 
         auto validate_script = constitution.value();
 
-        js::Runtime rt(&ctx.tx);
-        js::Context context(rt, js::TxAccess::GOV_RO);
-        rt.add_ccf_classdefs();
-        js::TxContext txctx{&ctx.tx};
-        js::init_globals(context);
-        js::populate_global_ccf_kv(&txctx, context);
+        js::Context context(js::TxAccess::GOV_RO);
+        js::populate_global_ccf_kv(ctx.tx, context);
 
         auto validate_func = context.function(
           validate_script, "validate", "public:ccf.gov.constitution[0]");
@@ -1180,9 +1170,13 @@ namespace ccf
         auto body_len = proposal_body.size();
 
         auto proposal = context.new_string_len(body, body_len);
-        auto val = context.call(validate_func, {proposal});
+        auto val = context.call_with_rt_options(
+          validate_func,
+          {proposal},
+          &ctx.tx,
+          js::RuntimeLimitsPolicy::NO_LOWER_THAN_DEFAULTS);
 
-        if (JS_IsException(val))
+        if (val.is_exception())
         {
           auto [reason, trace] = js_error_message(context);
           if (context.interrupt_data.request_timed_out)
@@ -1200,7 +1194,7 @@ namespace ccf
           return;
         }
 
-        if (!JS_IsObject(val))
+        if (!val.is_obj())
         {
           set_gov_error(
             ctx.rpc_ctx,
@@ -1211,14 +1205,14 @@ namespace ccf
         }
 
         std::string description;
-        auto desc = context(JS_GetPropertyStr(context, val, "description"));
-        if (JS_IsString(desc))
+        auto desc = val["description"];
+        if (desc.is_str())
         {
           description = context.to_str(desc).value_or("");
         }
 
-        auto valid = context(JS_GetPropertyStr(context, val, "valid"));
-        if (!JS_ToBool(context, valid))
+        auto valid = val["valid"];
+        if (!valid.is_true())
         {
           set_gov_error(
             ctx.rpc_ctx,
@@ -1690,8 +1684,9 @@ namespace ccf
                                      ctx.rpc_ctx->get_request_body());
 
         {
-          js::Runtime rt(&ctx.tx);
-          js::Context context(rt, js::TxAccess::GOV_RO);
+          js::Context context(js::TxAccess::GOV_RO);
+          context.runtime().set_runtime_options(
+            &ctx.tx, js::RuntimeLimitsPolicy::NO_LOWER_THAN_DEFAULTS);
           auto ballot_func =
             context.function(params["ballot"], "vote", "body[\"ballot\"]");
         }
@@ -1796,8 +1791,6 @@ namespace ccf
           "Ballot for a given member about a proposed change to the service")
         .install();
 
-#pragma clang diagnostic pop
-
       using AllMemberDetails = std::map<ccf::MemberId, FullMemberDetails>;
       auto get_all_members =
         [this](endpoints::ReadOnlyEndpointContext& ctx, nlohmann::json&&) {
@@ -1850,6 +1843,13 @@ namespace ccf
         .install();
 
       add_kv_wrapper_endpoints();
+    }
+
+    bool request_needs_root(const RpcContext& rpc_ctx) override
+    {
+      return GovEndpointRegistry::request_needs_root(rpc_ctx) ||
+        (rpc_ctx.get_request_verb() == HTTP_POST &&
+         rpc_ctx.get_request_path() == "/gov/proposals");
     }
   };
 

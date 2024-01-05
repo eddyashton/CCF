@@ -18,6 +18,8 @@ import random
 import json
 import subprocess
 import time
+import http
+import infra.snp as snp
 
 from loguru import logger as LOG
 
@@ -262,7 +264,7 @@ def run_file_operations(args):
         json.dump(service_data, ntf)
         ntf.flush()
 
-        args.max_msg_size_bytes = f"{100 * 1024}"  # 100KB
+        args.max_msg_size_bytes = f"{1024 ** 2}"
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             txs = app.LoggingTxs("user0")
@@ -294,6 +296,7 @@ def run_file_operations(args):
                 network.stop_all_nodes(skip_verification=True)
 
                 test_split_ledger_on_stopped_network(primary, args)
+                args.common_read_only_ledger_dir = None  # Reset for future tests
 
 
 def run_tls_san_checks(args):
@@ -304,7 +307,6 @@ def run_tls_san_checks(args):
         args.perf_nodes,
         pdb=args.pdb,
     ) as network:
-        args.common_read_only_ledger_dir = None  # Reset from previous test
         network.start_and_open(args)
         network.verify_service_certificate_validity_period(
             args.initial_service_cert_validity_days
@@ -364,13 +366,13 @@ def run_config_timeout_check(args):
         args.perf_nodes,
         pdb=args.pdb,
     ) as network:
-        args.common_read_only_ledger_dir = None  # Reset from previous test
         network.start_and_open(args)
     # This is relatively direct test to make sure the config timeout feature
     # works as intended. It is difficult to do with the existing framework
     # as is because of the indirections and the fact that start() is a
     # synchronous call.
-    start_node_path = network.nodes[0].remote.remote.root
+    node = network.nodes[0]
+    start_node_path = node.remote.remote.root
     # Remove ledger and pid file to allow a restart
     shutil.rmtree(os.path.join(start_node_path, "0.ledger"))
     os.remove(os.path.join(start_node_path, "node.pid"))
@@ -383,10 +385,26 @@ def run_config_timeout_check(args):
     LOG.info("No config at all")
     assert not os.path.exists(os.path.join(start_node_path, "0.config.json"))
     LOG.info(f"Attempt to start node without a config under {start_node_path}")
+    config_timeout = 10
+    env = {}
+    if args.enclave_platform == "snp":
+        env = snp.get_aci_env()
+    env["ASAN_OPTIONS"] = "alloc_dealloc_mismatch=0"
+
     proc = subprocess.Popen(
-        ["./cchost", "--config", "0.config.json", "--config-timeout", "10s"],
+        [
+            "./cchost",
+            "--config",
+            "0.config.json",
+            "--config-timeout",
+            f"{config_timeout}s",
+            "--enclave-file",
+            node.remote.enclave_file,
+        ],
         cwd=start_node_path,
-        env={"ASAN_OPTIONS": "alloc_dealloc_mismatch=0"},
+        env=env,
+        stdout=open(os.path.join(start_node_path, "out"), "wb"),
+        stderr=open(os.path.join(start_node_path, "err"), "wb"),
     )
     time.sleep(2)
     LOG.info("Copy a partial config")
@@ -399,8 +417,9 @@ def run_config_timeout_check(args):
         os.path.join(start_node_path, "0.config.json.bak"),
         os.path.join(start_node_path, "0.config.json"),
     )
-    time.sleep(10)
-    LOG.info("Wait out the rest of the timeout")
+    LOG.info(f"Wait out the rest of the {config_timeout}s timeout")
+    time.sleep(config_timeout)
+    LOG.info("Check node")
     assert proc.poll() is None, "Node process should still be running"
     assert os.path.exists(os.path.join(start_node_path, "service_cert.pem"))
     proc.terminate()
@@ -415,10 +434,9 @@ def run_sighup_check(args):
         args.perf_nodes,
         pdb=args.pdb,
     ) as network:
-        args.common_read_only_ledger_dir = None  # Reset from previous test
         network.start_and_open(args)
         network.nodes[0].remote.remote.hangup()
-        time.sleep(1)
+        time.sleep(5)
         assert network.nodes[0].remote.check_done(), "Node should have exited"
         out, _ = network.nodes[0].remote.get_logs()
         with open(out, "r") as outf:
@@ -445,6 +463,30 @@ def run_configuration_file_checks(args):
             *cmd, env={"ASAN_OPTIONS": "alloc_dealloc_mismatch=0"}
         ).returncode
         assert rc == 0, f"Failed to check configuration: {rc}"
+        LOG.success(f"Successfully check sample configuration file {config}")
+
+
+def run_preopen_readiness_check(args):
+    with infra.network.network(
+        args.nodes,
+        args.binary_dir,
+        args.debug_nodes,
+        args.perf_nodes,
+        pdb=args.pdb,
+    ) as network:
+        network.start(args)
+        primary, _ = network.find_primary()
+        with primary.client() as c:
+            r = c.get("/node/ready/gov")
+            assert r.status_code == http.HTTPStatus.NO_CONTENT.value, r
+            r = c.get("/node/ready/app")
+            assert r.status_code == http.HTTPStatus.SERVICE_UNAVAILABLE.value, r
+        network.open(args)
+        with primary.client() as c:
+            r = c.get("/node/ready/gov")
+            assert r.status_code == http.HTTPStatus.NO_CONTENT.value, r
+            r = c.get("/node/ready/app")
+            assert r.status_code == http.HTTPStatus.NO_CONTENT.value, r
 
 
 def run_pid_file_check(args):
@@ -455,7 +497,6 @@ def run_pid_file_check(args):
         args.perf_nodes,
         pdb=args.pdb,
     ) as network:
-        args.common_read_only_ledger_dir = None  # Reset from previous test
         network.start_and_open(args)
         LOG.info("Check that pid file exists")
         node = network.nodes[0]
@@ -482,10 +523,53 @@ def run_pid_file_check(args):
         network.ignoring_shutdown_errors = True
 
 
+def run_max_uncommitted_tx_count(args):
+    with infra.network.network(
+        ["local://localhost", "local://localhost"],
+        args.binary_dir,
+        args.debug_nodes,
+        args.perf_nodes,
+        pdb=args.pdb,
+    ) as network:
+        uncommitted_cap = 20
+        network.per_node_args_override[0] = {
+            "max_uncommitted_tx_count": uncommitted_cap
+        }
+        network.start_and_open(args)
+        LOG.info(
+            f"Start network with max_uncommitted_tx_count set to {uncommitted_cap}"
+        )
+        # Stop the backup node, to freeze commit
+        primary, backups = network.find_nodes()
+        backups[0].stop()
+        unavailable_count = 0
+        last_accepted_index = 0
+
+        with primary.client(identity="user0") as c:
+            for idx in range(uncommitted_cap + 1):
+                r = c.post(
+                    "/app/log/public?scope=test_large_snapshot",
+                    body={"id": idx, "msg": "X" * 42},
+                    log_capture=[],
+                )
+                if r.status_code == http.HTTPStatus.SERVICE_UNAVAILABLE:
+                    unavailable_count += 1
+                    if last_accepted_index == 0:
+                        last_accepted_index = idx - 1
+        LOG.info(f"Last accepted: {last_accepted_index}, {unavailable_count} 503s")
+        assert unavailable_count > 0, "Expected at least one SERVICE_UNAVAILABLE"
+
+        with primary.client() as c:
+            r = c.get("/node/network")
+            assert r.status_code == http.HTTPStatus.OK.value, r
+
+
 def run(args):
+    run_max_uncommitted_tx_count(args)
     run_file_operations(args)
     run_tls_san_checks(args)
     run_config_timeout_check(args)
     run_configuration_file_checks(args)
     run_pid_file_check(args)
+    run_preopen_readiness_check(args)
     run_sighup_check(args)

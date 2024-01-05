@@ -18,10 +18,28 @@
 #include <quickjs/quickjs-exports.h>
 #include <quickjs/quickjs.h>
 
+#define JS_CHECK_EXC(val) \
+  do \
+  { \
+    if (val.is_exception()) \
+    { \
+      return val.take(); \
+    } \
+  } while (0)
+
+#define JS_CHECK_SET(val) \
+  do \
+  { \
+    if (val != 1) \
+    { \
+      return ccf::js::constants::Exception; \
+    } \
+  } while (0)
+
 namespace ccf::js
 {
   extern JSClassID kv_class_id;
-  extern JSClassID kv_read_only_class_id;
+  extern JSClassID kv_historical_class_id;
   extern JSClassID kv_map_handle_class_id;
   extern JSClassID body_class_id;
   extern JSClassID node_class_id;
@@ -30,18 +48,15 @@ namespace ccf::js
   extern JSClassID historical_class_id;
   extern JSClassID historical_state_class_id;
 
-  extern JSClassDef kv_class_def;
-  extern JSClassExoticMethods kv_exotic_methods;
-  extern JSClassDef kv_read_only_class_def;
-  extern JSClassExoticMethods kv_read_only_exotic_methods;
-  extern JSClassDef kv_map_handle_class_def;
-  extern JSClassDef body_class_def;
-  extern JSClassDef node_class_def;
-  extern JSClassDef network_class_def;
-
   const std::chrono::milliseconds default_max_execution_time{1000};
   const size_t default_stack_size = 1024 * 1024;
   const size_t default_heap_size = 100 * 1024 * 1024;
+
+  enum class RuntimeLimitsPolicy
+  {
+    NONE,
+    NO_LOWER_THAN_DEFAULTS
+  };
 
   /// Describes the context in which JS script is currently executing. Used to
   /// determine which KV tables should be accessible.
@@ -59,31 +74,27 @@ namespace ccf::js
     GOV_RW
   };
 
-  struct TxContext
+  namespace constants
   {
-    kv::Tx* tx = nullptr;
-  };
-
-  struct ReadOnlyTxContext
-  {
-    kv::ReadOnlyTx* tx = nullptr;
-  };
-
-  struct HistoricalStateContext
-  {
-    ccf::historical::StatePtr state;
-    kv::ReadOnlyTx tx;
-    ReadOnlyTxContext tx_ctx;
-  };
-
+// "compound literals are a C99-specific feature"
+// Used heavily by QuickJS, including in macros (such as
+// ccf::js::constants::Null). Rather than disabling throughout the code, we
+// replace those with const instances here
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wc99-extensions"
+    static constexpr JSValue Null = JS_NULL;
+    static constexpr JSValue Undefined = JS_UNDEFINED;
+    static constexpr JSValue False = JS_FALSE;
+    static constexpr JSValue True = JS_TRUE;
+    static constexpr JSValue Exception = JS_EXCEPTION;
+#pragma clang diagnostic pop
+  }
 
   class Context;
 
   struct JSWrappedValue
   {
-    JSWrappedValue() : ctx(NULL), val(JS_NULL) {}
+    JSWrappedValue() : ctx(NULL), val(ccf::js::constants::Null) {}
     JSWrappedValue(JSContext* ctx, JSValue&& val) :
       ctx(ctx),
       val(std::move(val))
@@ -99,7 +110,7 @@ namespace ccf::js
     JSWrappedValue(JSWrappedValue&& other) : ctx(other.ctx)
     {
       val = other.val;
-      other.val = JS_NULL;
+      other.val = ccf::js::constants::Null;
     }
     ~JSWrappedValue()
     {
@@ -107,11 +118,6 @@ namespace ccf::js
       {
         JS_FreeValue(ctx, val);
       }
-    }
-
-    operator const JSValue&() const
-    {
-      return val;
     }
 
     JSWrappedValue& operator=(const JSWrappedValue& other)
@@ -136,46 +142,113 @@ namespace ccf::js
       return JSWrappedValue(ctx, JS_GetPropertyUint32(ctx, val, i));
     }
 
-    JSWrappedValue get_property(JSAtom prop) const
+    int set(const char* prop, JSWrappedValue&& value) const
     {
-      return JSWrappedValue(ctx, JS_GetProperty(ctx, val, prop));
+      int rc = JS_SetPropertyStr(ctx, val, prop, value.val);
+      if (rc == 1)
+      {
+        value.val = ccf::js::constants::Null;
+      }
+      return rc;
     }
 
-    void set(const char* prop, const JSWrappedValue& value) const
+    int set_getter(const char* prop, JSWrappedValue&& getter) const
     {
-      JS_SetPropertyStr(ctx, val, prop, JS_DupValue(ctx, value.val));
+      JSAtom size_atom = JS_NewAtom(ctx, prop);
+      if (size_atom == JS_ATOM_NULL)
+      {
+        getter.val = ccf::js::constants::Null;
+        return -1;
+      }
+
+      // NB: Where other calls check the return code to determine whether they
+      // are responsible for freeing, this call unconditionally frees the getter
+      // arg, so we call .take() to always drop our local owning reference
+      int rc = JS_DefinePropertyGetSet(
+        ctx, val, size_atom, getter.take(), ccf::js::constants::Undefined, 0);
+
+      JS_FreeAtom(ctx, size_atom);
+
+      return rc;
     }
 
-    void set(const char* prop, JSWrappedValue&& value) const
+    int set(const std::string& prop, JSWrappedValue&& value) const
     {
-      JS_SetPropertyStr(ctx, val, prop, value.val);
-      value.val = JS_NULL;
+      return set(prop.c_str(), std::move(value));
     }
 
-    void set(const std::string& prop, const JSWrappedValue& value) const
+    int set(const std::string& prop, JSValue&& value) const
     {
-      set(prop.c_str(), value);
+      return JS_SetPropertyStr(ctx, val, prop.c_str(), value);
     }
 
-    void set(const std::string& prop, JSWrappedValue&& value) const
+    int set_null(const std::string& prop) const
     {
-      set(prop.c_str(), value);
+      return JS_SetPropertyStr(
+        ctx, val, prop.c_str(), ccf::js::constants::Null);
     }
 
-    void set(const std::string& prop, JSValue&& value) const
+    int set_uint32(const std::string& prop, uint32_t i) const
     {
-      JS_SetPropertyStr(ctx, val, prop.c_str(), value);
+      return JS_SetPropertyStr(ctx, val, prop.c_str(), JS_NewUint32(ctx, i));
     }
 
-    void set(const std::string& prop, const JSValue& value) const
+    int set_int64(const std::string& prop, int64_t i) const
     {
-      JS_SetPropertyStr(ctx, val, prop.c_str(), JS_DupValue(ctx, value));
+      return JS_SetPropertyStr(ctx, val, prop.c_str(), JS_NewInt64(ctx, i));
+    }
+
+    int set_bool(const std::string& prop, bool b) const
+    {
+      return JS_SetPropertyStr(ctx, val, prop.c_str(), JS_NewBool(ctx, b));
+    }
+
+    int set_at_index(uint32_t index, JSWrappedValue&& value)
+    {
+      int rc =
+        JS_DefinePropertyValueUint32(ctx, val, index, value.val, JS_PROP_C_W_E);
+      if (rc == 1)
+      {
+        value.val = ccf::js::constants::Null;
+      }
+      return rc;
+    }
+
+    bool is_exception() const
+    {
+      return JS_IsException(val);
+    }
+
+    bool is_error() const
+    {
+      return JS_IsError(ctx, val);
+    }
+
+    bool is_obj() const
+    {
+      return JS_IsObject(val);
+    }
+
+    bool is_str() const
+    {
+      return JS_IsString(val);
+    }
+
+    bool is_true() const
+    {
+      int rc = JS_ToBool(ctx, val);
+      return rc > 0;
+    }
+
+    bool is_undefined() const
+    {
+      return JS_IsUndefined(val);
     }
 
     JSValue take()
     {
       JSValue r = val;
-      val = JS_NULL;
+      val = ccf::js::constants::Null;
       return r;
     }
 
@@ -188,12 +261,7 @@ namespace ccf::js
   void register_request_body_class(JSContext* ctx);
 
   void init_globals(Context& ctx);
-  void populate_global_ccf_kv(TxContext* txctx, js::Context& ctx);
-  void populate_global_ccf_historical_state(
-    ReadOnlyTxContext* historical_txctx,
-    const ccf::TxID& transaction_id,
-    ccf::TxReceiptImplPtr receipt,
-    js::Context& ctx);
+  void populate_global_ccf_kv(kv::Tx& tx, js::Context& ctx);
   void populate_global_ccf_node(
     ccf::AbstractGovernanceEffects* gov_effects, js::Context& ctx);
   void populate_global_ccf_gov_actions(js::Context& ctx);
@@ -206,11 +274,16 @@ namespace ccf::js
     ccf::NetworkState* network_state, js::Context& ctx);
   void populate_global_ccf_historical(
     ccf::historical::AbstractStateCache* historical_state, js::Context& ctx);
+  void invalidate_globals(js::Context& ctx);
+
+  JSValue create_historical_state_object(
+    js::Context& ctx, ccf::historical::StatePtr state);
 
   JSValue js_print(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv);
-  void js_dump_error(JSContext* ctx);
   std::pair<std::string, std::optional<std::string>> js_error_message(
     Context& ctx);
+  std::pair<std::string, std::optional<std::string>> js_error_message_from_val(
+    Context& ctx, JSWrappedValue& exc);
 
   JSValue js_body_text(
     JSContext* ctx,
@@ -249,12 +322,13 @@ namespace ccf::js
     JSRuntime* rt = nullptr;
 
     std::chrono::milliseconds max_exec_time = default_max_execution_time;
+    void add_ccf_classdefs();
 
   public:
     bool log_exception_details = false;
     bool return_exception_details = false;
 
-    Runtime(kv::Tx* tx);
+    Runtime();
     ~Runtime();
 
     operator JSRuntime*() const
@@ -262,7 +336,8 @@ namespace ccf::js
       return rt;
     }
 
-    void add_ccf_classdefs();
+    void reset_runtime_options();
+    void set_runtime_options(kv::Tx* tx, RuntimeLimitsPolicy policy);
 
     std::chrono::milliseconds get_max_exec_time() const
     {
@@ -272,15 +347,49 @@ namespace ccf::js
 
   class Context
   {
+  private:
     JSContext* ctx;
+    Runtime rt;
+
+    // The interpreter can cache loaded modules so they do not need to be loaded
+    // from the KV for every execution, which is particularly useful when
+    // re-using interpreters. A module can only be loaded once per interpreter,
+    // and the entire interpreter should be thrown away if _any_ of its modules
+    // needs to be refreshed.
+    std::map<std::string, JSWrappedValue> loaded_modules_cache;
 
   public:
+    ccf::pal::Mutex lock;
+
     const TxAccess access;
     InterruptData interrupt_data;
     bool implement_untrusted_time = false;
     bool log_execution_metrics = true;
 
-    Context(JSRuntime* rt, TxAccess acc) : access(acc)
+    // State which may be set by calls to populate_global_ccf_*. Likely
+    // references transaction-scoped entries, so should be cleared between
+    // calls. Retained handles to these globals must not access the previous
+    // values.
+    struct
+    {
+      kv::Tx* tx = nullptr;
+      std::unordered_map<std::string, kv::untyped::Map::Handle*> kv_handles;
+
+      struct HistoricalHandle
+      {
+        ccf::historical::StatePtr state;
+        std::unique_ptr<kv::ReadOnlyTx> tx;
+        std::unordered_map<std::string, kv::untyped::Map::ReadOnlyHandle*>
+          kv_handles = {};
+      };
+      std::unordered_map<ccf::SeqNo, HistoricalHandle> historical_handles;
+
+      ccf::RpcContext* rpc_ctx = nullptr;
+
+      const std::vector<uint8_t>* current_request_body = nullptr;
+    } globals;
+
+    Context(TxAccess acc) : access(acc)
     {
       ctx = JS_NewContext(rt);
       if (ctx == nullptr)
@@ -288,6 +397,8 @@ namespace ccf::js
         throw std::runtime_error("Failed to initialise QuickJS context");
       }
       JS_SetContextOpaque(ctx, this);
+
+      js::init_globals(*this);
     }
 
     ~Context()
@@ -296,9 +407,42 @@ namespace ccf::js
       JS_FreeContext(ctx);
     }
 
+    // Delete copy and assignment operators, since this assumes sole ownership
+    // of underlying rt and ctx. Can implement move operator if necessary
+    Context(const Context&) = delete;
+    Context& operator=(const Context&) = delete;
+
+    Runtime& runtime()
+    {
+      return rt;
+    }
+
     operator JSContext*() const
     {
       return ctx;
+    }
+
+    std::optional<JSWrappedValue> get_module_from_cache(
+      const std::string& module_name)
+    {
+      auto module = loaded_modules_cache.find(module_name);
+      if (module == loaded_modules_cache.end())
+      {
+        return std::nullopt;
+      }
+
+      return module->second;
+    }
+
+    void load_module_to_cache(
+      const std::string& module_name, const JSWrappedValue& module)
+    {
+      if (get_module_from_cache(module_name).has_value())
+      {
+        throw std::logic_error(fmt::format(
+          "Module '{}' is already loaded in interpreter cache", module_name));
+      }
+      loaded_modules_cache[module_name] = module;
     }
 
     JSWrappedValue operator()(JSValue&& val) const
@@ -323,20 +467,14 @@ namespace ccf::js
 
     JSWrappedValue get_global_property(const char* s) const
     {
-      return W(JS_GetPropertyStr(ctx, get_global_obj(), s));
-    }
-
-    JSWrappedValue stringify(
-      const JSWrappedValue& obj,
-      const JSWrappedValue& replacer,
-      const JSWrappedValue& space0) const
-    {
-      return W(JS_JSONStringify(ctx, obj, replacer, space0));
+      auto g = get_global_obj();
+      return W(JS_GetPropertyStr(ctx, g.val, s));
     }
 
     JSWrappedValue json_stringify(const JSWrappedValue& obj) const
     {
-      return W(JS_JSONStringify(ctx, obj, JS_NULL, JS_NULL));
+      return W(JS_JSONStringify(
+        ctx, obj.val, ccf::js::constants::Null, ccf::js::constants::Null));
     }
 
     JSWrappedValue new_array() const
@@ -369,6 +507,17 @@ namespace ccf::js
         ctx, JS_NewArrayBufferCopy(ctx, (uint8_t*)buf, buf_len));
     }
 
+    JSWrappedValue new_array_buffer_copy(std::span<const uint8_t> data) const
+    {
+      return JSWrappedValue(
+        ctx, JS_NewArrayBufferCopy(ctx, data.data(), data.size()));
+    }
+
+    JSWrappedValue new_string(const std::string& str) const
+    {
+      return W(JS_NewStringLen(ctx, str.data(), str.size()));
+    }
+
     JSWrappedValue new_string(const char* str) const
     {
       return W(JS_NewString(ctx, str));
@@ -388,25 +537,45 @@ namespace ccf::js
       return r;
     }
 
+    JSValue new_internal_error(const char* fmt, ...) const
+    {
+      va_list ap;
+      va_start(ap, fmt);
+      auto r = JS_ThrowInternalError(ctx, fmt, ap);
+      va_end(ap);
+      return r;
+    }
+
     JSWrappedValue new_tag_value(int tag, int32_t val = 0) const
     {
+// "compound literals are a C99-specific feature"
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wc99-extensions"
       return W((JSValue){(JSValueUnion){.int32 = val}, tag});
+#pragma clang diagnostic pop
     }
 
     JSWrappedValue null() const
     {
-      return W(JS_NULL);
+      return W(ccf::js::constants::Null);
     }
 
     JSWrappedValue undefined() const
     {
-      return W(JS_UNDEFINED);
+      return W(ccf::js::constants::Undefined);
     }
 
     JSWrappedValue new_c_function(
       JSCFunction* func, const char* name, int length) const
     {
       return W(JS_NewCFunction(ctx, func, name, length));
+    }
+
+    JSWrappedValue new_getter_c_function(
+      JSCFunction* func, const char* name) const
+    {
+      return W(JS_NewCFunction2(
+        ctx, func, name, 0, JS_CFUNC_getter, JS_CFUNC_getter_magic));
     }
 
     JSWrappedValue eval(
@@ -420,7 +589,7 @@ namespace ccf::js
 
     JSWrappedValue eval_function(const JSWrappedValue& module) const
     {
-      return W(JS_EvalFunction(ctx, module));
+      return W(JS_EvalFunction(ctx, module.val));
     }
 
     JSWrappedValue default_function(
@@ -452,7 +621,17 @@ namespace ccf::js
       return W(JS_GetException(ctx));
     }
 
-    JSWrappedValue call(
+    JSWrappedValue call_with_rt_options(
+      const JSWrappedValue& f,
+      const std::vector<js::JSWrappedValue>& argv,
+      kv::Tx* tx,
+      RuntimeLimitsPolicy policy);
+
+    // Call a JS function _without_ any stack, heap or execution time limits.
+    // Only to be used, as the name indicates, for calls inside an already
+    // invoked JS function, where the caller has already set up the necessary
+    // limits.
+    JSWrappedValue inner_call(
       const JSWrappedValue& f, const std::vector<js::JSWrappedValue>& argv);
 
     JSWrappedValue parse_json(const nlohmann::json& j) const
@@ -474,12 +653,12 @@ namespace ccf::js
       size_t* pbytes_per_element) const
     {
       return W(JS_GetTypedArrayBuffer(
-        ctx, obj, pbyte_offset, pbyte_length, pbytes_per_element));
+        ctx, obj.val, pbyte_offset, pbyte_length, pbytes_per_element));
     }
 
     std::optional<std::string> to_str(const JSWrappedValue& x) const
     {
-      auto val = JS_ToCString(ctx, x);
+      auto val = JS_ToCString(ctx, x.val);
       if (!val)
       {
         new_type_error("value is not a string");
@@ -534,90 +713,59 @@ namespace ccf::js
     {
       return JSWrappedValue(ctx, std::move(x));
     }
-  };
 
-  class JSWrappedAtom
-  {
-  public:
-    JSWrappedAtom() : ctx(NULL), val(JS_ATOM_NULL) {}
-    JSWrappedAtom(JSContext* ctx, JSAtom&& val) : ctx(ctx), val(std::move(val))
-    {}
-    JSWrappedAtom(JSContext* ctx, const JSAtom& value) : ctx(ctx)
+    JSWrappedValue W(const JSValue& x) const
     {
-      val = JS_DupAtom(ctx, value);
+      return JSWrappedValue(ctx, x);
     }
-    JSWrappedAtom(const JSWrappedAtom& other) : ctx(other.ctx)
-    {
-      val = JS_DupAtom(ctx, other.val);
-    }
-    JSWrappedAtom(JSWrappedAtom&& other) : ctx(other.ctx)
-    {
-      val = other.val;
-      other.val = JS_ATOM_NULL;
-    }
-    ~JSWrappedAtom()
-    {
-      if (ctx)
-      {
-        JS_FreeAtom(ctx, val);
-      }
-    }
-
-    operator const JSAtom&() const
-    {
-      return val;
-    }
-
-    JSContext* ctx;
-    JSAtom val;
   };
 
   class JSWrappedPropertyEnum
   {
   public:
-    JSWrappedPropertyEnum(JSContext* ctx, const JSWrappedValue& value)
+    JSWrappedPropertyEnum(JSContext* ctx_, const JSWrappedValue& value) :
+      ctx(ctx_)
     {
-      if (!JS_IsObject(value))
+      if (!value.is_obj())
       {
         throw std::logic_error(
           fmt::format("object value required for property enum"));
       }
-
-      JSPropertyEnum* prop_enum;
-      uint32_t prop_count;
 
       if (
         JS_GetOwnPropertyNames(
           ctx,
           &prop_enum,
           &prop_count,
-          value,
+          value.val,
           JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) == -1)
       {
         throw std::logic_error(
           fmt::format("Could not extract property names of enum"));
       }
-      for (size_t i = 0; i < prop_count; i++)
-        properties.push_back(JSWrappedAtom(ctx, prop_enum[i].atom));
-      for (uint32_t i = 0; i < prop_count; i++)
-        JS_FreeAtom(ctx, prop_enum[i].atom);
-      js_free(ctx, prop_enum);
     }
-    ~JSWrappedPropertyEnum() {}
 
-    JSWrappedAtom operator[](size_t i) const
+    ~JSWrappedPropertyEnum()
     {
-      return properties[i];
+      for (uint32_t i = 0; i < prop_count; i++)
+      {
+        JS_FreeAtom(ctx, prop_enum[i].atom);
+      }
+      js_free(ctx, prop_enum);
+    };
+
+    JSAtom& operator[](size_t i) const
+    {
+      return prop_enum[i].atom;
     }
 
     size_t size() const
     {
-      return properties.size();
+      return prop_count;
     }
 
-    JSContext* ctx;
-    std::vector<JSWrappedAtom> properties;
+    JSPropertyEnum* prop_enum = nullptr;
+    uint32_t prop_count = 0;
+    JSContext* ctx = nullptr;
   };
-
-#pragma clang diagnostic pop
 }

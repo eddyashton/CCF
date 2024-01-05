@@ -1,6 +1,5 @@
 {
   "enclave": {
-    "file": "{{ enclave_file }}",
     "type": "{{ enclave_type }}",
     "platform": "{{ enclave_platform }}"
   },
@@ -22,10 +21,8 @@
   "attestation":
   {
     "snp_endorsements_servers": {{ snp_endorsements_servers|tojson }},
-    "environment":
-    {
-      "security_context_directory": {{ snp_security_context_directory_envvar|tojson }}
-    }
+    "snp_security_policy_file": "{{ snp_security_policy_file }}",
+    "snp_uvm_endorsements_file": "{{ snp_uvm_endorsements_file }}"
   },
   "service_data_json_file": {{ service_data_json_file|tojson }},
   "command": {
@@ -46,7 +43,8 @@
     "join":
     {
       "retry_timeout": "{{ join_timer }}",
-      "target_rpc_address": "{{ target_rpc_address }}"
+      "target_rpc_address": "{{ target_rpc_address }}",
+      "follow_redirect": {{ follow_redirect|tojson }}
     },
     "recover": {
       "initial_service_certificate_validity_days": {{ initial_service_cert_validity_days }},
@@ -73,7 +71,8 @@
   "consensus":
   {
     "message_timeout": "{{ message_timeout }}",
-    "election_timeout": "{{ election_timeout }}"
+    "election_timeout": "{{ election_timeout }}",
+    "max_uncommitted_tx_count": {{ max_uncommitted_tx_count|tojson or 0 }}
   },
   "ledger_signatures":
   {
@@ -96,9 +95,9 @@
   "node_client_interface": {{ node_client_interface|tojson }},
   "worker_threads": {{ worker_threads }},
   "memory": {
-    "circuit_size": "4MB",
+    "circuit_size": "16MB",
     "max_msg_size": "{{ max_msg_size_bytes }}",
-    "max_fragment_size": "64KB"
+    "max_fragment_size": "256KB"
   },
   "ignore_first_sigterm": {{ ignore_first_sigterm|tojson }}{% if node_to_node_message_limit %},
   "node_to_node_message_limit": {{ node_to_node_message_limit|tojson }}{% endif %}

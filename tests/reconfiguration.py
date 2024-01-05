@@ -165,6 +165,12 @@ def test_ignore_first_sigterm(network, args):
     new_node.sigterm()
 
     with new_node.client() as c:
+        r = c.get("/node/ready/app")
+        assert r.status_code == http.HTTPStatus.SERVICE_UNAVAILABLE.value, r
+        r = c.get("/node/ready/gov")
+        assert r.status_code == http.HTTPStatus.SERVICE_UNAVAILABLE.value, r
+
+    with new_node.client() as c:
         r = c.get("/node/state")
         assert r.body.json()["stop_notice"] is True, r
 
@@ -249,9 +255,12 @@ def test_add_node_endorsements_endpoints(network, args):
     args_copy = deepcopy(args)
     test_vectors = [
         (["Azure:global.acccache.azure.net"], True),
+        (["Azure:global.acccache.azure.net:443"], True),
         (["AMD:kdsintf.amd.com"], True),
         (["AMD:invalid.amd.com"], False),
         (["Azure:invalid.azure.com", "AMD:kdsintf.amd.com"], True),  # Fallback server
+        # Won't work yet, see #5852
+        # (["THIM:$Fabric_NodeIPOrFQDN:2377"], True),
     ]
 
     for servers, expected_result in test_vectors:

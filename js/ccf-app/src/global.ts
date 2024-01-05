@@ -44,7 +44,7 @@ export interface KvMap {
   delete(key: ArrayBuffer): void;
   clear(): void;
   forEach(
-    callback: (value: ArrayBuffer, key: ArrayBuffer, kvmap: KvMap) => void
+    callback: (value: ArrayBuffer, key: ArrayBuffer, kvmap: KvMap) => void,
   ): void;
   size: number;
 }
@@ -214,15 +214,15 @@ export interface CryptoKeyPair {
   publicKey: string;
 }
 
-export type AlgorithmName = "RSASSA-PKCS1-v1_5" | "ECDSA" | "EdDSA";
+export type AlgorithmName = "RSASSA-PKCS1-v1_5" | "ECDSA" | "EdDSA" | "HMAC";
 
-export type DigestAlgorithm = "SHA-256";
+export type DigestAlgorithm = "SHA-256" | "SHA-384" | "SHA-512";
 
 export interface SigningAlgorithm {
   name: AlgorithmName;
 
   /**
-   * Digest algorithm. It's necessary for "RSASSA-PKCS1-v1_5" and "ECDSA"
+   * Digest algorithm. It's necessary for "RSASSA-PKCS1-v1_5", "ECDSA", and "HMAC"
    */
   hash?: DigestAlgorithm;
 }
@@ -326,7 +326,7 @@ export interface CCFCrypto {
   sign(
     algorithm: SigningAlgorithm,
     key: string,
-    plaintext: ArrayBuffer
+    plaintext: ArrayBuffer,
   ): ArrayBuffer;
 
   /**
@@ -343,7 +343,7 @@ export interface CCFCrypto {
     algorithm: SigningAlgorithm,
     key: string,
     signature: ArrayBuffer,
-    plaintext: ArrayBuffer
+    plaintext: ArrayBuffer,
   ): boolean;
 
   /**
@@ -371,7 +371,7 @@ export interface CCFCrypto {
   /**
    * Generate an EdDSA key pair.
    *
-   * @param curve The name of the curve. Currently only "curve25519" is supported.
+   * @param curve The name of the curve. Only "curve25519" and "x25519" are supported.
    */
   generateEddsaKeyPair(curve: string): CryptoKeyPair;
 
@@ -384,7 +384,19 @@ export interface CCFCrypto {
   wrapKey(
     key: ArrayBuffer,
     wrappingKey: ArrayBuffer,
-    wrapAlgo: WrapAlgoParams
+    wrapAlgo: WrapAlgoParams,
+  ): ArrayBuffer;
+
+  /**
+   * Unwraps a key using a wrapping key.
+   *
+   * Constraints on the `key` and `wrappingKey` parameters depend
+   * on the wrapping algorithm that is used (`wrapAlgo`).
+   */
+  unwrapKey(
+    key: ArrayBuffer,
+    wrappingKey: ArrayBuffer,
+    wrapAlgo: WrapAlgoParams,
   ): ArrayBuffer;
 
   /**
@@ -441,7 +453,7 @@ export interface CCFCrypto {
 
   /**
    * Converts an EdDSA public key as PEM to JSON Web Key (JWK) object.
-   * Currently only Curve25519 is supported.
+   * Only Curve25519 and X25519 are supported.
    *
    * @param pem EdDSA public key as PEM
    * @param kid Key identifier (optional)
@@ -450,7 +462,7 @@ export interface CCFCrypto {
 
   /**
    * Converts an EdDSA private key as PEM to JSON Web Key (JWK) object.
-   * Currently only Curve25519 is supported.
+   * Only Curve25519 and X25519 are supported.
    *
    * @param pem EdDSA private key as PEM
    * @param kid Key identifier (optional)
@@ -582,7 +594,7 @@ export interface CCFHistorical {
     handle: number,
     startSeqno: number,
     endSeqno: number,
-    secondsUntilExpiry: number
+    secondsUntilExpiry: number,
   ): HistoricalState[] | null;
 
   /** Drop cached states for the given handle.
@@ -648,7 +660,7 @@ export interface CCF {
   wrapKey(
     key: ArrayBuffer,
     wrappingKey: ArrayBuffer,
-    wrapAlgo: WrapAlgoParams
+    wrapAlgo: WrapAlgoParams,
   ): ArrayBuffer;
 
   /**
@@ -736,6 +748,80 @@ export interface OpenEnclave {
   verifyOpenEnclaveEvidence(
     format: string | undefined,
     evidence: ArrayBuffer,
-    endorsements?: ArrayBuffer
+    endorsements?: ArrayBuffer,
   ): EvidenceClaims;
+}
+
+export interface TcbVersion {
+  boot_loader: number;
+  tee: number;
+  snp: number;
+  microcode: number;
+}
+
+export interface SnpAttestationResult {
+  attestation: {
+    version: number;
+    guest_svn: number;
+    policy: {
+      abi_minor: number;
+      abi_major: number;
+      smt: number;
+      migrate_ma: number;
+      debug: number;
+      single_socket: number;
+    };
+    family_id: ArrayBuffer;
+    image_id: ArrayBuffer;
+    vmpl: number;
+    signature_algo: number;
+    platform_version: TcbVersion;
+    platform_info: {
+      smt_en: number;
+      tsme_en: number;
+    };
+    flags: {
+      author_key_en: number;
+      mask_chip_key: number;
+      signing_key: number;
+    };
+    report_data: ArrayBuffer;
+    measurement: ArrayBuffer;
+    host_data: ArrayBuffer;
+    id_key_digest: ArrayBuffer;
+    author_key_digest: ArrayBuffer;
+    report_id: ArrayBuffer;
+    report_id_ma: ArrayBuffer;
+    reported_tcb: TcbVersion;
+    chip_id: ArrayBuffer;
+    committed_tcb: TcbVersion;
+    current_minor: number;
+    current_build: number;
+    current_major: number;
+    committed_build: number;
+    committed_minor: number;
+    committed_major: number;
+    launch_tcb: TcbVersion;
+    signature: {
+      r: ArrayBuffer;
+      s: ArrayBuffer;
+    };
+  };
+  uvm_endorsements?: {
+    did: string;
+    feed: string;
+    svn: string;
+  };
+}
+
+export const snp_attestation: SnpAttestation = (<any>globalThis)
+  .snp_attestation;
+
+export interface SnpAttestation {
+  verifySnpAttestation(
+    evidence: ArrayBuffer,
+    endorsements: ArrayBuffer,
+    uvm_endorsements?: ArrayBuffer,
+    endorsed_tcb?: string,
+  ): SnpAttestationResult;
 }

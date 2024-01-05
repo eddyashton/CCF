@@ -5,6 +5,7 @@
 #include "ccf/ds/logger.h"
 #include "ccf/pal/locking.h"
 #include "ccf/service/tables/nodes.h"
+#include "crypto/openssl/hash.h"
 #include "ds/thread_messaging.h"
 #include "endian.h"
 #include "kv/kv_types.h"
@@ -134,7 +135,9 @@ namespace ccf
       version++;
     }
 
-    void append_entry(const crypto::Sha256Hash& digest) override
+    void append_entry(
+      const crypto::Sha256Hash& digest,
+      std::optional<kv::Term> term_of_next_version_ = std::nullopt) override
     {
       version++;
     }
@@ -219,7 +222,23 @@ namespace ccf
     void set_endorsed_certificate(const crypto::Pem& cert) override {}
   };
 
-  using HistoryTree = merkle::TreeT<32, merkle::sha256_openssl>;
+  // Use optimised CCF openssl_sha256 function to avoid performance regression
+  // on OpenSSL 3.x
+  static constexpr size_t sha256_byte_size = 32;
+  static inline void sha256_history(
+    const merkle::HashT<sha256_byte_size>& l,
+    const merkle::HashT<sha256_byte_size>& r,
+    merkle::HashT<sha256_byte_size>& out)
+
+  {
+    uint8_t block[sha256_byte_size * 2];
+    memcpy(&block[0], l.bytes, sha256_byte_size);
+    memcpy(&block[sha256_byte_size], r.bytes, sha256_byte_size);
+
+    crypto::openssl_sha256(block, out.bytes);
+  }
+
+  using HistoryTree = merkle::TreeT<sha256_byte_size, ccf::sha256_history>;
 
   class Proof
   {
@@ -677,8 +696,15 @@ namespace ccf
     std::vector<uint8_t> serialise_tree(size_t to) override
     {
       std::lock_guard<ccf::pal::Mutex> guard(state_lock);
-      return replicated_state_tree.serialise(
-        replicated_state_tree.begin_index(), to);
+      if (to <= replicated_state_tree.end_index())
+      {
+        return replicated_state_tree.serialise(
+          replicated_state_tree.begin_index(), to);
+      }
+      else
+      {
+        return {};
+      }
     }
 
     void set_term(kv::Term t) override
@@ -784,10 +810,20 @@ namespace ccf
       replicated_state_tree.append(rh);
     }
 
-    void append_entry(const crypto::Sha256Hash& digest) override
+    void append_entry(
+      const crypto::Sha256Hash& digest,
+      std::optional<kv::Term> expected_term_of_next_version =
+        std::nullopt) override
     {
       log_hash(digest, APPEND);
       std::lock_guard<ccf::pal::Mutex> guard(state_lock);
+      if (expected_term_of_next_version.has_value())
+      {
+        if (expected_term_of_next_version.value() != term_of_next_version)
+        {
+          return;
+        }
+      }
       replicated_state_tree.append(digest);
     }
 

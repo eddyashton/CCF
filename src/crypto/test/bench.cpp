@@ -12,6 +12,7 @@
 #include "crypto/openssl/hash.h"
 #include "crypto/openssl/key_pair.h"
 #include "crypto/openssl/rsa_key_pair.h"
+#include "crypto/sharing.h"
 
 #define PICOBENCH_IMPLEMENT_WITH_MAIN
 #include <picobench/picobench.hpp>
@@ -127,11 +128,38 @@ static void benchmark_hash(picobench::state& s)
   s.stop_timer();
 }
 
+template <typename P, CurveID Curve>
+static void benchmark_create(picobench::state& s)
+{
+  s.start_timer();
+  for (auto _ : s)
+  {
+    (void)_;
+    P kp(Curve);
+    do_not_optimize(kp);
+    clobber_memory();
+  }
+  s.stop_timer();
+}
+
 const std::vector<int> sizes = {10};
 
 #define PICO_SUFFIX(CURVE) iterations(sizes).samples(10)
 
 #define PICO_HASH_SUFFIX() iterations(sizes).samples(10)
+
+PICOBENCH_SUITE("create ec keypairs");
+namespace CREATE_KEYPAIRS
+{
+  auto create_256r1 = benchmark_create<KeyPair_OpenSSL, CurveID::SECP256R1>;
+  PICOBENCH(create_256r1).iterations({1000}).samples(10);
+
+  auto create_256k1 = benchmark_create<KeyPair_OpenSSL, CurveID::SECP256K1>;
+  PICOBENCH(create_256k1).iterations({1000}).samples(10);
+
+  auto create_384r1 = benchmark_create<KeyPair_OpenSSL, CurveID::SECP384R1>;
+  PICOBENCH(create_384r1).iterations({1000}).samples(10);
+}
 
 PICOBENCH_SUITE("sign secp384r1");
 namespace SIGN_SECP384R1
@@ -351,28 +379,31 @@ namespace Hashes
   PICOBENCH(sha_512_ossl_100k).PICO_HASH_SUFFIX();
 }
 
+template <size_t size>
+static void sha256_bench(picobench::state& s)
+{
+  crypto::openssl_sha256_init();
+
+  std::vector<uint8_t> v(size);
+  for (size_t i = 0; i < size; ++i)
+  {
+    v[i] = rand();
+  }
+
+  crypto::Sha256Hash h;
+
+  s.start_timer();
+  for (size_t i = 0; i < 10; ++i)
+  {
+    crypto::openssl_sha256(v, h.h.data());
+  }
+  s.stop_timer();
+  crypto::openssl_sha256_shutdown();
+}
+
 PICOBENCH_SUITE("digest sha256");
 namespace SHA256_bench
 {
-  template <size_t size>
-  static void sha256_bench(picobench::state& s)
-  {
-    std::vector<uint8_t> v(size);
-    for (size_t i = 0; i < size; ++i)
-    {
-      v[i] = rand();
-    }
-
-    crypto::Sha256Hash h;
-
-    s.start_timer();
-    for (size_t i = 0; i < 10; ++i)
-    {
-      crypto::openssl_sha256(v, h.h.data());
-    }
-    s.stop_timer();
-  }
-
   auto openssl_sha256_base = sha256_bench<2 << 6>;
   PICOBENCH(openssl_sha256_base).PICO_HASH_SUFFIX();
 
@@ -441,4 +472,77 @@ namespace HMAC_bench
 
   auto openssl_hmac_sha256_64 = benchmark_hmac<MDType::SHA256, 64>;
   PICOBENCH(openssl_hmac_sha256_64).PICO_HASH_SUFFIX();
+}
+
+std::vector<crypto::Share> shares;
+
+PICOBENCH_SUITE("share");
+namespace SHARE_bench
+{
+  template <size_t nshares, size_t threshold>
+  static void benchmark_share(picobench::state& s)
+  {
+    shares.resize(nshares);
+
+    s.start_timer();
+    for (auto _ : s)
+    {
+      (void)_;
+      crypto::Share secret;
+      crypto::sample_secret_and_shares(secret, shares, threshold);
+      do_not_optimize(secret);
+      clobber_memory();
+    }
+    s.stop_timer();
+  }
+
+  auto share_10s_d1 = benchmark_share<10, 1>;
+  auto share_100s_d1 = benchmark_share<100, 1>;
+  auto share_1000s_d1 = benchmark_share<1000, 1>;
+
+  PICOBENCH(share_10s_d1).PICO_SUFFIX();
+  PICOBENCH(share_100s_d1).PICO_SUFFIX();
+  PICOBENCH(share_1000s_d1).PICO_SUFFIX();
+
+  auto share_10s_d5 = benchmark_share<10, 5>;
+  auto share_100s_d5 = benchmark_share<100, 5>;
+  auto share_1000s_d5 = benchmark_share<1000, 5>;
+
+  PICOBENCH(share_10s_d5).PICO_SUFFIX();
+  PICOBENCH(share_100s_d5).PICO_SUFFIX();
+  PICOBENCH(share_1000s_d5).PICO_SUFFIX();
+
+  template <size_t nshares, size_t threshold>
+  static void benchmark_share_and_recover(picobench::state& s)
+  {
+    shares.resize(nshares);
+
+    s.start_timer();
+    for (auto _ : s)
+    {
+      (void)_;
+      crypto::Share secret;
+      crypto::sample_secret_and_shares(secret, shares, threshold);
+      crypto::recover_unauthenticated_secret(secret, shares, threshold);
+      do_not_optimize(secret);
+      clobber_memory();
+    }
+    s.stop_timer();
+  }
+
+  auto share_n_recover_10s_d1 = benchmark_share_and_recover<10, 1>;
+  auto share_n_recover_100s_d1 = benchmark_share_and_recover<100, 1>;
+  auto share_n_recover_1000s_d1 = benchmark_share_and_recover<1000, 1>;
+
+  PICOBENCH(share_n_recover_10s_d1).PICO_SUFFIX();
+  PICOBENCH(share_n_recover_100s_d1).PICO_SUFFIX();
+  PICOBENCH(share_n_recover_1000s_d1).PICO_SUFFIX();
+
+  auto share_n_recover_10s_d5 = benchmark_share_and_recover<10, 5>;
+  auto share_n_recover_100s_d5 = benchmark_share_and_recover<100, 5>;
+  auto share_n_recover_1000s_d5 = benchmark_share_and_recover<1000, 5>;
+
+  PICOBENCH(share_n_recover_10s_d5).PICO_SUFFIX();
+  PICOBENCH(share_n_recover_100s_d5).PICO_SUFFIX();
+  PICOBENCH(share_n_recover_1000s_d5).PICO_SUFFIX();
 }

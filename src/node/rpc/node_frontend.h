@@ -72,6 +72,7 @@ namespace ccf
     uint64_t max_heap_size;
     uint64_t max_stack_size;
     uint64_t max_execution_time;
+    uint64_t max_cached_interpreters = 10;
   };
 
   DECLARE_JSON_TYPE(JavaScriptMetrics);
@@ -81,7 +82,8 @@ namespace ccf
     bytecode_used,
     max_heap_size,
     max_stack_size,
-    max_execution_time);
+    max_execution_time,
+    max_cached_interpreters);
 
   struct JWTMetrics
   {
@@ -142,6 +144,14 @@ namespace ccf
 
   class NodeEndpoints : public CommonEndpointRegistry
   {
+  public:
+    // The node frontend is exempt from backpressure rules to enable an operator
+    // to access a node that is not making progress.
+    bool apply_uncommitted_tx_backpressure() const override
+    {
+      return false;
+    }
+
   private:
     NetworkState& network;
     ccf::AbstractNodeOperation& node_operation;
@@ -373,7 +383,7 @@ namespace ccf
       openapi_info.description =
         "This API provides public, uncredentialed access to service and node "
         "state.";
-      openapi_info.document_version = "4.2.1";
+      openapi_info.document_version = "4.7.0";
     }
 
     void init_handlers() override
@@ -464,7 +474,6 @@ namespace ccf
             auto primary_id = consensus->primary();
             if (primary_id.has_value())
             {
-              auto nodes = args.tx.ro(this->network.nodes);
               auto info = nodes->get(primary_id.value());
               if (info)
               {
@@ -556,7 +565,6 @@ namespace ccf
             auto primary_id = consensus->primary();
             if (primary_id.has_value())
             {
-              auto nodes = args.tx.ro(this->network.nodes);
               auto info = nodes->get(primary_id.value());
               if (info)
               {
@@ -1117,97 +1125,114 @@ namespace ccf
         .set_auto_schema<void, GetNode::Out>()
         .install();
 
-      auto get_self_node = [this](auto& args) {
+      auto get_self_node = [this](auto& args, nlohmann::json&&) {
         auto node_id = this->context.get_node_id();
         auto nodes = args.tx.ro(this->network.nodes);
         auto info = nodes->get(node_id);
-        if (info)
+
+        bool is_primary = false;
+        if (consensus != nullptr)
         {
-          auto& interface_id =
-            args.rpc_ctx->get_session_context()->interface_id;
-          if (!interface_id.has_value())
+          auto primary = consensus->primary();
+          if (primary.has_value() && primary.value() == node_id)
           {
-            args.rpc_ctx->set_error(
-              HTTP_STATUS_INTERNAL_SERVER_ERROR,
-              ccf::errors::InternalError,
-              "Cannot redirect non-RPC request.");
-            return;
+            is_primary = true;
           }
-          const auto& address =
-            info->rpc_interfaces[interface_id.value()].published_address;
-          args.rpc_ctx->set_response_status(HTTP_STATUS_PERMANENT_REDIRECT);
-          args.rpc_ctx->set_response_header(
-            http::headers::LOCATION,
-            fmt::format(
-              "https://{}/node/network/nodes/{}", address, node_id.value()));
-          return;
         }
 
-        args.rpc_ctx->set_error(
-          HTTP_STATUS_INTERNAL_SERVER_ERROR,
-          ccf::errors::InternalError,
-          "Node info not available");
-        return;
+        if (info.has_value())
+        {
+          // Answers from the KV are preferred, as they are more up-to-date,
+          // especially status and node_data.
+          auto& ni = info.value();
+          return make_success(GetNode::Out{
+            node_id,
+            ni.status,
+            is_primary,
+            ni.rpc_interfaces,
+            ni.node_data,
+            nodes->get_version_of_previous_write(node_id).value_or(0)});
+        }
+        else
+        {
+          // If the node isn't in its KV yet, fall back to configuration
+          auto node_configuration_subsystem =
+            this->context.get_subsystem<NodeConfigurationSubsystem>();
+          if (!node_configuration_subsystem)
+          {
+            return make_error(
+              HTTP_STATUS_INTERNAL_SERVER_ERROR,
+              ccf::errors::InternalError,
+              "NodeConfigurationSubsystem is not available");
+          }
+          return make_success(GetNode::Out{
+            node_id,
+            ccf::NodeStatus::PENDING,
+            is_primary,
+            node_configuration_subsystem->get()
+              .node_config.network.rpc_interfaces,
+            node_configuration_subsystem->get().node_config.node_data,
+            0});
+        }
       };
       make_read_only_endpoint(
-        "/network/nodes/self", HTTP_GET, get_self_node, no_auth_required)
+        "/network/nodes/self",
+        HTTP_GET,
+        json_read_only_adapter(get_self_node),
+        no_auth_required)
+        .set_auto_schema<void, GetNode::Out>()
         .set_forwarding_required(endpoints::ForwardingRequired::Never)
         .install();
 
-      auto get_primary_node = [this](auto& args) {
+      auto get_primary_node = [this](auto& args, nlohmann::json&&) {
         if (consensus != nullptr)
         {
-          auto node_id = this->context.get_node_id();
           auto primary_id = consensus->primary();
           if (!primary_id.has_value())
           {
-            args.rpc_ctx->set_error(
+            return make_error(
               HTTP_STATUS_INTERNAL_SERVER_ERROR,
               ccf::errors::InternalError,
               "Primary unknown");
-            return;
           }
 
           auto nodes = args.tx.ro(this->network.nodes);
-          auto info = nodes->get(node_id);
-          auto info_primary = nodes->get(primary_id.value());
-          if (info && info_primary)
+          auto info = nodes->get(primary_id.value());
+          if (!info)
           {
-            auto& interface_id =
-              args.rpc_ctx->get_session_context()->interface_id;
-            if (!interface_id.has_value())
-            {
-              args.rpc_ctx->set_error(
-                HTTP_STATUS_INTERNAL_SERVER_ERROR,
-                ccf::errors::InternalError,
-                "Cannot redirect non-RPC request.");
-              return;
-            }
-            const auto& address =
-              info->rpc_interfaces[interface_id.value()].published_address;
-            args.rpc_ctx->set_response_status(HTTP_STATUS_PERMANENT_REDIRECT);
-            args.rpc_ctx->set_response_header(
-              http::headers::LOCATION,
-              fmt::format(
-                "https://{}/node/network/nodes/{}",
-                address,
-                primary_id->value()));
-            return;
+            return make_error(
+              HTTP_STATUS_NOT_FOUND,
+              ccf::errors::ResourceNotFound,
+              "Node not found");
           }
-        }
 
-        args.rpc_ctx->set_error(
-          HTTP_STATUS_INTERNAL_SERVER_ERROR,
-          ccf::errors::InternalError,
-          "Primary unknown");
-        return;
+          auto& ni = info.value();
+          return make_success(GetNode::Out{
+            primary_id.value(),
+            ni.status,
+            true,
+            ni.rpc_interfaces,
+            ni.node_data,
+            nodes->get_version_of_previous_write(primary_id.value())
+              .value_or(0)});
+        }
+        else
+        {
+          return make_error(
+            HTTP_STATUS_NOT_FOUND,
+            ccf::errors::ResourceNotFound,
+            "No configured consensus");
+        }
       };
       make_read_only_endpoint(
-        "/network/nodes/primary", HTTP_GET, get_primary_node, no_auth_required)
-        .set_forwarding_required(endpoints::ForwardingRequired::Never)
+        "/network/nodes/primary",
+        HTTP_GET,
+        json_read_only_adapter(get_primary_node),
+        no_auth_required)
+        .set_auto_schema<void, GetNode::Out>()
         .install();
 
-      auto is_primary = [this](auto& args) {
+      auto head_primary = [this](auto& args) {
         if (this->node_operation.can_replicate())
         {
           args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
@@ -1251,7 +1276,27 @@ namespace ccf
         }
       };
       make_read_only_endpoint(
-        "/primary", HTTP_HEAD, is_primary, no_auth_required)
+        "/primary", HTTP_HEAD, head_primary, no_auth_required)
+        .set_forwarding_required(endpoints::ForwardingRequired::Never)
+        .install();
+
+      auto get_primary = [this](auto& args) {
+        if (this->node_operation.can_replicate())
+        {
+          args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
+          return;
+        }
+        else
+        {
+          args.rpc_ctx->set_error(
+            HTTP_STATUS_NOT_FOUND,
+            ccf::errors::ResourceNotFound,
+            "Node is not primary");
+          return;
+        }
+      };
+      make_read_only_endpoint(
+        "/primary", HTTP_GET, get_primary, no_auth_required)
         .set_forwarding_required(endpoints::ForwardingRequired::Never)
         .install();
 
@@ -1374,10 +1419,11 @@ namespace ccf
         m.max_execution_time = js::default_max_execution_time.count();
         if (js_engine_options.has_value())
         {
-          m.max_stack_size = js_engine_options.value().max_stack_bytes;
-          m.max_heap_size = js_engine_options.value().max_heap_bytes;
-          m.max_execution_time =
-            js_engine_options.value().max_execution_time_ms;
+          auto& options = js_engine_options.value();
+          m.max_stack_size = options.max_stack_bytes;
+          m.max_heap_size = options.max_heap_bytes;
+          m.max_execution_time = options.max_execution_time_ms;
+          m.max_cached_interpreters = options.max_cached_interpreters;
         }
 
         return m;
@@ -1652,6 +1698,68 @@ namespace ccf
         no_auth_required)
         .set_forwarding_required(endpoints::ForwardingRequired::Never)
         .set_auto_schema<void, nlohmann::json>()
+        .install();
+
+      auto get_ready_app =
+        [this](const ccf::endpoints::ReadOnlyEndpointContext& ctx) {
+          auto node_configuration_subsystem =
+            this->context.get_subsystem<NodeConfigurationSubsystem>();
+          if (!node_configuration_subsystem)
+          {
+            ctx.rpc_ctx->set_error(
+              HTTP_STATUS_INTERNAL_SERVER_ERROR,
+              ccf::errors::InternalError,
+              "NodeConfigurationSubsystem is not available");
+            return;
+          }
+          if (
+            !node_configuration_subsystem->has_received_stop_notice() &&
+            this->node_operation.is_part_of_network() &&
+            this->node_operation.is_user_frontend_open())
+          {
+            ctx.rpc_ctx->set_response_status(HTTP_STATUS_NO_CONTENT);
+          }
+          else
+          {
+            ctx.rpc_ctx->set_response_status(HTTP_STATUS_SERVICE_UNAVAILABLE);
+          }
+          return;
+        };
+      make_read_only_endpoint(
+        "/ready/app", HTTP_GET, get_ready_app, no_auth_required)
+        .set_auto_schema<void, void>()
+        .set_forwarding_required(endpoints::ForwardingRequired::Never)
+        .install();
+
+      auto get_ready_gov =
+        [this](const ccf::endpoints::ReadOnlyEndpointContext& ctx) {
+          auto node_configuration_subsystem =
+            this->context.get_subsystem<NodeConfigurationSubsystem>();
+          if (!node_configuration_subsystem)
+          {
+            ctx.rpc_ctx->set_error(
+              HTTP_STATUS_INTERNAL_SERVER_ERROR,
+              ccf::errors::InternalError,
+              "NodeConfigurationSubsystem is not available");
+            return;
+          }
+          if (
+            !node_configuration_subsystem->has_received_stop_notice() &&
+            this->node_operation.is_accessible_to_members() &&
+            this->node_operation.is_member_frontend_open())
+          {
+            ctx.rpc_ctx->set_response_status(HTTP_STATUS_NO_CONTENT);
+          }
+          else
+          {
+            ctx.rpc_ctx->set_response_status(HTTP_STATUS_SERVICE_UNAVAILABLE);
+          }
+          return;
+        };
+      make_read_only_endpoint(
+        "/ready/gov", HTTP_GET, get_ready_gov, no_auth_required)
+        .set_auto_schema<void, void>()
+        .set_forwarding_required(endpoints::ForwardingRequired::Never)
         .install();
     }
   };

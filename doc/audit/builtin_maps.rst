@@ -221,7 +221,7 @@ PEM identity of previous service, which this service recovered from.
 
 **Key** Sentinel value 0, represented as a little-endian 64-bit unsigned integer.
 
-**Value** Previous service identity, represented as a PEM-encoded JSON string.
+**Value** Previous :term:`Service Identity`, represented as a PEM-encoded JSON string.
 
 ``service.acme_certificates``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -284,7 +284,7 @@ JavaScript engine version of the module cache, accessible by JavaScript endpoint
 
 ``js_runtime_options``
 ~~~~~~~~~~~~~~~~~~~~~~
-QuickJS runtime memory, accessible by Javascript endpoint function.
+QuickJS runtime options, used to configure runtimes created by CCF.
 
 **Key** Sentinel value 0, represented as a little-endian 64-bit unsigned integer.
 
@@ -293,6 +293,15 @@ QuickJS runtime memory, accessible by Javascript endpoint function.
 .. doxygenstruct:: ccf::JSRuntimeOptions
    :project: CCF
    :members:
+
+``interpreter.flush``
+~~~~~~~~~~~~~~~~~~~~~~
+Used by transactions that set the JS application to signal to the interpreter cache system
+that existing instances need to be flushed.
+
+**Key** Sentinel value 0, represented as a little-endian 64-bit unsigned integer.
+
+**Value** Boolean, represented as JSON.
 
 ``endpoints``
 ~~~~~~~~~~~~~

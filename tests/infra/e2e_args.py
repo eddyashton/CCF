@@ -51,7 +51,12 @@ def max_f(args, number_nodes):
     return (number_nodes - 1) // 2
 
 
-def cli_args(add=lambda x: None, parser=None, accept_unknown=False):
+def cli_args(
+    add=lambda x: None,
+    parser=None,
+    accept_unknown=False,
+    ledger_chunk_bytes_override=None,
+):
     LOG.remove()
     LOG.add(
         sys.stdout,
@@ -107,11 +112,19 @@ def cli_args(add=lambda x: None, parser=None, accept_unknown=False):
         default=os.getenv("TEST_ENCLAVE", os.getenv("DEFAULT_ENCLAVE_PLATFORM", "sgx")),
         choices=("sgx", "snp", "virtual"),
     )
+    log_level_choices = ("trace", "debug", "info", "fail", "fatal")
+    default_log_level = "info"
     parser.add_argument(
         "--host-log-level",
         help="Runtime host log level",
-        default="info",
-        choices=("trace", "debug", "info", "fail", "fatal"),
+        default=default_log_level,
+        choices=log_level_choices,
+    )
+    parser.add_argument(
+        "--enclave-log-level",
+        help="Runtime enclave log level",
+        default=default_log_level,
+        choices=log_level_choices,
     )
     parser.add_argument(
         "--log-format-json",
@@ -266,7 +279,7 @@ def cli_args(add=lambda x: None, parser=None, accept_unknown=False):
         "--ledger-chunk-bytes",
         help="Size (bytes) at which a new ledger chunk is created",
         type=str,
-        default="20KB",
+        default=ledger_chunk_bytes_override or "20KB",
     )
     parser.add_argument(
         "--snapshot-tx-interval",
@@ -378,12 +391,6 @@ def cli_args(add=lambda x: None, parser=None, accept_unknown=False):
         default=[],
     )
     parser.add_argument(
-        "--snp-secondary-acis-path",
-        help="The location in which the details about secondary ACIs will be stored",
-        type=str,
-        default=os.getenv("SECONDARY_ACIS_PATH"),
-    )
-    parser.add_argument(
         "--forwarding-timeout-ms",
         help="Timeout for forwarded RPC calls (in milliseconds)",
         type=int,
@@ -399,7 +406,13 @@ def cli_args(add=lambda x: None, parser=None, accept_unknown=False):
         "--max-msg-size-bytes",
         help="Maximum message size (bytes) allowed on the ring buffer",
         type=str,
-        default="16MB",
+        default="64MB",
+    )
+    parser.add_argument(
+        "--gov-api-version",
+        help="api-version to be used for accessing /gov endpoints",
+        type=str,
+        default=infra.clients.API_VERSION_PREVIEW_01,
     )
 
     add(parser)

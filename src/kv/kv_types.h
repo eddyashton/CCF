@@ -418,7 +418,9 @@ namespace kv
       const std::vector<uint8_t>& hash_at_snapshot) = 0;
     virtual std::vector<uint8_t> get_raw_leaf(uint64_t index) = 0;
     virtual void append(const std::vector<uint8_t>& data) = 0;
-    virtual void append_entry(const crypto::Sha256Hash& digest) = 0;
+    virtual void append_entry(
+      const crypto::Sha256Hash& digest,
+      std::optional<kv::Term> expected_term = std::nullopt) = 0;
     virtual void rollback(
       const kv::TxID& tx_id, kv::Term term_of_next_version_) = 0;
     virtual void compact(Version v) = 0;
@@ -438,6 +440,7 @@ namespace kv
     virtual bool is_backup() = 0;
     virtual bool is_candidate() = 0;
     virtual bool can_replicate() = 0;
+    virtual bool is_at_max_capacity() = 0;
 
     enum class SignatureDisposition
     {
@@ -455,8 +458,6 @@ namespace kv
 
     virtual bool replicate(const BatchVector& entries, ccf::View view) = 0;
     virtual std::pair<ccf::View, ccf::SeqNo> get_committed_txid() = 0;
-
-    virtual ccf::SeqNo get_previous_committable_seqno() = 0;
 
     virtual ccf::View get_view(ccf::SeqNo seqno) = 0;
     virtual ccf::View get_view() = 0;
@@ -721,6 +722,7 @@ namespace kv
       const TxID& txid,
       std::unique_ptr<PendingTx> pending_tx,
       bool globally_committable) = 0;
+    virtual bool check_rollback_count(Version count) = 0;
 
     virtual std::unique_ptr<AbstractSnapshot> snapshot_unsafe_maps(
       Version v) = 0;
@@ -779,7 +781,7 @@ template <>
 struct formatter<kv::Configuration::Nodes>
 {
   template <typename ParseContext>
-  auto parse(ParseContext& ctx)
+  constexpr auto parse(ParseContext& ctx)
   {
     return ctx.begin();
   }
@@ -801,7 +803,7 @@ template <>
 struct formatter<kv::MembershipState>
 {
   template <typename ParseContext>
-  auto parse(ParseContext& ctx)
+  constexpr auto parse(ParseContext& ctx)
   {
     return ctx.begin();
   }
@@ -819,7 +821,7 @@ template <>
 struct formatter<kv::LeadershipState>
 {
   template <typename ParseContext>
-  auto parse(ParseContext& ctx)
+  constexpr auto parse(ParseContext& ctx)
   {
     return ctx.begin();
   }

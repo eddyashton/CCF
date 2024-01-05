@@ -31,8 +31,9 @@ package-lock.json
 include/ccf/version.h
 python/version.py
 src/host/config_schema.h
+src/node/gov/api_schema.h
 **/compatibility_report.json
-.venv_ccf_sandbox/*
+.venv_ccf_sandbox/
 workspace/*
 ledger_[0-9]*
 snapshot_[0-9]*
@@ -44,5 +45,3 @@ tests/perf-system/analyzer/*.png
 **/*.ipynb*
 scripts/azure_deployment/.env
 tests/external_executor/executors/ccf/protobuf/*.proto
-tests/external_executor/executors/attestation_container/protobuf/*.proto
-src/apps/external_executor/protobuf/attestation-container.proto

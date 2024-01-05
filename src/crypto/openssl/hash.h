@@ -7,6 +7,7 @@
 
 #include <openssl/evp.h>
 #include <openssl/kdf.h>
+#include <span>
 
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>
@@ -38,9 +39,9 @@ namespace crypto
     std::vector<uint8_t> hkdf(
       MDType md_type,
       size_t length,
-      const std::vector<uint8_t>& ikm,
-      const std::vector<uint8_t>& salt = {},
-      const std::vector<uint8_t>& info = {});
+      const std::span<const uint8_t>& ikm,
+      const std::span<const uint8_t>& salt = {},
+      const std::span<const uint8_t>& info = {});
   }
 
   // Hash Provider (OpenSSL)
@@ -78,4 +79,6 @@ namespace crypto
   };
 
   void openssl_sha256(const std::span<const uint8_t>& data, uint8_t* h);
+  void openssl_sha256_init();
+  void openssl_sha256_shutdown();
 }

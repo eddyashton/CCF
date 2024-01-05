@@ -23,7 +23,6 @@ namespace kv::test
     std::vector<BatchVector::value_type> replica;
     ccf::TxID committed_txid = {};
     ccf::View current_view = 0;
-
     ccf::SeqNo last_signature = 0;
 
     aft::ViewHistory view_history;
@@ -58,6 +57,11 @@ namespace kv::test
     virtual bool can_replicate() override
     {
       return state == Primary;
+    }
+
+    virtual bool is_at_max_capacity() override
+    {
+      return false;
     }
 
     virtual Consensus::SignatureDisposition get_signature_disposition() override
@@ -160,14 +164,6 @@ namespace kv::test
     std::pair<ccf::View, ccf::SeqNo> get_committed_txid() override
     {
       return {committed_txid.view, committed_txid.seqno};
-    }
-
-    ccf::SeqNo get_previous_committable_seqno() override
-    {
-      // Since we commit instantly in this stub, we do not distinguish
-      // committable from committed. The last committable thing we saw was
-      // immediately committed, and we store it in committed_txid.
-      return committed_txid.seqno;
     }
 
     ccf::SeqNo get_committed_seqno() override

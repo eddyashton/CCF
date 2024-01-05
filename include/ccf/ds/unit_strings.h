@@ -128,6 +128,11 @@ namespace ds
       value(convert_size_string(str_))
     {}
 
+    SizeString(const char* str_) :
+      UnitString(str_),
+      value(convert_size_string(str_))
+    {}
+
     inline operator size_t() const
     {
       return value;
@@ -204,3 +209,23 @@ namespace ds
     schema["pattern"] = "^[0-9]+(us|ms|s|min|h)?$";
   }
 }
+
+FMT_BEGIN_NAMESPACE
+template <>
+struct formatter<ds::SizeString>
+{
+  template <typename ParseContext>
+  constexpr auto parse(ParseContext& ctx)
+  {
+    return ctx.begin();
+  }
+
+  template <typename FormatContext>
+  auto format(const ds::SizeString& v, FormatContext& ctx) const
+  {
+    std::stringstream ss;
+    ss << v.str;
+    return format_to(ctx.out(), "{}", ss.str());
+  }
+};
+FMT_END_NAMESPACE

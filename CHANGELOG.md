@@ -5,6 +5,124 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [5.0.0-dev11]
+
+[5.0.0-dev11]: https://github.com/microsoft/CCF/releases/tag/ccf-5.0.0-dev11
+
+### Removed
+
+- `ccf::historical::adapter_v2` is removed, replaced by `ccf::historical::adapter_v3` first introduced in 2.0.0.
+- `ccf::EnclaveAttestationProvider` has been removed. It is replaced by `ccf::AttestationProvider`
+- The `attestation.environment.security_context_directory` configuration entry and `--snp-security-context-dir-var` CLI option have been removed. SNP collateral must now be provided through the `snp_security_policy_file`, `snp_uvm_endorsements_file` and `snp_endorsement_servers` configuration values. See [documentation](https://microsoft.github.io/CCF/main/operations/platforms/snp.html) for details and platform-specific configuration samples.
+
+## [5.0.0-dev10]
+
+[5.0.0-dev10]: https://github.com/microsoft/CCF/releases/tag/ccf-5.0.0-dev10
+
+- The `url` field in `snp_endorsements_servers` can now contain environment variables that will be resolved at startup, such as "$Fabric_NodeIPOrFQDN:2377" (#5862).
+- Add a new `snp_security_policy_file` configuration value under `attestation`, superseding the lookup from `$UVM_SECURITY_CONTEXT_DIR`. The value can contain environment variables, for example: `"snp_security_policy_file": "$UVM_SECURITY_CONTEXT_DIR/security-policy-base64"`.
+- Add a new `snp_uvm_endorsements_file` configuration value under `attestation`, superseding the lookup from `$UVM_SECURITY_CONTEXT_DIR`. The value can contain environment variables, for example: `"snp_uvm_endorsements_file": "$UVM_SECURITY_CONTEXT_DIR/reference-info-base64"`. This value can come from an untrusted location, like `snp_security_policy_file` and AMD endorsements (fetched from `snp_endorsements_servers`), because the CCF code contains pre-defined roots of trust.
+
+## [5.0.0-dev9]
+
+[5.0.0-dev9]: https://github.com/microsoft/CCF/releases/tag/ccf-5.0.0-dev9
+
+- `snp_endorsements_servers` now supports a `THIM` type, which is the recommended value when running in [Confidential AKS preview](https://learn.microsoft.com/en-us/azure/aks/confidential-containers-overview).
+
+## [5.0.0-dev8]
+
+[5.0.0-dev8]: https://github.com/microsoft/CCF/releases/tag/ccf-5.0.0-dev8
+
+- `ccf.crypto.generateEddsaKeyPair`, `pubEddsaPemToJwk` and `eddsaPemToJwk` now support `x25519` as well as `curve25519` (#5846).
+- `POST /recovery/members/{memberId}:recover` is now authenticated by COSE Sign1, making it consistent with the other `POST` endpoints in governance, and avoiding a potential denial of service where un-authenticated and un-authorised clients could submit invalid shares repeatedly. The `submit_recovery_share.sh` script has been amended accordingly, and now takes a `--member-id-privk` and `--member-id-cert` (#5821).
+- CCF can now fetch SEV-SNP attestations from kernel 6.0 and above (#5848).
+
+## [5.0.0-dev7]
+
+[5.0.0-dev7]: https://github.com/microsoft/CCF/releases/tag/ccf-5.0.0-dev7
+
+- `POST /recovery/members/{memberId}:recover` is now authenticated by COSE Sign1, making it consistent with the other `POST` endpoints in governance, and avoiding a potential denial of service where un-authenticated and un-authorised clients could submit invalid shares repeatedly. The `submit_recovery_share.sh` script has been amended accordingly, and now takes a `--member-id-privk` and `--member-id-cert` (#5821).
+
+## [5.0.0-dev6]
+
+[5.0.0-dev6]: https://github.com/microsoft/CCF/releases/tag/ccf-5.0.0-dev6
+
+- Lifted parser size limits on forwarded request from default values to more permissive ones. Note that the limits set out on the interface of the inbound node still apply (#5803).
+- [ccf.crypto.unwrapKey()](https://microsoft.github.io/CCF/main/js/ccf-app/functions/crypto.unwrapKey.html) has been added to the JS API (#5792).
+
+## [5.0.0-dev5]
+
+[5.0.0-dev5]: https://github.com/microsoft/CCF/releases/tag/ccf-5.0.0-dev5
+
+- In governance contexts, JS runtimes now only use runtime limits from the [public:ccf.gov.js_runtime_options map](https://microsoft.github.io/CCF/main/audit/builtin_maps.html#js-runtime-options) if they are strictly higher than the defaults (#5730).
+- Fixed an issue where a JS runtime limit could be hit out of user code execution, leading to an incorrectly constructed JS runtime or a crash (#5730).
+- Added a GET /node/primary endpoint, returning 200 when primary and 404 when not, for load balancers to use (#5789).
+
+## [5.0.0-dev4]
+
+[5.0.0-dev4]: https://github.com/microsoft/CCF/releases/tag/ccf-5.0.0-dev4
+
+- Fix for JS execution behaviour when reusing interpreters. Storing KV handles on the global state may lead to unsafe accesses. Work around that by lazily requesting handles in the TypedKvMap for TypeScript apps.
+- On retirement, nodes that are primary now request that their most likely successor triggers and instant election, without waiting for a timeout. This speeds up some reconfigurations, particularly code updates since they result in all the nodes being replaced. (#5697)
+
+## [5.0.0-dev3]
+
+[5.0.0-dev3]: https://github.com/microsoft/CCF/releases/tag/ccf-5.0.0-dev3
+
+- Added a `consensus.max_uncommitted_tx_count` configuration option, which specifies the maximum number of transactions that can be pending on the primary. When that threshold is exceeded, a `503 Service Unavailable` is temporarily returned on all but the `/node/*` paths (#5692).
+- A new versioned governance API is now available, with the `api-version=2023-06-01-preview` query parameter. This will fully replace the previous governance endpoints, which will be removed in a future release. A guide to aid in upgrading from the previous API is available [here](https://microsoft.github.io/CCF/main/governance/gov_api_schemas/upgrading_from_classic.html)
+
+## [5.0.0-dev2]
+
+[5.0.0-dev2]: https://github.com/microsoft/CCF/releases/tag/ccf-5.0.0-dev2
+
+- Updated `llhttp` from `6.0.9` to `9.0.1`.
+- Updated `fmt` library from `9.1.0` to `10.1.1`.
+- Updated QCBOR from `1.1` to `1.2`.
+- Updated `nghttp2` from `1.51.0` to `1.55.1`.
+- Converted SNP attestation UVM endorsements from integer to arbitrary string.
+- Updated Intel SGX PSW from 2.17 to 2.20 (#5616)
+- Path to the enclave file should now be passed as `--enclave-file` CLI argument to `cchost`, rather than `enclave.file` entry within configuration file. A potential SNP security context directory environment variable override, where desired, should now be passed as `--snp-security-context-dir-var` CLI argument to `cchost`, rather than `attestation.environment.security_context_directory` entry within configuration file. This is to ensure that these values are attested on Confidential Containers/SNP, even if the configuration itself is provided from un-attested storage, such as an external mount. The configuration entries are deprecated, and will be removed in a future release.
+- Added `ccf.SnpAttestation.verifySnpAttestation()` endpoint for TypeScript apps. (#5653)
+- Secret sharing used for ledger recovery now relies on a much simpler implementation that requires no external dependencies. Note that while the code still accepts shares generated by the old code for now, it only generates shares with the new implementation. As a result, a DR attempt that would downgrade the code to a version that pre-dates this change, after having previously picked it up, would not succeed if a reshare had already taken place (#5655).
+
+## [5.0.0-dev1]
+
+[5.0.0-dev1]: https://github.com/microsoft/CCF/releases/tag/ccf-5.0.0-dev1
+
+- Added support for reusing JS interpreters, persisting global state. See [docs](https://microsoft.github.io/CCF/main/build_apps/js_app_bundle.html#reusing-interpreters) for more detail.
+
+## [5.0.0-dev0]
+
+[5.0.0-dev0]: https://github.com/microsoft/CCF/releases/tag/ccf-5.0.0-dev0
+
+- Add HMAC support to JS API. Call with `ccf.crypto.sign({"name": "HMAC", "hash": "SHA-256"}, key, data)`.
+- Add `/node/ready/app` and `/node/ready/gov` endpoints for the use of load balancers wanting to check if a node is ready to accept application or governance transactions. See [Operator RPC API](https://microsoft.github.io/CCF/main/operations/operator_rpc_api.html) for details.
+- SGX builds now use OpenSSL 3.1.1 inside the enclave by default (#5481).
+- JWT verifiers are now automatically cached, for increased performance (#5575).
+- `GET /api/metrics` now correctly returns templated endpoint paths (#5539).
+- Fix TLS bug that could cause TLS handshakes to fail (#5482).
+
+## [4.0.7]
+
+[4.0.7]: https://github.com/microsoft/CCF/releases/tag/ccf-4.0.7
+
+- Expose COSESign1 `content` for `user_cose_sign1` authenticated endpoints in JavaScript/TypeScript apps (#5465).
+
+## [4.0.6]
+
+[4.0.6]: https://github.com/microsoft/CCF/releases/tag/ccf-4.0.6
+
+- Updated Open Enclave to [0.19.3](https://github.com/openenclave/openenclave/releases/tag/v0.19.3).
+
+## [4.0.5]
+
+[4.0.5]: https://github.com/microsoft/CCF/releases/tag/ccf-4.0.5
+
+- Debug logging is now available in non-SGX builds by default, and controlled by a run-time CLI argument (`--enclave-log-level`). On SGX this remains a build-time decision (#5375).
+- Supporting intermediate cert chain included in TLS handshake, where previously only server leaf certificate was present (#5453).
+- Added `getVersionOfPreviousWrite` to TypeScript `TypedKvMap` interface (#5451).
+
 ## [4.0.4]
 
 [4.0.4]: https://github.com/microsoft/CCF/releases/tag/ccf-4.0.4

@@ -6,6 +6,15 @@ import re
 import sys
 import subprocess
 
+MICROSOFT_ARTIFACT_REGISTRY_NAME = "mcr.microsoft.com"
+MICROSOFT_ARTIFACT_REGISTRY_PREFIX = "product"
+CCF_APP_IMAGE_PREFIX = "ccf/app"
+CCF_MCR_IMAGES = {
+    "App Development": f"{CCF_APP_IMAGE_PREFIX}/dev",
+    "C++ Runtime": f"{CCF_APP_IMAGE_PREFIX}/run",
+    "TypeScript/JavaScript Runtime": f"{CCF_APP_IMAGE_PREFIX}/run-js",
+}
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -31,6 +40,18 @@ def main():
         "--fix",
         help="Fix any automatically correctable errors",
         action="store_true",
+    )
+    parser.add_argument(
+        "--append-mcr-images",
+        help="If true, automatically append MCR images URLs to release notes",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--describe-path-changes",
+        help="If true, add a note whenever the given path has changes between releases.",
+        action="append",
+        default=[],
     )
     args = parser.parse_args()
 
@@ -100,6 +121,45 @@ def main():
                         print("\n" + "-" * 80 + "\n")
                     print(f"# {version}")
                 print("\n".join(release_notes[version]).strip())
+
+                for path in args.describe_path_changes:
+                    git_version = f"ccf-{version}"
+                    prev_version = subprocess.run(
+                        ["git", "describe", "--tags", f"{git_version}^", "--abbrev=0"],
+                        capture_output=True,
+                        universal_newlines=True,
+                    ).stdout.strip()
+                    diff = subprocess.run(
+                        [
+                            "git",
+                            "diff",
+                            "--exit-code",
+                            prev_version,
+                            git_version,
+                            "--",
+                            path,
+                        ],
+                        capture_output=True,
+                        universal_newlines=True,
+                    )
+                    if diff.returncode == 1:
+                        # Insert a hyperlink to a GitHub compare page.
+                        # This shows all changes between tags, not localised to the path, but seems to be the best we can do automatically.
+                        print(
+                            f"\n- **Note**: This release include changes to `{path}`, which may be viewed [here](https://github.com/Microsoft/CCF/compare/{prev_version}...{git_version}#files_bucket)"
+                        )
+
+            if args.append_mcr_images:
+                print("\n**MCR Docker Images:** ", end="")
+                print(
+                    ", ".join(
+                        [
+                            f"[{desc}](https://{MICROSOFT_ARTIFACT_REGISTRY_NAME}/{MICROSOFT_ARTIFACT_REGISTRY_PREFIX}/{name}/tags)"
+                            for desc, name in CCF_MCR_IMAGES.items()
+                        ]
+                    )
+                )
+
         else:
             print("CHANGELOG is valid!")
 

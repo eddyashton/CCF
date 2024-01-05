@@ -17,6 +17,8 @@ def test_primary(network, args):
     with primary.client() as c:
         r = c.head("/node/primary")
         assert r.status_code == http.HTTPStatus.OK.value
+        r = c.get("/node/primary")
+        assert r.status_code == http.HTTPStatus.OK.value
 
     backup = network.find_any_backup()
     for interface_name in backup.host.rpc_interfaces.keys():
@@ -31,6 +33,10 @@ def test_primary(network, args):
             LOG.info(
                 f'Successfully redirected to {r.headers["location"]} on primary {primary.local_node_id}'
             )
+            r = c.get("/node/primary", allow_redirects=False)
+            assert r.status_code == http.HTTPStatus.NOT_FOUND.value, r
+            assert r.body.json()["error"]["code"] == "ResourceNotFound"
+            assert r.body.json()["error"]["message"] == "Node is not primary"
     return network
 
 
@@ -59,17 +65,7 @@ def test_network_node_info(network, args):
         for interface_name in node.host.rpc_interfaces.keys():
             primary_interface = primary.host.rpc_interfaces[interface_name]
             with node.client(interface_name=interface_name) as c:
-                # /node/network/nodes/self is always a redirect
                 r = c.get("/node/network/nodes/self", allow_redirects=False)
-                assert r.status_code == http.HTTPStatus.PERMANENT_REDIRECT.value
-                node_interface = node.host.rpc_interfaces[interface_name]
-                assert (
-                    r.headers["location"]
-                    == f"https://{node_interface.public_host}:{node_interface.public_port}/node/network/nodes/{node.node_id}"
-                ), r.headers["location"]
-
-                # Following that redirect gets you the node info
-                r = c.get("/node/network/nodes/self", allow_redirects=True)
                 assert r.status_code == http.HTTPStatus.OK.value
                 body = r.body.json()
                 assert body["node_id"] == node.node_id
@@ -83,10 +79,9 @@ def test_network_node_info(network, args):
 
     for node in all_nodes:
         for interface_name in node.host.rpc_interfaces.keys():
-            node_interface = node.host.rpc_interfaces[interface_name]
             primary_interface = primary.host.rpc_interfaces[interface_name]
             with node.client(interface_name=interface_name) as c:
-                # /node/primary is a 200 on the primary, and a redirect (to a 200) elsewhere
+                # HEAD /node/primary is a 200 on the primary, and a redirect (to a 200) elsewhere
                 r = c.head("/node/primary", allow_redirects=False)
                 if node != primary:
                     assert r.status_code == http.HTTPStatus.PERMANENT_REDIRECT.value
@@ -95,18 +90,9 @@ def test_network_node_info(network, args):
                         == f"https://{primary_interface.public_host}:{primary_interface.public_port}/node/primary"
                     ), r.headers["location"]
                     r = c.head("/node/primary", allow_redirects=True)
-
                 assert r.status_code == http.HTTPStatus.OK.value
 
-                # /node/network/nodes/primary is always a redirect
                 r = c.get("/node/network/nodes/primary", allow_redirects=False)
-                assert r.status_code == http.HTTPStatus.PERMANENT_REDIRECT.value
-                actual = r.headers["location"]
-                expected = f"https://{node_interface.public_host}:{node_interface.public_port}/node/network/nodes/{primary.node_id}"
-                assert actual == expected, f"{actual} != {expected}"
-
-                # Following that redirect gets you the primary's node info
-                r = c.get("/node/network/nodes/primary", allow_redirects=True)
                 assert r.status_code == http.HTTPStatus.OK.value
                 body = r.body.json()
                 assert body == node_infos[primary.node_id]
@@ -120,6 +106,40 @@ def test_network_node_info(network, args):
                     assert r.status_code == http.HTTPStatus.OK.value
                     body = r.body.json()
                     assert body == node_infos[target_node.node_id]
+
+    # Create a PENDING node and check that /node/network/nodes/self
+    # returns the correct information from configuration
+    operator_rpc_interface = "operator_rpc_interface"
+    host = infra.net.expand_localhost()
+    new_node = network.create_node(
+        infra.interfaces.HostSpec(
+            rpc_interfaces={
+                infra.interfaces.PRIMARY_RPC_INTERFACE: infra.interfaces.RPCInterface(
+                    host=host, app_protocol="HTTP2" if args.http2 else "HTTP1"
+                ),
+                operator_rpc_interface: infra.interfaces.RPCInterface(
+                    host=host,
+                    app_protocol="HTTP2" if args.http2 else "HTTP1",
+                    endorsement=infra.interfaces.Endorsement(
+                        authority=infra.interfaces.EndorsementAuthority.Node
+                    ),
+                ),
+            }
+        )
+    )
+    network.join_node(new_node, args.package, args)
+
+    with new_node.client(interface_name=operator_rpc_interface) as c:
+        r = c.get("/node/network/nodes/self", allow_redirects=False)
+        assert r.status_code == http.HTTPStatus.OK.value
+        body = r.body.json()
+        assert body["node_id"] == new_node.node_id
+        assert (
+            infra.interfaces.HostSpec.to_json(new_node.host) == body["rpc_interfaces"]
+        )
+        assert body["status"] == NodeStatus.PENDING.value
+        assert body["primary"] is False
+    new_node.stop()
 
     return network
 
@@ -157,6 +177,18 @@ def test_memory(network, args):
             r.body.json()["current_allocated_heap_size"]
             <= r.body.json()["peak_allocated_heap_size"]
         )
+    return network
+
+
+@reqs.description("Frontend readiness")
+def test_readiness(network, args):
+    primary, _ = network.find_primary()
+    with primary.client() as c:
+        r = c.get("/node/ready/app")
+        assert r.status_code == http.HTTPStatus.NO_CONTENT.value, r
+        r = c.get("/node/ready/gov")
+        assert r.status_code == http.HTTPStatus.NO_CONTENT.value, r
+
     return network
 
 
@@ -283,3 +315,4 @@ def run(args):
         test_node_ids(network, args)
         test_memory(network, args)
         test_large_messages(network, args)
+        test_readiness(network, args)

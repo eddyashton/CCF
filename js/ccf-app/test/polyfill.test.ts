@@ -4,14 +4,12 @@ import "../src/polyfill.js";
 import {
   AesKwpParams,
   ccf,
+  DigestAlgorithm,
   RsaOaepAesKwpParams,
   RsaOaepParams,
 } from "../src/global.js";
-import {
-  unwrapKey,
-  generateSelfSignedCert,
-  generateCertChain,
-} from "./crypto.js";
+import * as textcodec from "../src/textcodec.js";
+import { generateSelfSignedCert, generateCertChain } from "./crypto.js";
 
 beforeEach(function () {
   // clear KV before each test
@@ -27,6 +25,39 @@ describe("polyfill", function () {
       assert.equal(ccf.bufToStr(ccf.strToBuf(s)), s);
     });
   });
+  describe("TextEncoder", function () {
+    it("returns utf-8 for encoding field", function () {
+      const encoder = new textcodec.TextEncoder();
+      assert.equal(encoder.encoding, "utf-8");
+      const s = encoder.encode("foo");
+    });
+    it("returns an empty array for default empty input", function () {
+      assert.deepEqual(
+        new textcodec.TextEncoder().encode(""),
+        new Uint8Array(),
+      );
+    });
+    it("encodes ascii strings correctly", function () {
+      const sample = "foo";
+      assert.deepEqual(
+        new textcodec.TextEncoder().encode(sample),
+        new Uint8Array([0x66, 0x6f, 0x6f]),
+      );
+    });
+    it("encodes UTF-8 strings correctly", function () {
+      // a (U+0061, 0x61 in UTF-8), pound sign (U+00A3, 0xC2 0xA3 in UTF-8)
+      const sample = "\u0061\u00A3";
+      assert.deepEqual(
+        new textcodec.TextEncoder().encode(sample),
+        new Uint8Array([0x61, 0xc2, 0xa3]),
+      );
+    });
+    it("throws when unsupported method is called", function () {
+      assert.throws(() =>
+        new textcodec.TextEncoder().encodeInto("test", new Uint8Array([])),
+      );
+    });
+  });
   describe("jsonCompatibleToBuf/bufToJsonCompatible", function () {
     it("converts JSON-compatible <--> ArrayBuffer", function () {
       const s = { foo: "bar" };
@@ -40,7 +71,7 @@ describe("polyfill", function () {
       assert.equal(ccf.crypto.generateAesKey(256).byteLength, 32);
       assert.notDeepEqual(
         ccf.crypto.generateAesKey(256),
-        ccf.crypto.generateAesKey(256)
+        ccf.crypto.generateAesKey(256),
       );
     });
   });
@@ -79,6 +110,13 @@ describe("polyfill", function () {
       assert.isTrue(pair.privateKey.startsWith("-----BEGIN PRIVATE KEY-----"));
     });
   });
+  describe("generateEddsaKeyPair/X25519", function () {
+    it("generates a random EdDSA X25519 key pair", function () {
+      const pair = ccf.crypto.generateEddsaKeyPair("x25519");
+      assert.isTrue(pair.publicKey.startsWith("-----BEGIN PUBLIC KEY-----"));
+      assert.isTrue(pair.privateKey.startsWith("-----BEGIN PRIVATE KEY-----"));
+    });
+  });
   describe("wrapKey", function () {
     it("performs RSA-OAEP wrapping correctly", function () {
       const key = ccf.crypto.generateAesKey(128);
@@ -89,12 +127,12 @@ describe("polyfill", function () {
       const wrapped = ccf.crypto.wrapKey(
         key,
         ccf.strToBuf(wrappingKey.publicKey),
-        wrapAlgo
+        wrapAlgo,
       );
-      const unwrapped = unwrapKey(
+      const unwrapped = ccf.crypto.unwrapKey(
         wrapped,
         ccf.strToBuf(wrappingKey.privateKey),
-        wrapAlgo
+        wrapAlgo,
       );
       assert.deepEqual(unwrapped, key);
     });
@@ -105,7 +143,7 @@ describe("polyfill", function () {
         name: "AES-KWP",
       };
       const wrapped = ccf.crypto.wrapKey(key, wrappingKey, wrapAlgo);
-      const unwrapped = unwrapKey(wrapped, wrappingKey, wrapAlgo);
+      const unwrapped = ccf.crypto.unwrapKey(wrapped, wrappingKey, wrapAlgo);
       assert.deepEqual(unwrapped, key);
     });
     it("performs RSA-OAEP-AES-KWP wrapping correctly", function () {
@@ -118,12 +156,12 @@ describe("polyfill", function () {
       const wrapped = ccf.crypto.wrapKey(
         key,
         ccf.strToBuf(wrappingKey.publicKey),
-        wrapAlgo
+        wrapAlgo,
       );
-      const unwrapped = unwrapKey(
+      const unwrapped = ccf.crypto.unwrapKey(
         wrapped,
         ccf.strToBuf(wrappingKey.privateKey),
-        wrapAlgo
+        wrapAlgo,
       );
       assert.deepEqual(unwrapped, key);
     });
@@ -148,7 +186,7 @@ describe("polyfill", function () {
           hash: "SHA-256",
         },
         privateKey,
-        data
+        data,
       );
 
       {
@@ -161,8 +199,8 @@ describe("polyfill", function () {
               key: publicKey,
               dsaEncoding: "ieee-p1363",
             },
-            new Uint8Array(signature)
-          )
+            new Uint8Array(signature),
+          ),
         );
       }
 
@@ -175,8 +213,8 @@ describe("polyfill", function () {
           },
           publicKey,
           signature,
-          data
-        )
+          data,
+        ),
       );
 
       {
@@ -189,8 +227,8 @@ describe("polyfill", function () {
               key: publicKey,
               dsaEncoding: "ieee-p1363",
             },
-            new Uint8Array(signature)
-          )
+            new Uint8Array(signature),
+          ),
         );
       }
     });
@@ -213,7 +251,7 @@ describe("polyfill", function () {
           hash: "SHA-256",
         },
         privateKey,
-        data
+        data,
       );
 
       {
@@ -226,8 +264,8 @@ describe("polyfill", function () {
               key: publicKey,
               dsaEncoding: "ieee-p1363",
             },
-            new Uint8Array(signature)
-          )
+            new Uint8Array(signature),
+          ),
         );
       }
 
@@ -240,8 +278,8 @@ describe("polyfill", function () {
           },
           publicKey,
           signature,
-          data
-        )
+          data,
+        ),
       );
 
       {
@@ -254,8 +292,8 @@ describe("polyfill", function () {
               key: publicKey,
               dsaEncoding: "ieee-p1363",
             },
-            new Uint8Array(signature)
-          )
+            new Uint8Array(signature),
+          ),
         );
       }
     });
@@ -276,7 +314,7 @@ describe("polyfill", function () {
           name: "EdDSA",
         },
         privateKey,
-        data
+        data,
       );
 
       assert.isTrue(
@@ -284,8 +322,8 @@ describe("polyfill", function () {
           null,
           new Uint8Array(data),
           publicKey,
-          new Uint8Array(signature)
-        )
+          new Uint8Array(signature),
+        ),
       );
 
       // Also `signature` should be verified successfully with the JS API
@@ -296,8 +334,8 @@ describe("polyfill", function () {
           },
           publicKey,
           signature,
-          data
-        )
+          data,
+        ),
       );
 
       assert.isFalse(
@@ -305,9 +343,52 @@ describe("polyfill", function () {
           null,
           new Uint8Array(ccf.strToBuf("bar")),
           publicKey,
-          new Uint8Array(signature)
-        )
+          new Uint8Array(signature),
+        ),
       );
+    });
+    it("performs HMAC sign correctly", function () {
+      [
+        { ccfHash: "SHA-256", nodeHash: "sha256" },
+        { ccfHash: "SHA-384", nodeHash: "sha384" },
+        { ccfHash: "SHA-512", nodeHash: "sha512" },
+      ].forEach(({ ccfHash, nodeHash }) => {
+        it(`for ${ccfHash}`, function () {
+          let cryptoKey = crypto.generateKeySync("hmac", {
+            length: 256,
+          });
+          const key = cryptoKey.export().toString();
+
+          const data = ccf.strToBuf("foo");
+          const signature = ccf.crypto.sign(
+            {
+              name: "HMAC",
+              hash: ccfHash as DigestAlgorithm,
+            },
+            key,
+            data,
+          );
+
+          {
+            // Re-calculate directly, check for match
+            let node_hmac = crypto
+              .createHmac(nodeHash, key)
+              .update(new Uint8Array(data))
+              .digest();
+            assert.deepEqual(signature, node_hmac);
+          }
+          assert.deepEqual(5, 6);
+
+          {
+            // Check for mismatch
+            let node_hmac = crypto
+              .createHmac(nodeHash, key)
+              .update(new Uint8Array(ccf.strToBuf("bar")))
+              .digest();
+            assert.notDeepEqual(signature, node_hmac);
+          }
+        });
+      });
     });
   });
   describe("verifySignature", function () {
@@ -329,8 +410,8 @@ describe("polyfill", function () {
           },
           cert,
           signature,
-          data
-        )
+          data,
+        ),
       );
       assert.isTrue(
         ccf.crypto.verifySignature(
@@ -340,8 +421,8 @@ describe("polyfill", function () {
           },
           publicKey,
           signature,
-          data
-        )
+          data,
+        ),
       );
       assert.isNotTrue(
         ccf.crypto.verifySignature(
@@ -351,8 +432,8 @@ describe("polyfill", function () {
           },
           cert,
           signature,
-          ccf.strToBuf("bar")
-        )
+          ccf.strToBuf("bar"),
+        ),
       );
       assert.throws(() =>
         ccf.crypto.verifySignature(
@@ -362,8 +443,8 @@ describe("polyfill", function () {
           },
           publicKey,
           signature,
-          data
-        )
+          data,
+        ),
       );
     });
     it("performs ECDSA validation correctly", function () {
@@ -396,8 +477,8 @@ describe("polyfill", function () {
           },
           publicKey,
           signature,
-          data
-        )
+          data,
+        ),
       );
       assert.isNotTrue(
         ccf.crypto.verifySignature(
@@ -407,8 +488,8 @@ describe("polyfill", function () {
           },
           publicKey,
           signature,
-          ccf.strToBuf("bar")
-        )
+          ccf.strToBuf("bar"),
+        ),
       );
       assert.throws(() =>
         ccf.crypto.verifySignature(
@@ -418,8 +499,8 @@ describe("polyfill", function () {
           },
           publicKey,
           signature,
-          data
-        )
+          data,
+        ),
       );
     });
     it("performs EdDSA validation correctly", function () {
@@ -437,7 +518,7 @@ describe("polyfill", function () {
       const signature = crypto.sign(
         null,
         new Uint8Array(data),
-        crypto.createPrivateKey(privateKey)
+        crypto.createPrivateKey(privateKey),
       );
       assert.isTrue(
         ccf.crypto.verifySignature(
@@ -446,8 +527,8 @@ describe("polyfill", function () {
           },
           publicKey,
           signature,
-          data
-        )
+          data,
+        ),
       );
       assert.isNotTrue(
         ccf.crypto.verifySignature(
@@ -456,8 +537,8 @@ describe("polyfill", function () {
           },
           publicKey,
           signature,
-          ccf.strToBuf("bar")
-        )
+          ccf.strToBuf("bar"),
+        ),
       );
       assert.throws(() =>
         ccf.crypto.verifySignature(
@@ -467,8 +548,8 @@ describe("polyfill", function () {
           },
           publicKey,
           signature,
-          data
-        )
+          data,
+        ),
       );
     });
   });
@@ -568,9 +649,41 @@ describe("polyfill", function () {
         assert.equal(pem, pair.privateKey);
       }
     });
-    it("EdDSA", function () {
+    it("Ed25119", function () {
       const my_kid = "my_kid";
       const pair = ccf.crypto.generateEddsaKeyPair("curve25519");
+      {
+        const jwk = ccf.crypto.pubEddsaPemToJwk(pair.publicKey);
+        assert.equal(jwk.kty, "OKP");
+        assert.notEqual(jwk.kid, my_kid);
+        const pem = ccf.crypto.pubEddsaJwkToPem(jwk);
+        assert.equal(pem, pair.publicKey);
+      }
+      {
+        const jwk = ccf.crypto.pubEddsaPemToJwk(pair.publicKey, my_kid);
+        assert.equal(jwk.kty, "OKP");
+        assert.equal(jwk.kid, my_kid);
+        const pem = ccf.crypto.pubEddsaJwkToPem(jwk);
+        assert.equal(pem, pair.publicKey);
+      }
+      {
+        const jwk = ccf.crypto.eddsaPemToJwk(pair.privateKey);
+        assert.equal(jwk.kty, "OKP");
+        assert.notEqual(jwk.kid, my_kid);
+        const pem = ccf.crypto.eddsaJwkToPem(jwk);
+        assert.equal(pem, pair.privateKey);
+      }
+      {
+        const jwk = ccf.crypto.eddsaPemToJwk(pair.privateKey, my_kid);
+        assert.equal(jwk.kty, "OKP");
+        assert.equal(jwk.kid, my_kid);
+        const pem = ccf.crypto.eddsaJwkToPem(jwk);
+        assert.equal(pem, pair.privateKey);
+      }
+    });
+    it("X25119", function () {
+      const my_kid = "my_kid";
+      const pair = ccf.crypto.generateEddsaKeyPair("x25519");
       {
         const jwk = ccf.crypto.pubEddsaPemToJwk(pair.publicKey);
         assert.equal(jwk.kty, "OKP");

@@ -60,7 +60,7 @@ Authentication
 
 When establishing a TLS connection with a CCF service both the service and client must prove their identity.
 
-The service identity is created at startup. The initial node generates a fresh private key which exists solely within the service's enclaves. A certificate of the corresponding public key is emitted (``service_cert.pem``) and used by all subsequent connections to confirm they are communicating with the intended service.
+The :term:`Service Identity` is created at startup. The initial node generates a fresh private key which exists solely within the service's enclaves. A certificate of the corresponding public key is emitted (``service_cert.pem``) and used by all subsequent connections to confirm they are communicating with the intended service.
 
 Each member and user is identified by the cert with which they were registered with the service, either at genesis or in a subsequent ``set_member`` or ``set_user`` governance proposal. Access to the corresponding private key allows a client to submit commands as this member or user. For this test network these are all freshly generated and stored in the same common workspace for easy access. In a real deployment only certificates would be shared; private keys would be created by each participant, and remain confidential in their possession.
 
@@ -91,7 +91,7 @@ This should look much like a standard HTTP server, with error codes for missing 
     $ curl https://127.0.0.1:8000/app/not/a/real/resource -X GET --cacert service_cert.pem --cert user0_cert.pem --key user0_privk.pem -i
     HTTP/1.1 404 Not Found
 
-    $ curl https://127.0.0.1:8000/gov/proposals -X POST --cacert service_cert.pem --cert user0_cert.pem --key user0_privk.pem -i
+    $ curl https://127.0.0.1:8000/gov/members/proposals:create?api-version=2023-06-01-preview -X POST --cacert service_cert.pem --cert user0_cert.pem --key user0_privk.pem -i
     HTTP/1.1 403 Forbidden
 
 Logging App Commands

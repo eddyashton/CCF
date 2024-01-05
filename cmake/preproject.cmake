@@ -74,6 +74,7 @@ function(add_warning_checks name)
             -Wpedantic
             -Wno-unused
             -Wno-unused-parameter
+            -Wshadow
   )
 endfunction()
 
@@ -81,6 +82,13 @@ set(SPECTRE_MITIGATION_FLAGS -mllvm -x86-speculative-load-hardening)
 if("${COMPILE_TARGET}" STREQUAL "snp")
   if(NOT "${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
     add_compile_options(${SPECTRE_MITIGATION_FLAGS})
+  endif()
+endif()
+
+if("${COMPILE_TARGET}" STREQUAL "snp" OR "${COMPILE_TARGET}" STREQUAL "virtual")
+  if(NOT "${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+    add_compile_options(-flto)
+    add_link_options(-flto)
   endif()
 endif()
 

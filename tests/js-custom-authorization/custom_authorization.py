@@ -16,7 +16,10 @@ import time
 import infra.jwt_issuer
 import datetime
 import re
+import uuid
 from http import HTTPStatus
+import subprocess
+from contextlib import contextmanager
 
 from loguru import logger as LOG
 
@@ -41,17 +44,92 @@ def run(args):
         network = test_custom_auth(network, args)
 
 
+# Context manager to temporarily set JS execution limits.
+# NB: Limits are currently applied to governance runtimes as well, so limits
+# must be high enough that a proposal to restore the defaults can pass.
+@contextmanager
+def temporary_js_limits(network, primary, **kwargs):
+    with primary.client() as c:
+        # fetch defaults from js_metrics endpoint
+        r = c.get("/node/js_metrics")
+        assert r.status_code == http.HTTPStatus.OK, r.status_code
+        body = r.body.json()
+        default_max_heap_size = body["max_heap_size"]
+        default_max_stack_size = body["max_stack_size"]
+        default_max_execution_time = body["max_execution_time"]
+
+    default_kwargs = {
+        "max_heap_bytes": default_max_heap_size,
+        "max_stack_bytes": default_max_stack_size,
+        "max_execution_time_ms": default_max_execution_time,
+        "return_exception_details": True,
+    }
+
+    temp_kwargs = default_kwargs.copy()
+    temp_kwargs.update(**kwargs)
+    LOG.info(f"Setting JS runtime options: {temp_kwargs}")
+    network.consortium.set_js_runtime_options(
+        primary,
+        **temp_kwargs,
+    )
+
+    yield
+
+    # Restore defaults
+    network.consortium.set_js_runtime_options(primary, **default_kwargs)
+
+
 @reqs.description("Test stack size limit")
 def test_stack_size_limit(network, args):
     primary, _ = network.find_nodes()
 
-    with primary.client("user0") as c:
-        r = c.post("/app/recursive", body={"depth": 50})
-        assert r.status_code == http.HTTPStatus.OK, r.status_code
+    safe_depth = 1
+    depth = safe_depth
+    max_depth = 8192
 
     with primary.client("user0") as c:
-        r = c.post("/app/recursive", body={"depth": 2000})
-        assert r.status_code == http.HTTPStatus.INTERNAL_SERVER_ERROR, r.status_code
+        r = c.post("/app/recursive", body={"depth": safe_depth})
+        assert r.status_code == http.HTTPStatus.OK, r.status_code
+
+        max_stack_bytes = (
+            512 * 1024
+        )  # Lower than 1024 * 1024 default, but enough to pass a proposal to restore the limit
+        with temporary_js_limits(network, primary, max_stack_bytes=max_stack_bytes):
+            while depth <= max_depth:
+                depth *= 2
+                r = c.post("/app/recursive", body={"depth": depth})
+                if r.status_code == http.HTTPStatus.INTERNAL_SERVER_ERROR:
+                    message = r.body.json()["error"]["details"][0]["message"]
+                    assert message == "InternalError: stack overflow", message
+                    LOG.info(
+                        f"Stack overflow at depth={depth} with max_stack_bytes={max_stack_bytes}"
+                    )
+                    break
+
+            assert depth < max_depth, f"No stack overflow trigger at max depth {depth}"
+
+        r = c.post("/app/recursive", body={"depth": safe_depth})
+        assert r.status_code == http.HTTPStatus.OK, r
+
+        # Lower the cap until we likely run out of stack out of user code,
+        # and check that we don't crash. Check we return an error message
+        cap = max_stack_bytes
+        while cap > 0:
+            cap //= 2
+            LOG.info(f"Max stack size: {cap}")
+            with temporary_js_limits(network, primary, max_stack_bytes=cap):
+                r = c.post("/app/recursive", body={"depth": 1})
+                if r.status_code == http.HTTPStatus.INTERNAL_SERVER_ERROR:
+                    message = r.body.json()["error"]["message"]
+                    assert message == "Exception thrown while executing.", message
+                    break
+
+        # Cap is so low that we must run out before we enter user code
+        with temporary_js_limits(network, primary, max_stack_bytes=100):
+            r = c.post("/app/recursive", body={"depth": 1})
+            assert r.status_code == http.HTTPStatus.INTERNAL_SERVER_ERROR
+            message = r.body.json()["error"]["message"]
+            assert message == "Exception thrown while executing.", message
 
     return network
 
@@ -60,13 +138,93 @@ def test_stack_size_limit(network, args):
 def test_heap_size_limit(network, args):
     primary, _ = network.find_nodes()
 
-    with primary.client("user0") as c:
-        r = c.post("/app/alloc", body={"size": 5 * 1024 * 1024})
-        assert r.status_code == http.HTTPStatus.OK, r.status_code
+    safe_size = 5 * 1024 * 1024
+    unsafe_size = 500 * 1024 * 1024
 
     with primary.client("user0") as c:
-        r = c.post("/app/alloc", body={"size": 500 * 1024 * 1024})
-        assert r.status_code == http.HTTPStatus.INTERNAL_SERVER_ERROR, r.status_code
+        r = c.post("/app/alloc", body={"size": safe_size})
+        assert r.status_code == http.HTTPStatus.OK, r
+
+        with temporary_js_limits(network, primary, max_heap_bytes=3 * 1024 * 1024):
+            r = c.post("/app/alloc", body={"size": safe_size})
+            assert r.status_code == http.HTTPStatus.INTERNAL_SERVER_ERROR, r
+            message = r.body.json()["error"]["details"][0]["message"]
+            assert message == "InternalError: out of memory", message
+
+        r = c.post("/app/alloc", body={"size": safe_size})
+        assert r.status_code == http.HTTPStatus.OK, r
+
+        r = c.post("/app/alloc", body={"size": unsafe_size})
+        message = r.body.json()["error"]["details"][0]["message"]
+        assert message == "InternalError: out of memory", message
+
+        # Lower the cap until we likely run out of heap out of user code,
+        # and check that we don't crash and return an error message
+        cap = safe_size
+        while cap > 0:
+            cap //= 2
+            LOG.info(f"Heap max size: {cap}")
+            with temporary_js_limits(network, primary, max_heap_bytes=cap):
+                r = c.post("/app/alloc", body={"size": 1})
+                if r.status_code == http.HTTPStatus.INTERNAL_SERVER_ERROR:
+                    message = r.body.json()["error"]["message"]
+                    assert message == "Exception thrown while executing.", message
+                    break
+
+        # Cap is so low that we must run out before we enter user code
+        with temporary_js_limits(network, primary, max_heap_bytes=100):
+            r = c.post("/app/alloc", body={"size": 1})
+            assert r.status_code == http.HTTPStatus.INTERNAL_SERVER_ERROR
+            message = r.body.json()["error"]["message"]
+            assert message == "Exception thrown while executing.", message
+
+    return network
+
+
+@reqs.description("Test execution time limit")
+def test_execution_time_limit(network, args):
+    primary, _ = network.find_nodes()
+
+    safe_time = 50
+    unsafe_time = 5000
+
+    with primary.client("user0") as c:
+        r = c.post("/app/sleep", body={"time": safe_time})
+        assert r.status_code == http.HTTPStatus.OK, r
+
+        with temporary_js_limits(network, primary, max_execution_time_ms=30):
+            r = c.post("/app/sleep", body={"time": safe_time})
+            assert r.status_code == http.HTTPStatus.INTERNAL_SERVER_ERROR, r
+            message = r.body.json()["error"]["details"][0]["message"]
+            assert message == "InternalError: interrupted", message
+
+        r = c.post("/app/sleep", body={"time": safe_time})
+        assert r.status_code == http.HTTPStatus.OK, r
+
+        r = c.post("/app/sleep", body={"time": unsafe_time})
+        assert r.status_code == http.HTTPStatus.INTERNAL_SERVER_ERROR, r
+        message = r.body.json()["error"]["details"][0]["message"]
+        assert message == "InternalError: interrupted", message
+
+        # Lower the cap until we likely run out of heap out of user code,
+        # and check that we don't crash and return an error message
+        cap = safe_time
+        while cap > 0:
+            cap //= 2
+            LOG.info(f"Max exec time: {cap}")
+            with temporary_js_limits(network, primary, max_execution_time_ms=cap):
+                r = c.post("/app/sleep", body={"time": 10})
+                if r.status_code == http.HTTPStatus.INTERNAL_SERVER_ERROR:
+                    message = r.body.json()["error"]["message"]
+                    assert message == "Operation took too long to complete.", message
+                    break
+
+        # Cap is so low that we must run out before we enter user code
+        with temporary_js_limits(network, primary, max_execution_time_ms=0):
+            r = c.post("/app/sleep", body={"time": 10})
+            assert r.status_code == http.HTTPStatus.INTERNAL_SERVER_ERROR
+            message = r.body.json()["error"]["message"]
+            assert message == "Operation took too long to complete.", message
 
     return network
 
@@ -78,6 +236,7 @@ def run_limits(args):
         network.start_and_open(args)
         network = test_stack_size_limit(network, args)
         network = test_heap_size_limit(network, args)
+        network = test_execution_time_limit(network, args)
 
 
 @reqs.description("Cert authentication")
@@ -657,6 +816,237 @@ def run_api(args):
         network = test_metrics_logging(network, args)
 
 
+def test_reused_interpreter_behaviour(network, args):
+    primary, _ = network.find_nodes()
+
+    def timed(fn):
+        start = datetime.datetime.now()
+        result = fn()
+        end = datetime.datetime.now()
+        duration = (end - start).total_seconds()
+        LOG.debug(f"({duration:.2f}s)")
+        return duration, result
+
+    # Extremely crude "same order-of-magnitude" comparisons
+    def much_smaller(a, b):
+        return a < b / 2
+
+    # Not actual assertions because they'll often fail for unrelated
+    # reasons - the JS execution got a caching benefit, but some
+    # scheduling unluckiness caused the roundtrip time to be slow.
+    # Instead we assert on the deterministic wasCached bool, but log
+    # errors if this doesn't correspond with expected run time impact.
+    def expect_much_smaller(a, b):
+        if not (much_smaller(a, b)):
+            LOG.error(
+                f"Expected to complete much faster, but took {a:.4f} and {b:.4f} seconds"
+            )
+
+    def expect_similar(a, b):
+        if much_smaller(a, b) or much_smaller(b, a):
+            LOG.error(
+                f"Expected similar execution times, but took {a:.4f} and {b:.4f} seconds"
+            )
+
+    def was_cached(response):
+        return response.body.json()["wasCached"]
+
+    fib_body = {"n": 25}
+
+    with primary.client() as c:
+        LOG.info("Testing with no caching benefit")
+        baseline, res0 = timed(lambda: c.post("/fibonacci/reuse/none", fib_body))
+        repeat1, res1 = timed(lambda: c.post("/fibonacci/reuse/none", fib_body))
+        repeat2, res2 = timed(lambda: c.post("/fibonacci/reuse/none", fib_body))
+        results = (res0, res1, res2)
+        assert all(r.status_code == http.HTTPStatus.OK for r in results), results
+        assert all(not was_cached(r) for r in results), results
+        expect_similar(baseline, repeat1)
+        expect_similar(baseline, repeat2)
+
+        LOG.info("Testing cached interpreter benefit")
+        baseline, res0 = timed(lambda: c.post("/fibonacci/reuse/a", fib_body))
+        repeat1, res1 = timed(lambda: c.post("/fibonacci/reuse/a", fib_body))
+        repeat2, res2 = timed(lambda: c.post("/fibonacci/reuse/a", fib_body))
+        results = (res0, res1, res2)
+        assert all(r.status_code == http.HTTPStatus.OK for r in results), results
+        assert not was_cached(res0), res0
+        assert was_cached(res1), res1
+        assert was_cached(res2), res2
+        expect_much_smaller(repeat1, baseline)
+        expect_much_smaller(repeat2, baseline)
+
+        LOG.info("Testing cached app behaviour")
+        # For this app, different key means re-execution, so same as no cache benefit, first time
+        baseline, res0 = timed(lambda: c.post("/fibonacci/reuse/a", {"n": 26}))
+        repeat1, res1 = timed(lambda: c.post("/fibonacci/reuse/a", {"n": 26}))
+        results = (res0, res1)
+        assert all(r.status_code == http.HTTPStatus.OK for r in results), results
+        assert not was_cached(res0), res0
+        assert was_cached(res1), res1
+        expect_much_smaller(repeat1, baseline)
+
+        LOG.info("Testing behaviour of multiple interpreters")
+        baseline, res0 = timed(lambda: c.post("/fibonacci/reuse/b", fib_body))
+        repeat1, res1 = timed(lambda: c.post("/fibonacci/reuse/b", fib_body))
+        repeat2, res2 = timed(lambda: c.post("/fibonacci/reuse/b", fib_body))
+        results = (res0, res1, res2)
+        assert all(r.status_code == http.HTTPStatus.OK for r in results), results
+        assert not was_cached(res0), res0
+        assert was_cached(res1), res1
+        assert was_cached(res2), res2
+        expect_much_smaller(repeat1, baseline)
+        expect_much_smaller(repeat2, baseline)
+
+        LOG.info("Testing cap on number of interpreters")
+        # Call twice so we should definitely be cached, regardless of what previous tests did
+        c.post("/fibonacci/reuse/a", fib_body)
+        c.post("/fibonacci/reuse/b", fib_body)
+        c.post("/fibonacci/reuse/c", fib_body)
+        resa = c.post("/fibonacci/reuse/a", fib_body)
+        resb = c.post("/fibonacci/reuse/b", fib_body)
+        resc = c.post("/fibonacci/reuse/c", fib_body)
+        results = (resa, resb, resc)
+        assert all(was_cached(res) for res in results), results
+
+        # Get current metrics to pass existing/default values
+        r = c.get("/node/js_metrics")
+        body = r.body.json()
+        default_max_heap_size = body["max_heap_size"]
+        default_max_stack_size = body["max_stack_size"]
+        default_max_execution_time = body["max_execution_time"]
+        default_max_cached_interpreters = body["max_cached_interpreters"]
+        network.consortium.set_js_runtime_options(
+            primary,
+            max_heap_bytes=default_max_heap_size,
+            max_stack_bytes=default_max_stack_size,
+            max_execution_time_ms=default_max_execution_time,
+            max_cached_interpreters=2,
+        )
+
+        # If we round-robin through too many interpreters, we flush them from the LRU cache
+        c.post("/fibonacci/reuse/a", fib_body)
+        c.post("/fibonacci/reuse/b", fib_body)
+        c.post("/fibonacci/reuse/c", fib_body)
+        resa = c.post("/fibonacci/reuse/a", fib_body)
+        resb = c.post("/fibonacci/reuse/b", fib_body)
+        resc = c.post("/fibonacci/reuse/c", fib_body)
+        results = (resa, resb, resc)
+        assert all(not was_cached(res) for res in results), results
+
+        # But if we stay within the interpreter cap, then we get a cached interpreter
+        resb = c.post("/fibonacci/reuse/b", fib_body)
+        resc = c.post("/fibonacci/reuse/c", fib_body)
+        results = (resb, resc)
+        assert all(was_cached(res) for res in results), results
+
+        # Restoring original cap
+        network.consortium.set_js_runtime_options(
+            primary,
+            max_heap_bytes=default_max_heap_size,
+            max_stack_bytes=default_max_stack_size,
+            max_execution_time_ms=default_max_execution_time,
+            max_cached_interpreters=default_max_cached_interpreters,
+        )
+
+        LOG.info("Testing Dependency Injection sample endpoint")
+        baseline, res0 = timed(lambda: c.post("/app/di"))
+        repeat1, res1 = timed(lambda: c.post("/app/di"))
+        repeat2, res2 = timed(lambda: c.post("/app/di"))
+        repeat3, res3 = timed(lambda: c.post("/app/di"))
+        results = (res0, res1, res2, res3)
+        assert all(r.status_code == http.HTTPStatus.OK for r in results), results
+        expect_much_smaller(repeat1, baseline)
+        expect_much_smaller(repeat2, baseline)
+        expect_much_smaller(repeat3, baseline)
+
+    return network
+
+
+def test_caching_of_kv_handles(network, args):
+    primary, _ = network.find_nodes()
+    with primary.client() as c:
+        LOG.info("Testing caching of KV handles")
+        r = c.post("/app/increment")
+        assert r.status_code == http.HTTPStatus.OK, r
+        r = c.post("/app/increment")
+        assert r.status_code == http.HTTPStatus.OK, r
+        r = c.post("/app/increment")
+        assert r.status_code == http.HTTPStatus.OK, r
+        r = c.post("/app/increment")
+        assert r.status_code == http.HTTPStatus.OK, r
+        r = c.post("/app/increment")
+        assert r.status_code == http.HTTPStatus.OK, r
+
+        LOG.info("Testing caching of ccf JS globals")
+
+        def make_body():
+            return {str(uuid.uuid4()): str(uuid.uuid4())}
+
+        body = make_body()
+        r = c.post("/app/globals", body)
+        assert r.status_code == http.HTTPStatus.OK, r
+        assert r.body.json() == body
+
+        body = make_body()
+        r = c.post("/app/globals", body)
+        assert r.status_code == http.HTTPStatus.OK, r
+        assert r.body.json() == body
+
+        body = make_body()
+        r = c.post("/app/globals", body)
+        assert r.status_code == http.HTTPStatus.OK, r
+        assert r.body.json() == body
+
+    return network
+
+
+def test_caching_of_app_code(network, args):
+    primary, backups = network.find_nodes()
+    LOG.info(
+        "Testing that interpreter reuse does not persist functions past app update"
+    )
+
+    def set_app_with_placeholder(new_val):
+        LOG.info(f"Replacing placeholder with {new_val}")
+        bundle = network.consortium.read_bundle_from_dir(args.js_app_bundle)
+        # Replace placeholder blindly, in the raw bundle JSON as string
+        s = json.dumps(bundle).replace("<func_caching_placeholder>", new_val)
+        bundle = json.loads(s)
+        return network.consortium.set_js_app_from_bundle(primary, bundle)
+
+    for _ in range(5):
+        v = str(uuid.uuid4())
+        p = set_app_with_placeholder(v)
+        for node in [primary, *backups]:
+            with node.client() as c:
+                infra.commit.wait_for_commit(client=c, view=p.view, seqno=p.seqno)
+                r = c.get("/app/func_caching")
+                assert r.status_code == http.HTTPStatus.OK, r
+                assert r.body.text() == v
+
+    return network
+
+
+def run_interpreter_reuse(args):
+    # The js_app_bundle arg includes TS and Node dependencies, so must be built here
+    # before deploying (and then we deploy the produces /dist folder)
+    js_src_dir = args.js_app_bundle
+    LOG.info("Building mixed JS/TS app, with dependencies")
+    subprocess.run(["npm", "install", "--no-package-lock"], cwd=js_src_dir, check=True)
+    subprocess.run(["npm", "run", "build"], cwd=js_src_dir, check=True)
+    args.js_app_bundle = os.path.join(js_src_dir, "dist")
+
+    with infra.network.network(
+        args.nodes, args.binary_dir, args.debug_nodes, args.perf_nodes, pdb=args.pdb
+    ) as network:
+        network.start_and_open(args)
+
+        network = test_reused_interpreter_behaviour(network, args)  #
+        network = test_caching_of_kv_handles(network, args)
+        network = test_caching_of_app_code(network, args)
+
+
 if __name__ == "__main__":
     cr = ConcurrentRunner()
 
@@ -695,6 +1085,13 @@ if __name__ == "__main__":
         run_api,
         nodes=infra.e2e_args.nodes(cr.args, 1),
         js_app_bundle=os.path.join(cr.args.js_app_bundle, "js-api"),
+    )
+
+    cr.add(
+        "interpreter_reuse",
+        run_interpreter_reuse,
+        nodes=infra.e2e_args.min_nodes(cr.args, f=1),
+        js_app_bundle=os.path.join(cr.args.js_app_bundle, "js-interpreter-reuse"),
     )
 
     cr.run()

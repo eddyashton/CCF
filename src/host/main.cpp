@@ -78,7 +78,13 @@ int main(int argc, char** argv)
 {
   // ignore SIGPIPE
   signal(SIGPIPE, SIG_IGN);
-  CLI::App app{"ccf"};
+  CLI::App app{
+    "CCF Host launcher. Runs a single CCF node, based on the given "
+    "configuration file.\n"
+    "Some parameters are marked \"(security critical)\" - these must be passed "
+    "on the CLI rather than within a configuration file, so that (on relevant "
+    "platforms) their value is captured in an attestation even if the "
+    "configuration file itself is unattested.\n"};
 
   std::string config_file_path = "config.json";
   app.add_option(
@@ -96,6 +102,27 @@ int main(int argc, char** argv)
 
   app.add_flag(
     "-v, --version", print_version, "Display CCF host version and exit");
+
+  LoggerLevel enclave_log_level = LoggerLevel::INFO;
+  std::map<std::string, LoggerLevel> log_level_options;
+  for (size_t i = logger::MOST_VERBOSE; i < LoggerLevel::MAX_LOG_LEVEL; ++i)
+  {
+    const auto l = (LoggerLevel)i;
+    log_level_options[logger::to_string(l)] = l;
+  }
+
+  app
+    .add_option(
+      "--enclave-log-level",
+      enclave_log_level,
+      "Logging level for the enclave code (security critical)")
+    ->transform(CLI::CheckedTransformer(log_level_options, CLI::ignore_case));
+
+  std::string enclave_file_path;
+  app.add_option(
+    "--enclave-file",
+    enclave_file_path,
+    "Path to enclave application (security critical)");
 
   try
   {
@@ -115,7 +142,7 @@ int main(int argc, char** argv)
   std::string config_parsing_error = "";
   do
   {
-    std::string config_str = files::slurp_string(
+    config_str = files::slurp_string(
       config_file_path,
       true /* return an empty string if the file does not exist */);
     try
@@ -247,8 +274,26 @@ int main(int argc, char** argv)
     config.slow_io_logging_threshold;
 
   // create the enclave
+  if (!config.enclave.file.empty())
+  {
+    LOG_FAIL_FMT(
+      "DEPRECATED: Enclave path was specified in config file! This should be "
+      "removed from the config, and passed directly to the CLI instead");
+
+    if (enclave_file_path.empty())
+    {
+      enclave_file_path = config.enclave.file;
+    }
+  }
+
+  if (enclave_file_path.empty())
+  {
+    LOG_FATAL_FMT("No enclave file path specified");
+    return static_cast<int>(CLI::ExitCodes::ValidationError);
+  }
+
   host::Enclave enclave(
-    config.enclave.file, config.enclave.type, config.enclave.platform);
+    enclave_file_path, config.enclave.type, config.enclave.platform);
 
   // messaging ring buffers
   const auto buffer_size = config.memory.circuit_size;
@@ -456,26 +501,64 @@ int main(int argc, char** argv)
 
     startup_config.snapshot_tx_interval = config.snapshots.tx_count;
 
-    if (config.attestation.environment.security_context_directory.has_value())
+    if (startup_config.attestation.snp_security_policy_file.has_value())
     {
-      auto dir = read_required_environment_variable(
-        config.attestation.environment.security_context_directory.value(),
-        "security context directory");
+      auto security_policy_file =
+        startup_config.attestation.snp_security_policy_file.value();
+      LOG_DEBUG_FMT(
+        "Resolving snp_security_policy_file: {}", security_policy_file);
+      security_policy_file =
+        nonstd::expand_envvars_in_path(security_policy_file);
+      LOG_DEBUG_FMT(
+        "Resolved snp_security_policy_file: {}", security_policy_file);
 
-      constexpr auto security_policy_filename = "security-policy-base64";
       startup_config.attestation.environment.security_policy =
-        files::try_slurp_string(
-          fs::path(dir) / fs::path(security_policy_filename));
+        files::try_slurp_string(security_policy_file);
+    }
 
-      constexpr auto uvm_endorsements_filename = "reference-info-base64";
+    if (startup_config.attestation.snp_uvm_endorsements_file.has_value())
+    {
+      auto snp_uvm_endorsements_file =
+        startup_config.attestation.snp_uvm_endorsements_file.value();
+      LOG_DEBUG_FMT(
+        "Resolving snp_uvm_endorsements_file: {}", snp_uvm_endorsements_file);
+      snp_uvm_endorsements_file =
+        nonstd::expand_envvars_in_path(snp_uvm_endorsements_file);
+      LOG_DEBUG_FMT(
+        "Resolved snp_uvm_endorsements_file: {}", snp_uvm_endorsements_file);
+
       startup_config.attestation.environment.uvm_endorsements =
-        files::try_slurp_string(
-          fs::path(dir) / fs::path(uvm_endorsements_filename));
+        files::try_slurp_string(snp_uvm_endorsements_file);
+    }
 
-      constexpr auto report_endorsements_filename = "host-amd-cert-base64";
-      startup_config.attestation.environment.report_endorsements =
-        files::try_slurp_string(
-          fs::path(dir) / fs::path(report_endorsements_filename));
+    for (auto endorsement_servers_it =
+           startup_config.attestation.snp_endorsements_servers.begin();
+         endorsement_servers_it !=
+         startup_config.attestation.snp_endorsements_servers.end();
+         ++endorsement_servers_it)
+    {
+      LOG_DEBUG_FMT(
+        "Resolving snp_endorsements_server url: {}",
+        endorsement_servers_it->url.value());
+      if (endorsement_servers_it->url.has_value())
+      {
+        auto& url = endorsement_servers_it->url.value();
+        auto pos = url.find(':');
+        if (pos == std::string::npos)
+        {
+          endorsement_servers_it->url = nonstd::expand_envvar(url);
+        }
+        else
+        {
+          endorsement_servers_it->url = fmt::format(
+            "{}:{}",
+            nonstd::expand_envvar(url.substr(0, pos)),
+            nonstd::expand_envvar(url.substr(pos + 1)));
+        }
+        LOG_DEBUG_FMT(
+          "Resolved snp_endorsements_server url: {}",
+          endorsement_servers_it->url);
+      }
     }
 
     if (config.node_data_json_file.has_value())
@@ -566,6 +649,7 @@ int main(int argc, char** argv)
       startup_config.join.retry_timeout = config.command.join.retry_timeout;
       startup_config.join.service_cert =
         files::slurp(config.command.service_certificate_file);
+      startup_config.join.follow_redirect = config.command.join.follow_redirect;
     }
     else if (config.command.type == StartType::Recover)
     {
@@ -617,6 +701,9 @@ int main(int argc, char** argv)
     {
       startup_config.network.acme = config.network.acme;
     }
+    // Used by GET /node/network/nodes/self to return rpc interfaces
+    // prior to the KV being updated
+    startup_config.network.rpc_interfaces = config.network.rpc_interfaces;
 
     LOG_INFO_FMT("Initialising enclave: enclave_create_node");
     std::atomic<bool> ecall_completed = false;
@@ -636,6 +723,7 @@ int main(int argc, char** argv)
       node_cert,
       service_cert,
       config.command.type,
+      enclave_log_level,
       config.worker_threads,
       time_updater->behaviour.get_value());
     ecall_completed.store(true);

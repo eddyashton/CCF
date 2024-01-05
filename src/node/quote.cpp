@@ -31,9 +31,7 @@ namespace ccf
       if (uvm_endorsements_data.did == did)
       {
         auto search = value.find(uvm_endorsements_data.feed);
-        if (
-          search != value.end() &&
-          uvm_endorsements_data.svn >= search->second.svn)
+        if (search != value.end())
         {
           match = true;
           return false;
@@ -130,7 +128,7 @@ namespace ccf
   std::optional<HostData> AttestationProvider::get_host_data(
     const QuoteInfo& quote_info)
   {
-    if (access(pal::snp::DEVICE, F_OK) != 0)
+    if (!pal::snp::is_sev_snp())
     {
       return std::nullopt;
     }
@@ -202,7 +200,7 @@ namespace ccf
 
     if (quote_info.format == QuoteFormat::insecure_virtual)
     {
-      LOG_FAIL_FMT("Skipped attestation report verification");
+      LOG_INFO_FMT("Skipped attestation report verification");
       return QuoteVerificationResult::Verified;
     }
     else if (quote_info.format == QuoteFormat::amd_sev_snp_v1)

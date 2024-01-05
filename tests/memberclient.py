@@ -18,8 +18,9 @@ from loguru import logger as LOG
 def test_missing_signature_header(network, args):
     node = network.find_node_by_role()
     member = network.consortium.get_any_active_member()
+    # NB: This client uses member cert auth, so no signature is inserted later
     with node.client(member.local_id) as mc:
-        r = mc.post("/gov/proposals")
+        r = mc.post("/gov/members/proposals:create")
         assert r.status_code == http.HTTPStatus.UNAUTHORIZED, r.status_code
         www_auth = "www-authenticate"
         assert www_auth in r.headers, r.headers
@@ -97,7 +98,10 @@ def test_corrupted_signature(network, args):
 
         with node.client(*member.auth(write=True)) as mc:
             mc.client_impl._corrupt_signature = True
-            r = mc.post("/gov/proposals", '{"actions": []}')
+            r = mc.post(
+                f"/gov/members/proposals:create?api-version={args.gov_api_version}",
+                '{"actions": []}',
+            )
             assert r.status_code == http.HTTPStatus.UNAUTHORIZED, r.status_code
 
         # Remove the new member once we're done with them
@@ -140,10 +144,8 @@ def test_governance(network, args):
     )
 
     LOG.info("Check proposal has been recorded in open state")
-    with primary.client(network.consortium.get_any_active_member().local_id) as c:
-        r = c.get(f"/gov/proposals/{new_member_proposal.proposal_id}")
-        assert r.status_code == 200, r.body.text()
-        assert r.body.json()["state"] == infra.proposal.ProposalState.OPEN.value
+    proposal = network.consortium.get_proposal(primary, new_member_proposal.proposal_id)
+    assert proposal.state == infra.proposal.ProposalState.OPEN
 
     LOG.info("Rest of consortium accept the proposal")
     network.consortium.vote_using_majority(node, new_member_proposal, careful_vote)
@@ -154,18 +156,14 @@ def test_governance(network, args):
 
     LOG.debug("Further vote requests fail as the proposal has already been accepted")
     params_error = http.HTTPStatus.BAD_REQUEST.value
-    assert (
-        network.consortium.get_member_by_local_id("member0")
-        .vote(node, new_member_proposal, careful_vote)
-        .status_code
-        == params_error
+    response = network.consortium.get_member_by_local_id("member0").vote(
+        node, new_member_proposal, careful_vote
     )
-    assert (
-        network.consortium.get_member_by_local_id("member1")
-        .vote(node, new_member_proposal, careful_vote)
-        .status_code
-        == params_error
+    assert response.status_code == params_error
+    response = network.consortium.get_member_by_local_id("member1").vote(
+        node, new_member_proposal, careful_vote
     )
+    assert response.status_code == params_error
 
     LOG.debug("Accepted proposal cannot be withdrawn")
     response = network.consortium.get_member_by_local_id(
@@ -175,6 +173,11 @@ def test_governance(network, args):
 
     LOG.info("New non-active member should get insufficient rights response")
     current_recovery_thresold = network.consortium.recovery_threshold
+    expected_error = (
+        http.HTTPStatus.FORBIDDEN
+        if new_member.gov_api_impl.API_VERSION == infra.clients.API_VERSION_CLASSIC
+        else http.HTTPStatus.UNAUTHORIZED
+    )
     try:
         proposal_recovery_threshold, careful_vote = network.consortium.make_proposal(
             "set_recovery_threshold", recovery_threshold=current_recovery_thresold
@@ -182,7 +185,9 @@ def test_governance(network, args):
         new_member.propose(node, proposal_recovery_threshold)
         assert False, "New non-active member should get insufficient rights response"
     except infra.proposal.ProposalNotCreated as e:
-        assert e.response.status_code == http.HTTPStatus.FORBIDDEN.value
+        assert (
+            e.response.status_code == expected_error
+        ), f"{e.response.status_code} != {expected_error}"
 
     LOG.debug("New member ACK")
     new_member.ack(node)
@@ -212,14 +217,17 @@ def test_governance(network, args):
     assert response.status_code == http.HTTPStatus.OK.value
     assert proposal.state == infra.proposal.ProposalState.WITHDRAWN
 
-    with primary.client(network.consortium.get_any_active_member().local_id) as c:
-        r = c.get(f"/gov/proposals/{proposal.proposal_id}")
-        assert r.status_code == 200, r.body.text()
-        assert r.body.json()["state"] == infra.proposal.ProposalState.WITHDRAWN.value
+    proposal = network.consortium.get_proposal(primary, proposal.proposal_id)
+    assert proposal.state == infra.proposal.ProposalState.WITHDRAWN
 
-    LOG.debug("Further withdraw proposals fail")
-    response = new_member.withdraw(node, proposal)
-    assert response.status_code == params_error
+    if new_member.gov_api_impl.API_VERSION == infra.clients.API_VERSION_CLASSIC:
+        LOG.debug("Further withdraw proposals fail")
+        response = new_member.withdraw(node, proposal)
+        assert response.status_code == params_error
+    else:
+        LOG.debug("Further withdraws idempotently pass")
+        response = new_member.withdraw(node, proposal)
+        assert response.status_code == http.HTTPStatus.OK
 
     LOG.debug("Further votes fail")
     response = new_member.vote(node, proposal, careful_vote)

@@ -8,11 +8,11 @@ import infra.proc
 import infra.utils
 import suite.test_requirements as reqs
 import os
-import time
 from infra.checker import check_can_progress
 import infra.snp as snp
 import tempfile
 import shutil
+import http
 
 from loguru import logger as LOG
 
@@ -52,7 +52,7 @@ def test_verify_quotes(network, args):
     return network
 
 
-@reqs.description("Test that the SNP measurements table")
+@reqs.description("Test the SNP measurements table")
 @reqs.snp_only()
 def test_snp_measurements_tables(network, args):
     primary, _ = network.find_nodes()
@@ -60,9 +60,10 @@ def test_snp_measurements_tables(network, args):
     LOG.info("SNP measurements table")
 
     def get_trusted_measurements(node):
-        with node.client() as client:
-            r = client.get("/gov/kv/nodes/snp/measurements")
-            return r.body.json()
+        with node.api_versioned_client(api_version=args.gov_api_version) as client:
+            r = client.get("/gov/service/join-policy")
+            assert r.status_code == http.HTTPStatus.OK, r
+            return r.body.json()["snp"]["measurements"]
 
     measurements = get_trusted_measurements(primary)
     assert (
@@ -70,17 +71,16 @@ def test_snp_measurements_tables(network, args):
     ), "Expected no measurement as UVM endorsements are used by default"
 
     LOG.debug("Add dummy measurement")
-    dummy_snp_mesurement = "a" * 96
-    network.consortium.add_snp_measurement(primary, dummy_snp_mesurement)
+    dummy_snp_measurement = "a" * 96
+    network.consortium.add_snp_measurement(primary, dummy_snp_measurement)
     measurements = get_trusted_measurements(primary)
-    expected_dummy = {dummy_snp_mesurement: "AllowedToJoin"}
-    assert len(measurements) == 1, f"Expected one measurement, {measurements}"
+    expected_measurements = [dummy_snp_measurement]
     assert (
-        measurements == expected_dummy
-    ), f"One of the measurements should match the dummy that was populated, dummy={expected_dummy}, actual={measurements}"
+        measurements == expected_measurements
+    ), f"One of the measurements should match the dummy that was populated, expected={expected_measurements}, actual={measurements}"
 
     LOG.debug("Remove dummy measurement")
-    network.consortium.remove_snp_measurement(primary, dummy_snp_mesurement)
+    network.consortium.remove_snp_measurement(primary, dummy_snp_measurement)
     measurements = get_trusted_measurements(primary)
     assert (
         len(measurements) == 0
@@ -89,9 +89,10 @@ def test_snp_measurements_tables(network, args):
     LOG.info("SNP UVM endorsement table")
 
     def get_trusted_uvm_endorsements(node):
-        with node.client() as client:
-            r = client.get("/gov/kv/nodes/snp/uvm_endorsements")
-            return r.body.json()
+        with node.api_versioned_client(api_version=args.gov_api_version) as client:
+            r = client.get("/gov/service/join-policy")
+            assert r.status_code == http.HTTPStatus.OK, r
+            return r.body.json()["snp"]["UVMEndorsements"]
 
     uvm_endorsements = get_trusted_uvm_endorsements(primary)
     assert (
@@ -110,17 +111,17 @@ def test_snp_measurements_tables(network, args):
     assert len(value) == 2
     assert value[new_feed]["svn"] == svn
 
-    LOG.debug("Bump SVN for new feed")
-    bumped_svn = svn + 1
+    LOG.debug("Change SVN for new feed")
+    new_svn = f"{svn}_2"
     network.consortium.add_snp_uvm_endorsement(
-        primary, did=did, feed=new_feed, svn=bumped_svn
+        primary, did=did, feed=new_feed, svn=new_svn
     )
     uvm_endorsements = get_trusted_uvm_endorsements(primary)
     assert (
         len(uvm_endorsements) == 1
     ), f"Expected one UVM endorsement, {uvm_endorsements}"
     did, value = next(iter(uvm_endorsements.items()))
-    assert value[new_feed]["svn"] == bumped_svn
+    assert value[new_feed]["svn"] == new_svn
 
     LOG.debug("Add new DID")
     new_did = "did:x509:newdid"
@@ -154,8 +155,10 @@ def test_snp_measurements_tables(network, args):
 @reqs.snp_only()
 def test_host_data_table(network, args):
     primary, _ = network.find_nodes()
-    with primary.client() as client:
-        host_data = client.get("/gov/kv/nodes/snp/host_data").body.json()
+    with primary.api_versioned_client(api_version=args.gov_api_version) as client:
+        r = client.get("/gov/service/join-policy")
+        assert r.status_code == http.HTTPStatus.OK, r
+        host_data = r.body.json()["snp"]["hostData"]
 
     expected = {
         snp.get_container_group_security_policy_digest(): snp.get_container_group_security_policy(),
@@ -387,26 +390,30 @@ def test_update_all_nodes(network, args):
 
     LOG.info("Add new code id")
     network.consortium.add_new_code(primary, new_code_id)
-    LOG.info("Check reported trusted measurements")
-    with primary.client() as uc:
-        r = uc.get("/gov/kv/nodes/code_ids")
-        expected = {first_code_id: "AllowedToJoin", new_code_id: "AllowedToJoin"}
-        if args.enclave_platform == "virtual":
-            expected[VIRTUAL_CODE_ID] = "AllowedToJoin"
 
-        versions = dict(sorted(r.body.json().items(), key=lambda x: x[0]))
-        expected = dict(sorted(expected.items(), key=lambda x: x[0]))
+    with primary.api_versioned_client(api_version=args.gov_api_version) as uc:
+        LOG.info("Check reported trusted measurements")
+        r = uc.get("/gov/service/join-policy")
+        assert r.status_code == http.HTTPStatus.OK, r
+        versions: list = r.body.json()["sgx"]["measurements"]
+
+        expected = [first_code_id, new_code_id]
+        if args.enclave_platform == "virtual":
+            expected.append(VIRTUAL_CODE_ID)
+
+        versions.sort()
+        expected.sort()
         assert versions == expected, f"{versions} != {expected}"
 
-    LOG.info("Remove old code id")
-    network.consortium.retire_code(primary, first_code_id)
-    with primary.client() as uc:
-        r = uc.get("/gov/kv/nodes/code_ids")
-        expected = {first_code_id: "AllowedToJoin", new_code_id: "AllowedToJoin"}
-        if args.enclave_platform == "virtual":
-            expected[VIRTUAL_CODE_ID] = "AllowedToJoin"
+        LOG.info("Remove old code id")
+        network.consortium.retire_code(primary, first_code_id)
+        r = uc.get("/gov/service/join-policy")
+        assert r.status_code == http.HTTPStatus.OK, r
+        versions = r.body.json()["sgx"]["measurements"]
 
-        expected = dict(sorted(expected.items(), key=lambda x: x[0]))
+        expected.remove(first_code_id)
+
+        versions.sort()
         assert versions == expected, f"{versions} != {expected}"
 
     old_nodes = network.nodes.copy()
@@ -457,54 +464,18 @@ def test_proposal_invalidation(network, args):
     network.consortium.add_new_code(primary, temp_code_id)
 
     LOG.info("Confirm open proposals are dropped")
-    with primary.client(None, "member0") as c:
+    with primary.api_versioned_client(
+        None, "member0", api_version=args.gov_api_version
+    ) as c:
         for proposal_id in pending_proposals:
-            r = c.get(f"/gov/proposals/{proposal_id}")
+            r = c.get(f"/gov/members/proposals/{proposal_id}")
             assert r.status_code == 200, r.body.text()
-            assert r.body.json()["state"] == "Dropped", r.body.json()
+            assert r.body.json()["proposalState"] == "Dropped", r.body.json()
 
     LOG.info("Remove temporary code ID")
     network.consortium.retire_code(primary, temp_code_id)
 
     return network
-
-
-@reqs.description(
-    "Test deploying secondary ACIs which will be used to test SNP code update"
-)
-@reqs.snp_only()
-def test_snp_secondary_deployment(network, args):
-    LOG.info(f"Secondary ACI information expected at: {args.snp_secondary_acis_path}")
-    if args.snp_secondary_acis_path is None:
-        LOG.warning(
-            "Skipping test snp secondary deployment as no target secondary ACIs specified"
-        )
-        return network
-
-    timeout = 60 * 60  # 60 minutes
-    start_time = time.time()
-    end_time = start_time + timeout
-
-    while time.time() < end_time and not os.path.exists(args.snp_secondary_acis_path):
-        LOG.info(
-            f"({time.time() - start_time}) Waiting for SNP secondary IP addresses file at: ({args.snp_secondary_acis_path}) to be created"
-        )
-        time.sleep(10)
-
-    if os.path.exists(args.snp_secondary_acis_path):
-        LOG.info("SNP secondary IP addresses file created")
-        with open(args.snp_secondary_acis_path, "r", encoding="utf-8") as f:
-            secondary_acis = [
-                tuple(secondary_aci.split(" "))
-                for secondary_aci in f.read().splitlines()
-            ]
-            for secondary_name, secondary_ip in secondary_acis:
-                LOG.info(
-                    f'Secondary ACI with name "{secondary_name}" has IP: {secondary_ip}'
-                )
-
-    else:
-        LOG.error("SNP secondary IP addresses file not created before timeout")
 
 
 def run(args):
@@ -531,9 +502,6 @@ def run(args):
 
         # Run again at the end to confirm current nodes are acceptable
         test_verify_quotes(network, args)
-
-        if snp.IS_SNP:
-            test_snp_secondary_deployment(network, args)
 
 
 if __name__ == "__main__":

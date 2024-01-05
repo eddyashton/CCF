@@ -63,16 +63,16 @@ struct LedgerStubProxy_Mermaid : public aft::LedgerStubProxy
   }
 };
 
-struct LoggingStubStoreSig_Mermaid : public aft::LoggingStubStoreSigConfig
+struct LoggingStubStore_Mermaid : public aft::LoggingStubStoreConfig
 {
-  using LoggingStubStoreSigConfig::LoggingStubStoreSigConfig;
+  using LoggingStubStoreConfig::LoggingStubStoreConfig;
 
   void compact(aft::Index idx) override
   {
     RAFT_DRIVER_OUT << fmt::format(
                          "  {}->>{}: [KV] compacting to {}", _id, _id, idx)
                     << std::endl;
-    aft::LoggingStubStoreSigConfig::compact(idx);
+    aft::LoggingStubStoreConfig::compact(idx);
   }
 
   void rollback(const kv::TxID& tx_id, aft::Term t) override
@@ -85,7 +85,7 @@ struct LoggingStubStoreSig_Mermaid : public aft::LoggingStubStoreSigConfig
                          tx_id.version,
                          t)
                     << std::endl;
-    aft::LoggingStubStoreSigConfig::rollback(tx_id, t);
+    aft::LoggingStubStoreConfig::rollback(tx_id, t);
   }
 
   void initialise_term(aft::Term t) override
@@ -93,13 +93,13 @@ struct LoggingStubStoreSig_Mermaid : public aft::LoggingStubStoreSigConfig
     RAFT_DRIVER_OUT << fmt::format(
                          "  {}->>{}: [KV] initialising in term {}", _id, _id, t)
                     << std::endl;
-    aft::LoggingStubStoreSigConfig::initialise_term(t);
+    aft::LoggingStubStoreConfig::initialise_term(t);
   }
 };
 
 using ms = std::chrono::milliseconds;
 using TRaft = aft::Aft<LedgerStubProxy_Mermaid>;
-using Store = LoggingStubStoreSig_Mermaid;
+using Store = LoggingStubStore_Mermaid;
 using Adaptor = aft::Adaptor<Store>;
 
 aft::ChannelStubProxy* channel_stub_proxy(const TRaft& r)
@@ -217,6 +217,54 @@ public:
     RAFT_DRIVER_OUT << fmt::format(
                          "  Note over {}: Node {} created", node_id, node_id)
                     << std::endl;
+  }
+
+  void create_start_node(const std::string& start_node_id, const size_t lineno)
+  {
+    if (!_nodes.empty())
+    {
+      throw std::logic_error("Start node already exists");
+    }
+    kv::Configuration::Nodes configuration;
+    add_node(start_node_id);
+    configuration.try_emplace(start_node_id);
+    _nodes[start_node_id].raft->force_become_primary();
+    _replicate("2", {}, lineno, false, configuration);
+    RAFT_DRIVER_OUT << fmt::format(
+                         "  Note over {}: Node {} created",
+                         start_node_id,
+                         start_node_id)
+                    << std::endl;
+  }
+
+  void trust_nodes(
+    const std::string& term,
+    const std::vector<std::string>& node_ids,
+    const size_t lineno)
+  {
+    for (const auto& node_id : node_ids)
+    {
+      add_node(node_id);
+      RAFT_DRIVER_OUT << fmt::format(
+                           "  Note over {}: Node {} created", node_id, node_id)
+                      << std::endl;
+    }
+    kv::Configuration::Nodes configuration;
+    for (const auto& [id, node] : _nodes)
+    {
+      configuration.try_emplace(id);
+    }
+    for (const auto& node_id : node_ids)
+    {
+      for (const auto& [id, node] : _nodes)
+      {
+        if (id != node_id)
+        {
+          connect(id, node_id);
+        }
+      }
+    }
+    _replicate(term, {}, lineno, false, configuration);
   }
 
   void replicate_new_configuration(
@@ -337,6 +385,16 @@ public:
   void log_msg_details(
     ccf::NodeId node_id,
     ccf::NodeId tgt_node_id,
+    aft::ProposeRequestVote prv,
+    bool dropped)
+  {
+    const auto s = fmt::format("propose_request_vote for term {}", prv.term);
+    log(node_id, tgt_node_id, s, dropped);
+  }
+
+  void log_msg_details(
+    ccf::NodeId node_id,
+    ccf::NodeId tgt_node_id,
     const std::vector<uint8_t>& contents,
     bool dropped = false)
   {
@@ -368,6 +426,12 @@ public:
       {
         auto aer = *(aft::AppendEntriesResponse*)data;
         log_msg_details(node_id, tgt_node_id, aer, dropped);
+        break;
+      }
+      case (aft::RaftMsgType::raft_propose_request_vote):
+      {
+        auto prv = *(aft::ProposeRequestVote*)data;
+        log_msg_details(node_id, tgt_node_id, prv, dropped);
         break;
       }
       default:

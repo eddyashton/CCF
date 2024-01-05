@@ -126,21 +126,17 @@ namespace ccf
       return id;
     }
 
-    ListenInterface& get_interface_from_session_id(tls::ConnID id)
+    ListenInterface& get_interface_from_interface_id(
+      const ccf::ListenInterfaceID& id)
     {
-      // Lock must be first acquired and held while accessing returned interface
-      auto search = sessions.find(id);
-      if (search != sessions.end())
+      auto it = listening_interfaces.find(id);
+      if (it != listening_interfaces.end())
       {
-        auto it = listening_interfaces.find(search->second.first);
-        if (it != listening_interfaces.end())
-        {
-          return it->second;
-        }
+        return it->second;
       }
 
       throw std::logic_error(
-        fmt::format("No RPC interface for session ID {}", id));
+        fmt::format("No RPC interface for interface ID {}", id));
     }
 
     std::shared_ptr<ccf::Session> make_server_session(
@@ -203,22 +199,24 @@ namespace ccf
       custom_protocol_subsystem = cpss;
     }
 
-    void report_parsing_error(tls::ConnID id) override
+    void report_parsing_error(const ccf::ListenInterfaceID& id) override
     {
       std::lock_guard<ccf::pal::Mutex> guard(lock);
-      get_interface_from_session_id(id).errors.parsing++;
+      get_interface_from_interface_id(id).errors.parsing++;
     }
 
-    void report_request_payload_too_large_error(tls::ConnID id) override
+    void report_request_payload_too_large_error(
+      const ccf::ListenInterfaceID& id) override
     {
       std::lock_guard<ccf::pal::Mutex> guard(lock);
-      get_interface_from_session_id(id).errors.request_payload_too_large++;
+      get_interface_from_interface_id(id).errors.request_payload_too_large++;
     }
 
-    void report_request_header_too_large_error(tls::ConnID id) override
+    void report_request_header_too_large_error(
+      const ccf::ListenInterfaceID& id) override
     {
       std::lock_guard<ccf::pal::Mutex> guard(lock);
-      get_interface_from_session_id(id).errors.request_header_too_large++;
+      get_interface_from_interface_id(id).errors.request_header_too_large++;
     }
 
     void update_listening_interface_options(
@@ -583,6 +581,17 @@ namespace ccf
       {
         throw std::runtime_error("unsupported client application protocol");
       }
+    }
+
+    std::shared_ptr<ClientSession> create_unencrypted_client()
+    {
+      std::lock_guard<ccf::pal::Mutex> guard(lock);
+      auto id = get_next_client_id();
+      auto session = std::make_shared<http::UnencryptedHTTPClientSession>(
+        id, writer_factory);
+      sessions.insert(std::make_pair(id, std::make_pair("", session)));
+      sessions_peak = std::max(sessions_peak, sessions.size());
+      return session;
     }
 
     void register_message_handlers(

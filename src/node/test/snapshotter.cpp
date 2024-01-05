@@ -4,6 +4,7 @@
 #include "node/snapshotter.h"
 
 #include "ccf/ds/logger.h"
+#include "crypto/openssl/hash.h"
 #include "ds/ring_buffer.h"
 #include "kv/test/null_encryptor.h"
 #include "kv/test/stub_consensus.h"
@@ -142,6 +143,7 @@ TEST_CASE("Regular snapshotting")
   auto history = std::make_shared<ccf::MerkleTxHistory>(
     *network.tables.get(), kv::test::PrimaryNodeId, *kp);
   network.tables->set_history(history);
+  network.tables->initialise_term(2);
   network.tables->set_consensus(consensus);
   auto encryptor = std::make_shared<kv::NullTxEncryptor>();
   network.tables->set_encryptor(encryptor);
@@ -304,6 +306,7 @@ TEST_CASE("Rollback before snapshot is committed")
   auto history = std::make_shared<ccf::MerkleTxHistory>(
     *network.tables.get(), kv::test::PrimaryNodeId, *kp);
   network.tables->set_history(history);
+  network.tables->initialise_term(2);
   network.tables->set_consensus(consensus);
   auto encryptor = std::make_shared<kv::NullTxEncryptor>();
   network.tables->set_encryptor(encryptor);
@@ -434,6 +437,7 @@ TEST_CASE("Rekey ledger while snapshot is in progress")
   auto history = std::make_shared<ccf::MerkleTxHistory>(
     *network.tables.get(), kv::test::PrimaryNodeId, *kp);
   network.tables->set_history(history);
+  network.tables->initialise_term(2);
   network.tables->set_consensus(consensus);
   auto ledger_secrets = std::make_shared<ccf::LedgerSecrets>();
   ledger_secrets->init();
@@ -519,9 +523,11 @@ TEST_CASE("Rekey ledger while snapshot is in progress")
 int main(int argc, char** argv)
 {
   threading::ThreadMessaging::init(1);
+  crypto::openssl_sha256_init();
   doctest::Context context;
   context.applyCommandLine(argc, argv);
   int res = context.run();
+  crypto::openssl_sha256_shutdown();
   if (context.shouldExit())
     return res;
   return res;
