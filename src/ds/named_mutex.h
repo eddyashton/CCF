@@ -22,9 +22,10 @@ namespace ds
   {
   private:
     ccf::pal::Mutex m;
-    std::string label;
 
 #ifdef ASSERT_MUTEX_ORDER
+    std::string label;
+
     void check_lock_safety()
     {
       for (const auto& locked : locked_stack)
@@ -33,9 +34,9 @@ namespace ds
         const auto it = lock_precedences.find(inverted);
         if (it != lock_precedences.end())
         {
-          LOG_FATAL_FMT(
+          LOG_FAIL_FMT(
             "Mutexes locked in inconsistent order - this may cause deadlock!");
-          LOG_FATAL_FMT(
+          LOG_FAIL_FMT(
             "Currently attempting to lock {} while holding {} - previously "
             "held {} while trying to lock {}",
             label,
@@ -52,7 +53,12 @@ namespace ds
 #endif
 
   public:
-    NamedMutex(const std::string& s) : label(s) {}
+    NamedMutex(const std::string& s)
+#ifdef ASSERT_MUTEX_ORDER
+      :
+      label(fmt::format("{} ({:0x})", s, (size_t)this))
+#endif
+    {}
 
     void lock()
     {
@@ -78,7 +84,9 @@ namespace ds
       if (locked_stack.back() != label)
       {
         LOG_FAIL_FMT(
-          "Unexpected unlock order - {} is not the last-locked", label);
+          "Unexpected unlock order - {} is not the last-locked (stack is {})",
+          label,
+          fmt::join(locked_stack, "->"));
       }
       else
       {
@@ -90,3 +98,6 @@ namespace ds
     }
   };
 }
+
+#define CCF_CREATE_GUARD(var_name, mutex) \
+  std::lock_guard<decltype(mutex)> var_name(mutex)
