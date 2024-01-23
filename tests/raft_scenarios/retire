@@ -21,34 +21,45 @@ emit_signature,2
 # Leader replicates
 periodic_one,0,10
 dispatch_one,0
+state_all
 
-# But node 1 runs for election before ack/cmt
+# Node 0 receives acks (in both quorums!)
+# advances commit to complete its own retirement
+assert_commit_idx,0,4
+dispatch_one,1
+
+dispatch_one,2 # NACKs! Because this node has just joined
+periodic_one,0,10
+dispatch_one,0
+dispatch_one,2
+
+assert_commit_idx,0,6
+
+# But node 1 runs for election before commit knowledge is shared
 periodic_one,1,150
 dispatch_all
-dispatch_all
 assert_commit_idx,1,4
 
-# Tries to sign/extend, without success
+# Tries to sign/extend
 emit_signature,3
 periodic_all,10
 dispatch_all
-dispatch_all
-assert_commit_idx,1,4
+assert_commit_idx,1,7
 
 emit_signature,3
 periodic_all,10
 dispatch_all
-dispatch_all
-assert_commit_idx,1,4
+assert_commit_idx,1,8
 
 emit_signature,3
 periodic_all,10
 dispatch_all
-dispatch_all
-assert_commit_idx,1,4
+assert_commit_idx,1,9
 
-emit_signature,3
 periodic_all,10
 dispatch_all
-dispatch_all
-assert_commit_idx,1,4
+assert_commit_idx,2,9
+
+assert_commit_idx,0,6
+
+state_all

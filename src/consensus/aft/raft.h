@@ -1076,8 +1076,12 @@ namespace aft
       if (is_retired() && retirement_phase >= kv::RetirementPhase::Completed)
       {
         assert(retirement_committable_idx.has_value());
-        if (r.idx > retirement_committable_idx)
+        if (r.prev_idx > retirement_committable_idx.value())
         {
+          RAFT_DEBUG_FMT(
+            "Recvd {}, too late (after retirement at {})",
+            r.prev_idx,
+            retirement_committable_idx.value());
           send_append_entries_response(from, AppendEntriesResponseType::FAIL);
           return;
         }
@@ -1213,6 +1217,21 @@ namespace aft
         j["from_node_id"] = from;
         RAFT_TRACE_JSON_OUT(j);
 #endif
+
+        if (retirement_committable_idx.has_value())
+        {
+          if (i > retirement_committable_idx.value())
+          {
+            RAFT_DEBUG_FMT(
+              "Executing AE entry at {}. Ignoring due to retirement, "
+              "committable at {}",
+              i,
+              retirement_committable_idx.value());
+
+            send_append_entries_response(from, AppendEntriesResponseType::OK);
+            return;
+          }
+        }
 
         bool track_deletes_on_missing_keys = false;
         kv::ApplyResult apply_success =
@@ -1890,7 +1909,8 @@ namespace aft
       // receiving a conflicting AppendEntries
       rollback(last_committable_index());
 
-      if (can_endorse_primary())
+      // TODO: Revisit
+      // if (can_endorse_primary())
       {
         state->leadership_state = kv::LeadershipState::Follower;
         RAFT_INFO_FMT(
@@ -2078,8 +2098,12 @@ namespace aft
       std::optional<Index> new_agreement_index = std::nullopt;
 
       // Obtain CFT watermarks
-      for (auto const& c : configurations)
+      auto it = configurations.begin();
+      while (it != configurations.end())
       {
+        const auto& c = *it;
+        RAFT_DEBUG_FMT("Considering configuration {}", c.rid);
+
         // The majority must be checked separately for each active
         // configuration.
         std::vector<Index> match;
@@ -2098,14 +2122,36 @@ namespace aft
         }
 
         sort(match.begin(), match.end());
-        auto confirmed = match.at((match.size() - 1) / 2);
+        std::optional<Index> confirmed = match.at((match.size() - 1) / 2);
+
+        auto next_it = std::next(it);
+        if (next_it != configurations.end())
+        {
+          const auto config_end = next_it->idx;
+          // TODO: But really want the sig index, not the config tx index!
+          if (confirmed.value() >= config_end)
+          {
+            RAFT_DEBUG_FMT(
+              "Configuration {} has confirmed {}, but this config ended at {}, "
+              "so this confirmation is discharged",
+              c.rid,
+              confirmed.value(),
+              config_end);
+            confirmed.reset();
+          }
+        }
 
         if (
-          !new_agreement_index.has_value() ||
-          confirmed < new_agreement_index.value())
+          confirmed.has_value() &&
+          (!new_agreement_index.has_value() ||
+           confirmed.value() < new_agreement_index.value()))
         {
           new_agreement_index = confirmed;
+          RAFT_DEBUG_FMT(
+            "Advanced agreement index to = {}", new_agreement_index.value());
         }
+
+        it = next_it;
       }
 
       if (new_agreement_index.has_value())
