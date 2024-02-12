@@ -4,6 +4,7 @@
 import sys
 import json
 import rich
+import argparse
 
 LEADERSHIP_STATUS = {
     "None": ":beginner:",
@@ -84,7 +85,7 @@ class DigitsCfg:
     ts = 0
 
 
-def table(lines):
+def table(args, lines):
     entries = [json.loads(line) for line in lines]
     nodes = []
     max_view = 0
@@ -107,6 +108,7 @@ def table(lines):
     dcfg.ts = digits(max_ts)
     node_to_state = {}
     rows = []
+    display_nodes = args.display_nodes or nodes
     for entry in entries:
         node_id = entry["msg"]["state"]["node_id"]
         old_state = node_to_state.get(node_id)
@@ -122,6 +124,14 @@ def table(lines):
         # Display commit index changes on the Cmt line itself
         if "args" in entry["msg"] and "commit_idx" in entry["msg"]["args"]:
             entry["msg"]["state"]["commit_idx"] = entry["msg"]["args"]["commit_idx"]
+
+        # Filter entries to h_ts in [min_ts..max_ts]
+        h_ts = int(entry["h_ts"])
+        if args.min_ts is not None and args.min_ts > h_ts:
+            continue
+        if args.max_ts is not None and args.max_ts < h_ts:
+            continue
+
         states = [
             (
                 node_to_state.get(node),
@@ -129,7 +139,7 @@ def table(lines):
                 old_state if node == node_id else None,
                 tag if node == node_id else " ",
             )
-            for node in nodes
+            for node in display_nodes
         ]
         rows.append(
             f"[{entry['h_ts']:>{dcfg.ts}}] "
@@ -140,7 +150,29 @@ def table(lines):
     return rows
 
 
-if __name__ == "__main__":
-    with open(sys.argv[1]) as tf:
-        for line in table(tf.readlines()):
+def main():
+    parser = argparse.ArgumentParser(
+        description="Display summary of .ndjson trace from raft_driver",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    parser.add_argument("tracefile", type=str, help="Path to .ndjson trace file")
+    parser.add_argument(
+        "--min-ts", type=int, help="Do not display any entries before this ts"
+    )
+    parser.add_argument(
+        "--max-ts", type=int, help="Do not display any entries after this ts"
+    )
+    parser.add_argument(
+        "--display-nodes", nargs="+", help="Filter which nodes are displayed"
+    )
+
+    args = parser.parse_args()
+
+    with open(args.tracefile) as tf:
+        for line in table(args, tf.readlines()):
             rich.print(line)
+
+
+if __name__ == "__main__":
+    main()
