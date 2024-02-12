@@ -73,8 +73,35 @@ def render_state(state, func, old_state, tag, cfg):
     f = FUNCTIONS[func]
     opc = "bold bright_white on red" if func else "normal"
     return (
-        f"[{opc}]{nid:>{cfg.nodes}}{ls}{f:<4} [/{opc}]{TAG[tag]} {ms}{rp} {v}.{i} {c}"
+        f"[{opc}]{nid:>{cfg.nodes}}{ls}[/{opc}] {ms}{rp} {v}.{i} {c}"
     )
+
+
+def message_summary(packet):
+    checks = {True: ":white_check_mark:", False: ":x:"}
+    if packet["msg"] == "raft_append_entries":
+        return f"AE  t{packet['term']} c{packet['leader_commit_idx']} ({packet['prev_term']}.{packet['prev_idx']}..{packet['term_of_idx']}.{packet['idx']}]"
+    elif packet["msg"] == "raft_append_entries_response":
+        return f"AER t{packet['term']} i{packet['last_log_idx']} {checks[packet['success'] == 'OK']}"
+    elif packet["msg"] == "raft_request_vote":
+        return f"RV  t{packet['term']} {packet['term_of_last_committable_idx']}.{packet['last_committable_idx']}"
+    elif packet["msg"] == "raft_request_vote_response":
+        return f"RVR t{packet['term']} {checks[packet['vote_granted']]}"
+
+
+def action_summary(entry):
+    msg = entry["msg"]
+    if "packet" in msg:
+        packet = msg["packet"]
+        if "to_node_id" in msg:
+            src = msg["state"]["node_id"]
+            dst = msg["to_node_id"]
+            return f"{src}->{dst} {message_summary(packet)}"
+        elif "from_node_id" in msg:
+            src = msg["from_node_id"]
+            dst = msg["state"]["node_id"]
+            return f"{dst}<-{src} {message_summary(packet)}"
+    return FUNCTIONS[msg["function"]]
 
 
 class DigitsCfg:
@@ -84,6 +111,7 @@ class DigitsCfg:
     commit = 0
     ts = 0
 
+from collections import defaultdict
 
 def table(args, lines):
     entries = [json.loads(line) for line in lines]
@@ -106,7 +134,7 @@ def table(args, lines):
     dcfg.index = digits(max_index)
     dcfg.commit = digits(max_commit)
     dcfg.ts = digits(max_ts)
-    node_to_state = {}
+    node_to_state = {nid: defaultdict(lambda: None) for nid in nodes}
     rows = []
     display_nodes = args.display_nodes or nodes
     for entry in entries:
@@ -143,7 +171,9 @@ def table(args, lines):
         ]
         rows.append(
             f"[{entry['h_ts']:>{dcfg.ts}}] "
-            + "     ".join(render_state(*state, dcfg) for state in states if state[0])
+            + "     ".join(render_state(*state, dcfg) if state[0] else " " * 12 for state in states)
+            + "   "
+            + action_summary(entry)
             + "   "
             + entry["cmd"]
         )
