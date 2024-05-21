@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/byte_vector.h"
-#include "ccf/indexing/strategy.h"
 #include "ccf/pal/locking.h"
+#include "ccf/indexing/strategy.h"
+#include "ccf/byte_vector.h"
 
 namespace ccf::indexing::strategies
 {

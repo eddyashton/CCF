@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/seq_no_collection.h"
 #include "ccf/tx_id.h"
+#include "ccf/seq_no_collection.h"
 
 namespace ccf::indexing
 {

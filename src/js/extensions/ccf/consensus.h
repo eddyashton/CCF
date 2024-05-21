@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/base_endpoint_registry.h"
 #include "js/extensions/extension_interface.h"
+#include "ccf/base_endpoint_registry.h"
 
 namespace ccf::js::extensions
 {

@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "ccf/ds/hex.h"
-
-#include "ccf/ds/logger.h"
-#include "ccf/ds/nonstd.h"
-
-#include <algorithm>
-#include <cctype>
-#include <doctest/doctest.h>
 #include <string>
+#include <doctest/doctest.h>
+#include <cctype>
+#include <algorithm>
+
+#include "ccf/ds/nonstd.h"
+#include "ccf/ds/logger.h"
+
+#include "ccf/ds/hex.h"
 
 TEST_CASE("Hex string to and from conversion")
 {

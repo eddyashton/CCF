@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/pem.h"
-#include "ccf/kv/value.h"
-
-#include <string>
 #include <vector>
+#include <string>
+
+#include "ccf/kv/value.h"
+#include "ccf/crypto/pem.h"
 
 namespace ccf
 {

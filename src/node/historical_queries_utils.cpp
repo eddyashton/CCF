@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "ccf/historical_queries_utils.h"
-
-#include "ccf/rpc_context.h"
-#include "ccf/service/tables/service.h"
-#include "kv/kv_types.h"
-#include "node/identity.h"
 #include "node/tx_receipt_impl.h"
+#include "node/identity.h"
+#include "kv/kv_types.h"
+#include "ccf/service/tables/service.h"
+#include "ccf/rpc_context.h"
+
+#include "ccf/historical_queries_utils.h"
 
 namespace ccf
 {

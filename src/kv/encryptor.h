@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/hmac.h"
-#include "kv/kv_types.h"
-
-#include <algorithm>
 #include <map>
+#include <algorithm>
+
+#include "kv/kv_types.h"
+#include "ccf/crypto/hmac.h"
 
 namespace kv
 {

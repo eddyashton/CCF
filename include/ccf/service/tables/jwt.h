@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/jwk.h"
-#include "ccf/ds/json.h"
-#include "ccf/service/map.h"
-
-#include <map>
-#include <optional>
 #include <string>
+#include <optional>
+#include <map>
+
+#include "ccf/service/map.h"
+#include "ccf/ds/json.h"
+#include "ccf/crypto/jwk.h"
 
 namespace ccf
 {

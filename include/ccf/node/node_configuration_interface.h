@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/node/startup_config.h"
-#include "ccf/node_subsystem_interface.h"
-#include "ccf/service/node_info_network.h"
-
-#include <map>
 #include <regex>
+#include <map>
+
+#include "ccf/service/node_info_network.h"
+#include "ccf/node_subsystem_interface.h"
+#include "ccf/node/startup_config.h"
 
 namespace ccf
 {

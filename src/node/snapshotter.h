@@ -2,20 +2,20 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ccf_assert.h"
-#include "ccf/ds/logger.h"
-#include "ccf/pal/enclave.h"
-#include "ccf/pal/locking.h"
-#include "consensus/ledger_enclave_types.h"
-#include "ds/thread_messaging.h"
-#include "kv/kv_types.h"
-#include "kv/store.h"
-#include "node/network_state.h"
-#include "node/snapshot_serdes.h"
-#include "service/tables/snapshot_evidence.h"
-
-#include <deque>
 #include <optional>
+#include <deque>
+
+#include "service/tables/snapshot_evidence.h"
+#include "node/snapshot_serdes.h"
+#include "node/network_state.h"
+#include "kv/store.h"
+#include "kv/kv_types.h"
+#include "ds/thread_messaging.h"
+#include "consensus/ledger_enclave_types.h"
+#include "ccf/pal/locking.h"
+#include "ccf/pal/enclave.h"
+#include "ccf/ds/logger.h"
+#include "ccf/ccf_assert.h"
 
 namespace ccf
 {

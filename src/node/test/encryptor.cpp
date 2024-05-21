@@ -2,19 +2,19 @@
 // Licensed under the Apache 2.0 License.
 #define DOCTEST_CONFIG_IMPLEMENT
 
-#include "kv/encryptor.h"
-
-#include "crypto/openssl/hash.h"
-#include "kv/kv_types.h"
-#include "kv/store.h"
-#include "kv/test/stub_consensus.h"
-#include "node/encryptor.h"
-#include "node/ledger_secrets.h"
-
 #include <doctest/doctest.h>
+
+#include "node/ledger_secrets.h"
+#include "node/encryptor.h"
+#include "kv/test/stub_consensus.h"
+#include "kv/store.h"
+#include "kv/kv_types.h"
+#include "crypto/openssl/hash.h"
+
+#include "kv/encryptor.h"
 #undef FAIL
-#include <random>
 #include <string>
+#include <random>
 
 kv::ConsensusHookPtrs hooks;
 using StringString = kv::Map<std::string, std::string>;

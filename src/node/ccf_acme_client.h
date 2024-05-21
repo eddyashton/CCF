@@ -2,16 +2,16 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/http_status.h"
-#include "ccf/service/acme_client_config.h"
-#include "ccf/service/tables/acme_certificates.h"
-#include "ds/thread_messaging.h"
-#include "enclave/rpc_sessions.h"
-#include "node/acme_challenge_frontend.h"
-#include "node/acme_client.h"
-#include "service/network_tables.h"
-
 #include <chrono>
+
+#include "service/network_tables.h"
+#include "node/acme_client.h"
+#include "node/acme_challenge_frontend.h"
+#include "enclave/rpc_sessions.h"
+#include "ds/thread_messaging.h"
+#include "ccf/service/tables/acme_certificates.h"
+#include "ccf/service/acme_client_config.h"
+#include "ccf/http_status.h"
 
 namespace ccf
 {

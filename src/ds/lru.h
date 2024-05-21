@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <list>
 #include <map>
+#include <list>
 
 /**
  * A basic LRU implementation, written for the specific purpose of managing a

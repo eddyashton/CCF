@@ -2,17 +2,17 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/common_endpoint_registry.h"
-#include "ccf/ds/logger.h"
-#include "ccf/indexing/strategy.h"
-#include "ccf/kv/map.h"
-#include "ccf/pal/locking.h"
-#include "ds/lru.h"
-#include "endpoints/grpc/grpc.h"
-#include "executor_auth_policy.h"
-#include "index.pb.h"
-#include "indexing/lfs_interface.h"
 #include "kv/kv_types.h"
+#include "indexing/lfs_interface.h"
+#include "index.pb.h"
+#include "executor_auth_policy.h"
+#include "endpoints/grpc/grpc.h"
+#include "ds/lru.h"
+#include "ccf/pal/locking.h"
+#include "ccf/kv/map.h"
+#include "ccf/indexing/strategy.h"
+#include "ccf/ds/logger.h"
+#include "ccf/common_endpoint_registry.h"
 
 namespace externalexecutor
 {

@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/eddsa_key_pair.h"
-#include "crypto/openssl/eddsa_public_key.h"
 #include "openssl_wrappers.h"
+#include "crypto/openssl/eddsa_public_key.h"
+#include "ccf/crypto/eddsa_key_pair.h"
 
 namespace crypto
 {

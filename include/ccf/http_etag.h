@@ -3,9 +3,9 @@
 #pragma once
 
 #define FMT_HEADER_ONLY
-#include <regex>
-#include <set>
 #include <string>
+#include <set>
+#include <regex>
 
 namespace ccf
 {

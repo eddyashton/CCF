@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "node/node_types.h"
-
 #include <vector>
+
+#include "node/node_types.h"
 
 namespace ccf
 {

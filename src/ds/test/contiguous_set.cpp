@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "ccf/ds/contiguous_set.h"
-
-#include <doctest/doctest.h>
-#include <iostream>
 #include <random>
+#include <iostream>
+#include <doctest/doctest.h>
+
+#include "ccf/ds/contiguous_set.h"
 
 template <typename T>
 void test(T from, T to)

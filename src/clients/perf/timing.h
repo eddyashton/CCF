@@ -3,15 +3,15 @@
 #pragma once
 
 // CCF
-#include "ccf/tx_id.h"
 #include "clients/rpc_tls_client.h"
+#include "ccf/tx_id.h"
 
 // STL/3rdparty
-#include <chrono>
-#include <fstream>
-#include <iomanip>
-#include <thread>
 #include <vector>
+#include <thread>
+#include <iomanip>
+#include <fstream>
+#include <chrono>
 
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>

@@ -1,16 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "ccf/endpoints/authentication/cert_auth.h"
-
-#include "ccf/pal/locking.h"
-#include "ccf/rpc_context.h"
-#include "ccf/service/tables/members.h"
-#include "ccf/service/tables/nodes.h"
-#include "ccf/service/tables/users.h"
-#include "ds/lru.h"
-#include "ds/x509_time_fmt.h"
 #include "enclave/enclave_time.h"
+#include "ds/x509_time_fmt.h"
+#include "ds/lru.h"
+#include "ccf/service/tables/users.h"
+#include "ccf/service/tables/nodes.h"
+#include "ccf/service/tables/members.h"
+#include "ccf/rpc_context.h"
+#include "ccf/pal/locking.h"
+
+#include "ccf/endpoints/authentication/cert_auth.h"
 
 namespace ccf
 {

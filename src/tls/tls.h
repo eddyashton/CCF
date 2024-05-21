@@ -23,9 +23,9 @@
 // Once we refactor the code to match the OpenSSL style we may not need this.
 #define TLS_ERR_X509_VERIFY INT_MIN
 
-#include "crypto/openssl/openssl_wrappers.h"
-
 #include <string>
+
+#include "crypto/openssl/openssl_wrappers.h"
 
 namespace tls
 {

@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "tpcc_common.h"
-#include "tpcc_output.h"
-#include "tpcc_tables.h"
-
-#include <cinttypes>
-#include <string.h>
 #include <vector>
+#include <string.h>
+#include <cinttypes>
+
+#include "tpcc_tables.h"
+#include "tpcc_output.h"
+#include "tpcc_common.h"
 
 namespace tpcc
 {

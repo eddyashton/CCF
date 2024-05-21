@@ -2,18 +2,18 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "../ds/files.h"
-#include "../enclave/interface.h"
-#include "ccf/ds/logger.h"
-#include "timer.h"
-
-#include <chrono>
-#include <ctime>
-#include <iomanip>
-#include <nlohmann/json.hpp>
-#include <string>
-#include <sys/types.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <string>
+#include <nlohmann/json.hpp>
+#include <iomanip>
+#include <ctime>
+#include <chrono>
+
+#include "timer.h"
+#include "ccf/ds/logger.h"
+#include "../enclave/interface.h"
+#include "../ds/files.h"
 
 namespace asynchost
 {

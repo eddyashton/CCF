@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ds/messaging.h"
 #include "timer.h"
+#include "ds/messaging.h"
 
 namespace asynchost
 {

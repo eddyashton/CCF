@@ -3,10 +3,10 @@
 #pragma once
 
 #define FMT_HEADER_ONLY
-#include <fmt/format.h>
-#include <span>
-#include <string>
 #include <vector>
+#include <string>
+#include <span>
+#include <fmt/format.h>
 
 namespace ds
 {

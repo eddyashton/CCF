@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "enclave.h"
-#include "timer.h"
-
 #include <chrono>
+
+#include "timer.h"
+#include "enclave.h"
 
 namespace asynchost
 {

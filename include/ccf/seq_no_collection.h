@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/contiguous_set.h"
 #include "ccf/tx_id.h"
+#include "ccf/ds/contiguous_set.h"
 
 namespace ccf
 {

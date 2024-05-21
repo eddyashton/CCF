@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 
-#include "ccf/endpoint_registry.h"
-
 #include <doctest/doctest.h>
+
+#include "ccf/endpoint_registry.h"
 
 using namespace ccf::endpoints;
 

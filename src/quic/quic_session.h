@@ -2,15 +2,15 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/logger.h"
-#include "ds/messaging.h"
-#include "ds/pending_io.h"
-#include "ds/ring_buffer.h"
-#include "ds/thread_messaging.h"
-#include "enclave/session.h"
-#include "quic/msg_types.h"
-
 #include <exception>
+
+#include "quic/msg_types.h"
+#include "enclave/session.h"
+#include "ds/thread_messaging.h"
+#include "ds/ring_buffer.h"
+#include "ds/pending_io.h"
+#include "ds/messaging.h"
+#include "ccf/ds/logger.h"
 
 namespace quic
 {

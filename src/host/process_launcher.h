@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ds/messaging.h"
-#include "enclave/interface.h"
-
-#include <chrono>
-#include <queue>
-#include <unordered_map>
 #include <uv.h>
+#include <unordered_map>
+#include <queue>
+#include <chrono>
+
+#include "enclave/interface.h"
+#include "ds/messaging.h"
 
 namespace asynchost
 {

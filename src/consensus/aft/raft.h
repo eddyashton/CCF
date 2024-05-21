@@ -2,27 +2,27 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/ccf_exception.h"
-#include "ccf/ds/logger.h"
-#include "ccf/pal/locking.h"
-#include "ccf/tx_id.h"
-#include "ccf/tx_status.h"
-#include "ds/serialized.h"
-#include "enclave/reconfiguration_type.h"
-#include "impl/state.h"
-#include "kv/kv_types.h"
-#include "node/node_client.h"
-#include "node/node_to_node.h"
-#include "node/node_types.h"
-#include "node/retired_nodes_cleanup.h"
-#include "raft_types.h"
-#include "service/tables/signatures.h"
-
-#include <algorithm>
-#include <list>
-#include <random>
-#include <unordered_map>
 #include <vector>
+#include <unordered_map>
+#include <random>
+#include <list>
+#include <algorithm>
+
+#include "service/tables/signatures.h"
+#include "raft_types.h"
+#include "node/retired_nodes_cleanup.h"
+#include "node/node_types.h"
+#include "node/node_to_node.h"
+#include "node/node_client.h"
+#include "kv/kv_types.h"
+#include "impl/state.h"
+#include "enclave/reconfiguration_type.h"
+#include "ds/serialized.h"
+#include "ccf/tx_status.h"
+#include "ccf/tx_id.h"
+#include "ccf/pal/locking.h"
+#include "ccf/ds/logger.h"
+#include "ccf/ds/ccf_exception.h"
 
 #ifdef VERBOSE_RAFT_LOGGING
 #  define RAFT_TRACE_FMT(s, ...) \

@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <cstdint>
 #include <span>
+#include <cstdint>
 
 namespace ccf
 {

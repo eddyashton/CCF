@@ -4,10 +4,10 @@
 #include "../history.h"
 
 #define FMT_HEADER_ONLY
-#include <algorithm>
-#include <fmt/format.h>
-#include <picobench/picobench.hpp>
 #include <random>
+#include <picobench/picobench.hpp>
+#include <fmt/format.h>
+#include <algorithm>
 
 using namespace std;
 

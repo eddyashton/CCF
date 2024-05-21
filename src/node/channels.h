@@ -2,26 +2,26 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/entropy.h"
-#include "ccf/crypto/hkdf.h"
-#include "ccf/crypto/key_pair.h"
-#include "ccf/crypto/symmetric_key.h"
-#include "ccf/crypto/verifier.h"
-#include "ccf/ds/ccf_exception.h"
-#include "ccf/ds/hex.h"
-#include "ccf/ds/logger.h"
-#include "ccf/entity_id.h"
-#include "ccf/pal/locking.h"
-#include "crypto/key_exchange.h"
-#include "ds/serialized.h"
-#include "ds/state_machine.h"
-#include "ds/thread_messaging.h"
-#include "enclave/enclave_time.h"
-#include "node_types.h"
-
-#include <iostream>
-#include <map>
 #include <openssl/crypto.h>
+#include <map>
+#include <iostream>
+
+#include "node_types.h"
+#include "enclave/enclave_time.h"
+#include "ds/thread_messaging.h"
+#include "ds/state_machine.h"
+#include "ds/serialized.h"
+#include "crypto/key_exchange.h"
+#include "ccf/pal/locking.h"
+#include "ccf/entity_id.h"
+#include "ccf/ds/logger.h"
+#include "ccf/ds/hex.h"
+#include "ccf/ds/ccf_exception.h"
+#include "ccf/crypto/verifier.h"
+#include "ccf/crypto/symmetric_key.h"
+#include "ccf/crypto/key_pair.h"
+#include "ccf/crypto/hkdf.h"
+#include "ccf/crypto/entropy.h"
 
 // -Wpedantic flags token pasting of __VA_ARGS__
 #pragma clang diagnostic push

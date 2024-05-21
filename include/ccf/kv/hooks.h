@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/kv/version.h"
-
-#include <functional>
 #include <memory>
+#include <functional>
+
+#include "ccf/kv/version.h"
 
 namespace kv
 {

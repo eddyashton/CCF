@@ -1,19 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include "../messaging.h"
-
-#include "../non_blocking.h"
-#include "../ring_buffer.h"
-#include "../serialized.h"
-#include "../thread_messaging.h"
-
-#include <array>
-#include <doctest/doctest.h>
-#include <iomanip>
-#include <iostream>
-#include <numeric>
-#include <thread>
 #include <vector>
+#include <thread>
+#include <numeric>
+#include <iostream>
+#include <iomanip>
+#include <doctest/doctest.h>
+#include <array>
+
+#include "../thread_messaging.h"
+#include "../serialized.h"
+#include "../ring_buffer.h"
+#include "../non_blocking.h"
+
+#include "../messaging.h"
 
 using namespace messaging;
 using namespace ringbuffer;

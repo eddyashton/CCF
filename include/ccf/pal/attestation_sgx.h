@@ -4,11 +4,11 @@
 
 #if defined(INSIDE_ENCLAVE) && !defined(VIRTUAL_ENCLAVE)
 
-#  include <array>
-#  include <openenclave/attestation/attester.h>
-#  include <openenclave/attestation/custom_claims.h>
-#  include <openenclave/attestation/sgx/evidence.h>
 #  include <openenclave/attestation/verifier.h>
+#  include <openenclave/attestation/sgx/evidence.h>
+#  include <openenclave/attestation/custom_claims.h>
+#  include <openenclave/attestation/attester.h>
+#  include <array>
 
 namespace ccf::pal
 {

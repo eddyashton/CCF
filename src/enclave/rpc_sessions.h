@@ -2,33 +2,33 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/logger.h"
-#include "ccf/http_responder.h"
-#include "ccf/pal/locking.h"
-#include "ccf/service/node_info_network.h"
-#include "ds/serialized.h"
-#include "enclave/session.h"
-#include "forwarder_types.h"
-#include "http/http2_session.h"
-#include "http/http_session.h"
 #include "node/session_metrics.h"
+#include "http/http_session.h"
+#include "http/http2_session.h"
+#include "forwarder_types.h"
+#include "enclave/session.h"
+#include "ds/serialized.h"
+#include "ccf/service/node_info_network.h"
+#include "ccf/pal/locking.h"
+#include "ccf/http_responder.h"
+#include "ccf/ds/logger.h"
 // NB: This should be HTTP3 including QUIC, but this is
 // ok for now, as we only have an echo service for now
-#include "http/responder_lookup.h"
-#include "node/rpc/custom_protocol_subsystem.h"
-#include "quic/msg_types.h"
-#include "quic/quic_session.h"
-#include "rpc_handler.h"
-#include "tls/cert.h"
-#include "tls/client.h"
-#include "tls/context.h"
-#include "tls/plaintext_server.h"
-#include "tls/server.h"
-
-#include <limits>
-#include <map>
-#include <stdexcept>
 #include <unordered_map>
+#include <stdexcept>
+#include <map>
+#include <limits>
+
+#include "tls/server.h"
+#include "tls/plaintext_server.h"
+#include "tls/context.h"
+#include "tls/client.h"
+#include "tls/cert.h"
+#include "rpc_handler.h"
+#include "quic/quic_session.h"
+#include "quic/msg_types.h"
+#include "node/rpc/custom_protocol_subsystem.h"
+#include "http/responder_lookup.h"
 
 namespace ccf
 {

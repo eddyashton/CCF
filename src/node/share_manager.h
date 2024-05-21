@@ -2,20 +2,20 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/entropy.h"
-#include "ccf/crypto/rsa_key_pair.h"
-#include "ccf/crypto/sha256.h"
-#include "ccf/crypto/symmetric_key.h"
-#include "ccf/ds/logger.h"
-#include "crypto/sharing.h"
-#include "kv/encryptor.h"
-#include "ledger_secrets.h"
-#include "network_state.h"
-#include "secret_share.h"
-#include "service/internal_tables_access.h"
-
-#include <openssl/crypto.h>
 #include <vector>
+#include <openssl/crypto.h>
+
+#include "service/internal_tables_access.h"
+#include "secret_share.h"
+#include "network_state.h"
+#include "ledger_secrets.h"
+#include "kv/encryptor.h"
+#include "crypto/sharing.h"
+#include "ccf/ds/logger.h"
+#include "ccf/crypto/symmetric_key.h"
+#include "ccf/crypto/sha256.h"
+#include "ccf/crypto/rsa_key_pair.h"
+#include "ccf/crypto/entropy.h"
 
 namespace ccf
 {

@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "ccf/node/quote.h"
-
-#include "ccf/pal/attestation.h"
-#include "ccf/service/tables/code_id.h"
-#include "ccf/service/tables/snp_measurements.h"
-#include "ccf/service/tables/uvm_endorsements.h"
 #include "node/uvm_endorsements.h"
+#include "ccf/service/tables/uvm_endorsements.h"
+#include "ccf/service/tables/snp_measurements.h"
+#include "ccf/service/tables/code_id.h"
+#include "ccf/pal/attestation.h"
+
+#include "ccf/node/quote.h"
 
 namespace ccf
 {

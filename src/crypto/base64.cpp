@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "openssl/base64.h"
-
 #include "ccf/ds/logger.h"
+
+#include "openssl/base64.h"
 
 namespace crypto
 {

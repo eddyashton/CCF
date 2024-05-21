@@ -2,17 +2,17 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/key_pair.h"
-#include "ccf/crypto/sha256_hash.h"
-#include "ccf/crypto/verifier.h"
-#include "ccf/entity_id.h"
-#include "ccf/kv/map.h"
-#include "ccf/service/blit_serialiser_pem.h"
-#include "ccf/service/map.h"
-#include "ccf/service/node_info.h"
-
-#include <string>
 #include <vector>
+#include <string>
+
+#include "ccf/service/node_info.h"
+#include "ccf/service/map.h"
+#include "ccf/service/blit_serialiser_pem.h"
+#include "ccf/kv/map.h"
+#include "ccf/entity_id.h"
+#include "ccf/crypto/verifier.h"
+#include "ccf/crypto/sha256_hash.h"
+#include "ccf/crypto/key_pair.h"
 
 namespace ccf
 {

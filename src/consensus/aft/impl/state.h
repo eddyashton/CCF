@@ -2,17 +2,17 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/key_pair.h"
-#include "ccf/crypto/verifier.h"
-#include "ccf/ds/logger.h"
-#include "ccf/pal/locking.h"
-#include "ccf/tx_status.h"
-#include "consensus/aft/raft_types.h"
-#include "kv/kv_types.h"
-
-#include <deque>
-#include <map>
 #include <set>
+#include <map>
+#include <deque>
+
+#include "kv/kv_types.h"
+#include "consensus/aft/raft_types.h"
+#include "ccf/tx_status.h"
+#include "ccf/pal/locking.h"
+#include "ccf/ds/logger.h"
+#include "ccf/crypto/verifier.h"
+#include "ccf/crypto/key_pair.h"
 
 namespace aft
 {

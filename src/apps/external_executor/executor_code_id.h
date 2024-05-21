@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/json.h"
-#include "ccf/node/quote.h"
-#include "ccf/pal/attestation_sev_snp.h"
-#include "ccf/pal/measurement.h"
-#include "ccf/service/map.h"
-#include "ccf/service/tables/code_id.h"
-#include "endpoints/grpc/status.h"
 #include "executor_registration.pb.h"
+#include "endpoints/grpc/status.h"
+#include "ccf/service/tables/code_id.h"
+#include "ccf/service/map.h"
+#include "ccf/pal/measurement.h"
+#include "ccf/pal/attestation_sev_snp.h"
+#include "ccf/node/quote.h"
+#include "ccf/ds/json.h"
 
 namespace externalexecutor
 {

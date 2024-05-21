@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "http2_types.h"
-
 #include <stdexcept>
+
+#include "http2_types.h"
 
 namespace http
 {

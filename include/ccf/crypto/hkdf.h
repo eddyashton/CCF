@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/md_type.h"
-
-#include <span>
 #include <vector>
+#include <span>
+
+#include "ccf/crypto/md_type.h"
 
 namespace crypto
 {

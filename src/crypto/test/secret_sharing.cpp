@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest/doctest.h>
 #include <random>
+#include <doctest/doctest.h>
 
 #define FMT_HEADER_ONLY
-#include "crypto/sharing.h"
-
-#include <charconv>
 #include <fmt/format.h>
+#include <charconv>
+
+#include "crypto/sharing.h"
 
 using namespace crypto::sharing;
 

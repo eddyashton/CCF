@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "../tpcc_serializer.h"
-#include "ccf/app_interface.h"
-#include "ccf/common_auth_policies.h"
-#include "tpcc_setup.h"
-#include "tpcc_tables.h"
-#include "tpcc_transactions.h"
-
 #include <charconv>
+
+#include "tpcc_transactions.h"
+#include "tpcc_tables.h"
+#include "tpcc_setup.h"
+#include "ccf/common_auth_policies.h"
+#include "ccf/app_interface.h"
+#include "../tpcc_serializer.h"
 
 using namespace std;
 using namespace nlohmann;

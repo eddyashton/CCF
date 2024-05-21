@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/js_plugin.h"
-
 #include <vector>
+
+#include "ccf/js_plugin.h"
 
 namespace ccf::js
 {

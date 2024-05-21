@@ -2,11 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/pem.h"
-#include "ccf/service/blit_serialiser_pem.h"
-#include "ccf/service/map.h"
-
 #include <nlohmann/json.hpp>
+
+#include "ccf/service/map.h"
+#include "ccf/service/blit_serialiser_pem.h"
+#include "ccf/crypto/pem.h"
+#include "ccf/entity_id.h"
 
 namespace ccf
 {

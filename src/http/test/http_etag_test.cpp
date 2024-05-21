@@ -4,8 +4,8 @@
 #include "ccf/http_etag.h"
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest/doctest.h>
 #include <string>
+#include <doctest/doctest.h>
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>
 

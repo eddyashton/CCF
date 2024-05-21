@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "js/ffi_plugins.h"
-
-#include "ccf/ds/logger.h"
 #include "ccf/version.h"
+#include "ccf/ds/logger.h"
+
+#include "js/ffi_plugins.h"
 
 namespace ccf::js
 {

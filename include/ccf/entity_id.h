@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/json.h"
-#include "ccf/kv/serialisers/blit_serialiser.h"
-
 #include <string>
+
+#include "ccf/kv/serialisers/blit_serialiser.h"
+#include "ccf/ds/json.h"
 
 namespace ccf
 {

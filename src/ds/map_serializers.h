@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ccf_assert.h"
-#include "ds/serialized.h"
-
 #include <span>
+
+#include "ds/serialized.h"
+#include "ccf/ccf_assert.h"
 
 namespace map
 {

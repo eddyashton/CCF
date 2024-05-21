@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "ccf/indexing/strategies/visit_each_entry_in_map.h"
-
 #include "kv/store.h"
+
+#include "ccf/indexing/strategies/visit_each_entry_in_map.h"
 
 namespace ccf::indexing::strategies
 {

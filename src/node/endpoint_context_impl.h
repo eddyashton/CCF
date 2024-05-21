@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/endpoint_context.h"
 #include "kv/committable_tx.h"
+#include "ccf/endpoint_context.h"
 
 namespace ccf
 {

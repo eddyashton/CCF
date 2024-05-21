@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "ccf/base_endpoint_registry.h"
-
-#include "ccf/pal/locking.h"
-#include "ccf/service/tables/members.h"
-#include "ccf/service/tables/nodes.h"
-#include "ccf/service/tables/users.h"
-#include "enclave/enclave_time.h"
 #include "kv/kv_types.h"
+#include "enclave/enclave_time.h"
+#include "ccf/service/tables/users.h"
+#include "ccf/service/tables/nodes.h"
+#include "ccf/service/tables/members.h"
+#include "ccf/pal/locking.h"
+
+#include "ccf/base_endpoint_registry.h"
 
 namespace ccf
 {

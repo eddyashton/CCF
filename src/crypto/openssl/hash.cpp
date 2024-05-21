@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "crypto/openssl/hash.h"
-
-#include <openssl/evp.h>
-#include <openssl/sha.h>
 #include <stdexcept>
+#include <openssl/sha.h>
+#include <openssl/evp.h>
+
+#include "crypto/openssl/hash.h"
 
 namespace crypto
 {

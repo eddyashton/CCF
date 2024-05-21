@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/pem.h"
 #include "ccf/kv/serialisers/blit_serialiser.h"
+#include "ccf/crypto/pem.h"
 
 namespace kv::serialisers
 {

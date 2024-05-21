@@ -1,19 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
+#include "node/history.h"
+#include "node/encryptor.h"
+#include "kv/test/stub_consensus.h"
+#include "kv/test/null_encryptor.h"
+#include "ds/ring_buffer.h"
+#include "crypto/openssl/hash.h"
+#include "ccf/ds/logger.h"
+
 #include "node/snapshotter.h"
 
-#include "ccf/ds/logger.h"
-#include "crypto/openssl/hash.h"
-#include "ds/ring_buffer.h"
-#include "kv/test/null_encryptor.h"
-#include "kv/test/stub_consensus.h"
-#include "node/encryptor.h"
-#include "node/history.h"
-
 #define DOCTEST_CONFIG_IMPLEMENT
-#include <doctest/doctest.h>
 #include <string>
+#include <doctest/doctest.h>
 
 // Because snapshot serialisation is costly, the snapshotter serialises
 // snapshots asynchronously.

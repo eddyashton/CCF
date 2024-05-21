@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/endpoint_registry.h"
-#include "ccf/serdes.h"
-
-#include <llhttp/llhttp.h>
 #include <variant>
+#include <llhttp/llhttp.h>
+
+#include "ccf/serdes.h"
+#include "ccf/endpoint_registry.h"
 
 namespace ccf
 {

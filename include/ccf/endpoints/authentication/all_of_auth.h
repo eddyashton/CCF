@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/endpoints/authentication/authentication_types.h"
-
 #include <map>
+
+#include "ccf/endpoints/authentication/authentication_types.h"
 
 namespace ccf
 {

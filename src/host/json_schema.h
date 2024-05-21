@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <nlohmann/json.hpp>
-#include <optional>
-#include <string>
-#include <valijson/adapters/nlohmann_json_adapter.hpp>
-#include <valijson/schema.hpp>
-#include <valijson/schema_parser.hpp>
-#include <valijson/utils/nlohmann_json_utils.hpp>
 #include <valijson/validator.hpp>
+#include <valijson/utils/nlohmann_json_utils.hpp>
+#include <valijson/schema_parser.hpp>
+#include <valijson/schema.hpp>
+#include <valijson/adapters/nlohmann_json_adapter.hpp>
+#include <string>
+#include <optional>
+#include <nlohmann/json.hpp>
 
 namespace json
 {

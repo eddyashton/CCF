@@ -2,16 +2,16 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/json.h"
-
-#include <charconv>
 #include <cstdint>
+#include <charconv>
+
+#include "ccf/ds/json.h"
 #define FMT_HEADER_ONLY
-#include <fmt/format.h>
-#include <nlohmann/json.hpp>
-#include <optional>
-#include <string>
 #include <string_view>
+#include <string>
+#include <optional>
+#include <nlohmann/json.hpp>
+#include <fmt/format.h>
 
 namespace ccf
 {

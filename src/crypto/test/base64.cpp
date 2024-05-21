@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include "ccf/crypto/base64.h"
-
-#include <chrono>
-#include <doctest/doctest.h>
 #include <string>
+#include <doctest/doctest.h>
+#include <chrono>
+
+#include "ccf/crypto/base64.h"
 
 using namespace std;
 using namespace crypto;

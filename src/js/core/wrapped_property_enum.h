@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "js/core/context.h"
-#include "js/core/wrapped_value.h"
-
 #include <quickjs/quickjs.h>
+
+#include "js/core/wrapped_value.h"
+#include "js/core/context.h"
 
 namespace ccf::js::core
 {

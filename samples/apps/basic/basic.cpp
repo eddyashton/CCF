@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 
 // CCF
-#include "ccf/app_interface.h"
-#include "ccf/common_auth_policies.h"
-#include "ccf/ds/hash.h"
-#include "ccf/http_query.h"
-#include "ccf/json_handler.h"
-#include "ccf/version.h"
-
 #include <charconv>
+
+#include "ccf/version.h"
+#include "ccf/json_handler.h"
+#include "ccf/http_query.h"
+#include "ccf/ds/hash.h"
+#include "ccf/common_auth_policies.h"
+#include "ccf/app_interface.h"
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>
 

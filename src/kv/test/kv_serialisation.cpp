@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include "ccf/ds/logger.h"
-#include "kv/kv_serialiser.h"
-#include "kv/store.h"
-#include "kv/test/null_encryptor.h"
-#include "kv/test/stub_consensus.h"
-
 #include <doctest/doctest.h>
+
+#include "kv/test/stub_consensus.h"
+#include "kv/test/null_encryptor.h"
+#include "kv/store.h"
+#include "kv/kv_serialiser.h"
+#include "ccf/ds/logger.h"
 #undef FAIL
-#include <string>
 #include <vector>
+#include <string>
 
 struct MapTypes
 {

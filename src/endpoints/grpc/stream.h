@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/http_header_map.h"
-#include "ccf/http_responder.h"
-#include "message.h"
-#include "status.h"
-#include "types.h"
-
 #include <memory>
+
+#include "types.h"
+#include "status.h"
+#include "message.h"
+#include "ccf/http_responder.h"
+#include "ccf/http_header_map.h"
 
 namespace ccf::grpc
 {

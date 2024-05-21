@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/base64.h"
-#include "ccf/ds/logger.h"
-#include "cert.h"
-#include "tls/tls.h"
-
-#include <memory>
-#include <openssl/bio.h>
 #include <openssl/ssl.h>
+#include <openssl/bio.h>
+#include <memory>
+
+#include "tls/tls.h"
+#include "cert.h"
+#include "ccf/ds/logger.h"
+#include "ccf/crypto/base64.h"
 
 namespace tls
 {

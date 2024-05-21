@@ -2,15 +2,15 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/endpoint_context.h"
-#include "ccf/odata_error.h"
-#include "message.h"
-#include "node/rpc/rpc_context_impl.h"
-#include "node/rpc/rpc_exception.h"
-#include "stream.h"
-#include "types.h"
-
 #include <memory>
+
+#include "types.h"
+#include "stream.h"
+#include "node/rpc/rpc_exception.h"
+#include "node/rpc/rpc_context_impl.h"
+#include "message.h"
+#include "ccf/odata_error.h"
+#include "ccf/endpoint_context.h"
 
 namespace ccf::grpc
 {

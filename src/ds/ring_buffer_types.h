@@ -2,17 +2,17 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/hash.h"
-#include "ccf/ds/nonstd.h"
-#include "serializer.h"
-
 #include <atomic>
+
+#include "serializer.h"
+#include "ccf/ds/nonstd.h"
+#include "ccf/ds/hash.h"
 #define FMT_HEADER_ONLY
-#include <fmt/format.h>
-#include <optional>
-#include <span>
-#include <string>
 #include <vector>
+#include <string>
+#include <span>
+#include <optional>
+#include <fmt/format.h>
 
 namespace ringbuffer
 {

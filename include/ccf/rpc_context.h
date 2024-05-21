@@ -2,18 +2,18 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/claims_digest.h"
-#include "ccf/frame_format.h"
-#include "ccf/http_consts.h"
-#include "ccf/http_header_map.h"
-#include "ccf/http_responder.h"
-#include "ccf/odata_error.h"
-#include "ccf/redirect.h"
-#include "ccf/rest_verb.h"
-#include "ccf/service/signed_req.h"
-#include "ccf/tx_id.h"
-
 #include <vector>
+
+#include "ccf/tx_id.h"
+#include "ccf/service/signed_req.h"
+#include "ccf/rest_verb.h"
+#include "ccf/redirect.h"
+#include "ccf/odata_error.h"
+#include "ccf/http_responder.h"
+#include "ccf/http_header_map.h"
+#include "ccf/http_consts.h"
+#include "ccf/frame_format.h"
+#include "ccf/claims_digest.h"
 
 namespace ccf
 {

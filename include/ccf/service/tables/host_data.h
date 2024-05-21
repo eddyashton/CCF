@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/sha256_hash.h"
 #include "ccf/service/map.h"
+#include "ccf/crypto/sha256_hash.h"
 
 using HostData = crypto::Sha256Hash;
 using HostDataMetadata =

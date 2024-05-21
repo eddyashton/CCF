@@ -1,19 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "ccf/endpoints/authentication/cose_auth.h"
-
-#include "ccf/crypto/cose_verifier.h"
-#include "ccf/crypto/public_key.h"
-#include "ccf/http_consts.h"
-#include "ccf/rpc_context.h"
-#include "ccf/service/tables/members.h"
-#include "ccf/service/tables/users.h"
-#include "node/cose_common.h"
-
-#include <qcbor/qcbor.h>
-#include <qcbor/qcbor_spiffy_decode.h>
 #include <t_cose/t_cose_sign1_verify.h>
+#include <qcbor/qcbor_spiffy_decode.h>
+#include <qcbor/qcbor.h>
+
+#include "node/cose_common.h"
+#include "ccf/service/tables/users.h"
+#include "ccf/service/tables/members.h"
+#include "ccf/rpc_context.h"
+#include "ccf/http_consts.h"
+#include "ccf/crypto/public_key.h"
+#include "ccf/crypto/cose_verifier.h"
+
+#include "ccf/endpoints/authentication/cose_auth.h"
 
 namespace ccf
 {

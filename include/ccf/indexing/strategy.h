@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/kv/read_only_store.h"
-#include "ccf/tx_id.h"
-
-#include <optional>
 #include <string>
+#include <optional>
+
+#include "ccf/tx_id.h"
+#include "ccf/kv/read_only_store.h"
 
 namespace ccf::indexing
 {

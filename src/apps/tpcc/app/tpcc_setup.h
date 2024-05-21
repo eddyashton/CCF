@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "tpcc_common.h"
-#include "tpcc_tables.h"
-
-#include <exception>
-#include <set>
 #include <stdint.h>
+#include <set>
+#include <exception>
+
+#include "tpcc_tables.h"
+#include "tpcc_common.h"
 
 namespace tpcc
 {

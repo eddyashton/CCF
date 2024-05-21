@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/historical_queries_interface.h"
-#include "ccf/indexing/indexer_interface.h"
 #include "ccf/node_subsystem_interface.h"
+#include "ccf/indexing/indexer_interface.h"
+#include "ccf/historical_queries_interface.h"
 
 namespace ccfapp
 {

@@ -3,12 +3,12 @@
 
 #pragma once
 
-#include "ccf/ds/json.h"
-#include "ccf/ds/nonstd.h"
-#include "ccf/http_configuration.h"
-#include "ccf/service/acme_client_config.h"
-
 #include <string>
+
+#include "ccf/service/acme_client_config.h"
+#include "ccf/http_configuration.h"
+#include "ccf/ds/nonstd.h"
+#include "ccf/ds/json.h"
 
 namespace ccf
 {

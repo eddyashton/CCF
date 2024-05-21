@@ -2,15 +2,15 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/json.h"
-#include "ccf/ds/openapi.h"
-#include "ccf/endpoint_context.h"
-#include "ccf/http_consts.h"
-#include "ccf/rest_verb.h"
-#include "ccf/service/map.h"
-
-#include <string>
 #include <utility>
+#include <string>
+
+#include "ccf/service/map.h"
+#include "ccf/rest_verb.h"
+#include "ccf/http_consts.h"
+#include "ccf/endpoint_context.h"
+#include "ccf/ds/openapi.h"
+#include "ccf/ds/json.h"
 
 namespace ccf::endpoints
 {

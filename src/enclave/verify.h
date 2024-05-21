@@ -3,7 +3,9 @@
 #pragma once
 
 #if defined(INSIDE_ENCLAVE) && !defined(VIRTUAL_ENCLAVE)
+// Can't reorder these lol?
 #  include <openenclave/attestation/verifier.h>
+// Can't reorder these lol?
 #  include <openenclave/enclave.h>
 #elif defined(SGX_ATTESTATION_VERIFICATION)
 #  include <openenclave/host_verify.h>

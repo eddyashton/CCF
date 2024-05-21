@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/json.h"
 #include "ccf/ds/nonstd.h"
+#include "ccf/ds/json.h"
 
 #define FMT_HEADER_ONLY
-#include <fmt/format.h>
 #include <string>
+#include <fmt/format.h>
 
 namespace crypto
 {

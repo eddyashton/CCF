@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/historical_queries_interface.h"
-#include "js/extensions/extension_interface.h"
-
 #include <quickjs/quickjs.h>
+
+#include "js/extensions/extension_interface.h"
+#include "ccf/historical_queries_interface.h"
 
 namespace ccf::js::extensions
 {

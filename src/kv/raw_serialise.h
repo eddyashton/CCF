@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ds/serialized.h"
-#include "generic_serialise_wrapper.h"
-
-#include <array>
-#include <small_vector/SmallVector.h>
 #include <type_traits>
+#include <small_vector/SmallVector.h>
+#include <array>
+
+#include "generic_serialise_wrapper.h"
+#include "ds/serialized.h"
 
 namespace kv
 {

@@ -1,25 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include "ccf/app_interface.h"
-#include "ccf/ds/logger.h"
-#include "ccf/kv/map.h"
-#include "ccf/kv/set.h"
-#include "ccf/kv/value.h"
-#include "crypto/openssl/hash.h"
-#include "kv/compacted_version_conflict.h"
-#include "kv/kv_serialiser.h"
-#include "kv/store.h"
-#include "kv/test/null_encryptor.h"
-#include "kv/test/stub_consensus.h"
 #include "node/history.h"
+#include "kv/test/stub_consensus.h"
+#include "kv/test/null_encryptor.h"
+#include "kv/store.h"
+#include "kv/kv_serialiser.h"
+#include "kv/compacted_version_conflict.h"
+#include "crypto/openssl/hash.h"
+#include "ccf/kv/value.h"
+#include "ccf/kv/set.h"
+#include "ccf/kv/map.h"
+#include "ccf/ds/logger.h"
+#include "ccf/app_interface.h"
 
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 #undef FAIL
-#include <random>
-#include <set>
-#include <string>
 #include <vector>
+#include <string>
+#include <set>
+#include <random>
 
 struct MapTypes
 {

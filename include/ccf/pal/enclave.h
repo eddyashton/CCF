@@ -6,10 +6,10 @@
 
 #if !defined(INSIDE_ENCLAVE) || defined(VIRTUAL_ENCLAVE)
 #else
-#  include <openenclave/attestation/attester.h>
-#  include <openenclave/enclave.h>
-#  include <openenclave/log.h>
 #  include <openenclave/tracee.h>
+#  include <openenclave/log.h>
+#  include <openenclave/enclave.h>
+#  include <openenclave/attestation/attester.h>
 #endif
 
 namespace ccf::pal

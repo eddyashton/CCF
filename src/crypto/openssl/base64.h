@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/logger.h"
-#include "crypto/openssl/openssl_wrappers.h"
-
-#include <openssl/err.h>
-#include <openssl/evp.h>
-#include <string>
 #include <vector>
+#include <string>
+#include <openssl/evp.h>
+#include <openssl/err.h>
+
+#include "crypto/openssl/openssl_wrappers.h"
+#include "ccf/ds/logger.h"
 
 // Inspired by openssl/test/evp_test.c
 // Ref: https://www.openssl.org/docs/man1.1.1/man3/EVP_DecodeBlock.html

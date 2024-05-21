@@ -2,15 +2,15 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/entropy.h"
-
 #include <array>
+
+#include "ccf/crypto/entropy.h"
 #define FMT_HEADER_ONLY
-#include <fmt/format.h>
-#include <iostream>
-#include <openssl/crypto.h>
-#include <optional>
 #include <vector>
+#include <optional>
+#include <openssl/crypto.h>
+#include <iostream>
+#include <fmt/format.h>
 
 extern "C"
 {

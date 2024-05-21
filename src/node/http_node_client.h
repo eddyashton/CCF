@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "node/node_client.h"
-
 #include <chrono>
+
+#include "node/node_client.h"
 
 namespace ccf
 {

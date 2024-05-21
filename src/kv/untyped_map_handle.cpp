@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "ccf/kv/untyped_map_handle.h"
-
 #include "kv/untyped_change_set.h"
+
+#include "ccf/kv/untyped_map_handle.h"
 
 namespace kv::untyped
 {

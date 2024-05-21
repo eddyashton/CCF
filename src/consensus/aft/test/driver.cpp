@@ -3,15 +3,15 @@
 
 #define VERBOSE_RAFT_LOGGING
 
-#include "driver.h"
+#include <string>
+#include <regex>
+#include <iostream>
+#include <fstream>
+#include <cassert>
 
 #include "ccf/ds/hash.h"
 
-#include <cassert>
-#include <fstream>
-#include <iostream>
-#include <regex>
-#include <string>
+#include "driver.h"
 
 using namespace std;
 

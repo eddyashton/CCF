@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/pem.h"
-#include "crypto/openssl/openssl_wrappers.h"
-
 #include <exception>
+
+#include "crypto/openssl/openssl_wrappers.h"
+#include "ccf/crypto/pem.h"
 
 using namespace crypto::OpenSSL;
 

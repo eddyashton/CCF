@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/endpoints/authentication/authentication_types.h"
-#include "ccf/endpoints/authentication/cose_auth.h"
 #include "node/rpc/gov_logging.h"
+#include "ccf/endpoints/authentication/cose_auth.h"
+#include "ccf/endpoints/authentication/authentication_types.h"
 
 namespace ccf::gov::endpoints::detail
 {

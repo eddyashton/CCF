@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "ccf/tx.h"
-
-#include "ccf/ccf_assert.h"
-#include "kv/compacted_version_conflict.h"
-#include "kv/kv_types.h"
-#include "kv/tx_pimpl.h"
 #include "kv/untyped_map.h"
+#include "kv/tx_pimpl.h"
+#include "kv/kv_types.h"
+#include "kv/compacted_version_conflict.h"
+#include "ccf/ccf_assert.h"
+
+#include "ccf/tx.h"
 
 namespace kv
 {

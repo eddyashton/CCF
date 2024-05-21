@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/json.h"
-#include "ccf/kv/map.h"
 #include "ccf/service/tables/proposals.h"
+#include "ccf/kv/map.h"
+#include "ccf/ds/json.h"
 
 namespace ccf
 {

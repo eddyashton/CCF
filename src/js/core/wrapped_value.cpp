@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "js/core/wrapped_value.h"
-
 #include "js/core/constants.h"
+
+#include "js/core/wrapped_value.h"
 
 namespace ccf::js::core
 {

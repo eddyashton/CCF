@@ -1,16 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "ccf/receipt.h"
-
-#include "ccf/crypto/key_pair.h"
-#include "ccf/service/tables/nodes.h"
-#include "crypto/openssl/hash.h"
-#include "ds/x509_time_fmt.h"
-
-#include <doctest/doctest.h>
-#include <iostream>
 #include <random>
+#include <iostream>
+#include <doctest/doctest.h>
+
+#include "ds/x509_time_fmt.h"
+#include "crypto/openssl/hash.h"
+#include "ccf/service/tables/nodes.h"
+#include "ccf/crypto/key_pair.h"
+
+#include "ccf/receipt.h"
 
 std::random_device rand_device;
 std::default_random_engine rand_engine(rand_device());

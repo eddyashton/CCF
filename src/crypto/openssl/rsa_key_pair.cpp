@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "crypto/openssl/rsa_key_pair.h"
-
-#include "crypto/openssl/hash.h"
 #include "openssl_wrappers.h"
+#include "crypto/openssl/hash.h"
+
+#include "crypto/openssl/rsa_key_pair.h"
 
 #if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
 #  include <openssl/core_names.h>

@@ -3,9 +3,9 @@
 #include "ccf/ds/json.h"
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest/doctest.h>
-#include <nlohmann/json.hpp>
 #include <vector>
+#include <nlohmann/json.hpp>
+#include <doctest/doctest.h>
 
 struct Bar
 {

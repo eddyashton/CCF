@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/logger.h"
-#include "ring_buffer.h"
-
-#include <atomic>
-#include <condition_variable>
-#include <map>
 #include <stdexcept>
+#include <map>
+#include <condition_variable>
+#include <atomic>
+
+#include "ring_buffer.h"
+#include "ccf/ds/logger.h"
 
 namespace messaging
 {

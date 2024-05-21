@@ -2,19 +2,19 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/json_schema.h"
-#include "ccf/endpoint.h"
-#include "ccf/endpoint_context.h"
-#include "ccf/pal/locking.h"
-#include "ccf/rpc_context.h"
-#include "ccf/tx.h"
-
-#include <charconv>
-#include <functional>
-#include <llhttp/llhttp.h>
-#include <nlohmann/json.hpp>
-#include <regex>
 #include <set>
+#include <regex>
+#include <nlohmann/json.hpp>
+#include <llhttp/llhttp.h>
+#include <functional>
+#include <charconv>
+
+#include "ccf/tx.h"
+#include "ccf/rpc_context.h"
+#include "ccf/pal/locking.h"
+#include "ccf/endpoint_context.h"
+#include "ccf/endpoint.h"
+#include "ccf/ds/json_schema.h"
 
 namespace kv
 {

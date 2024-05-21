@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/hash_provider.h"
-#include "openssl_wrappers.h"
-
-#include <openssl/evp.h>
-#include <openssl/kdf.h>
 #include <span>
+#include <openssl/kdf.h>
+#include <openssl/evp.h>
+
+#include "openssl_wrappers.h"
+#include "ccf/crypto/hash_provider.h"
 
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>

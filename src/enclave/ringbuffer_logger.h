@@ -3,6 +3,8 @@
 #pragma once
 
 #include "ccf/ds/logger.h"
+#include "enclave/interface.h"
+#include "ds/ring_buffer_types.h"
 
 namespace ccf
 {

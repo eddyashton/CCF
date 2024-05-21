@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "ccf/endpoints/authentication/jwt_auth.h"
-
-#include "ccf/pal/locking.h"
-#include "ccf/rpc_context.h"
-#include "ccf/service/tables/jwt.h"
-#include "ds/lru.h"
-#include "enclave/enclave_time.h"
 #include "http/http_jwt.h"
+#include "enclave/enclave_time.h"
+#include "ds/lru.h"
+#include "ccf/service/tables/jwt.h"
+#include "ccf/rpc_context.h"
+#include "ccf/pal/locking.h"
+
+#include "ccf/endpoints/authentication/jwt_auth.h"
 
 namespace ccf
 {

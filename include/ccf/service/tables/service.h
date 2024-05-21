@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/pem.h"
-#include "ccf/ds/json.h"
-#include "ccf/service/map.h"
 #include "ccf/tx_id.h"
+#include "ccf/service/map.h"
+#include "ccf/ds/json.h"
+#include "ccf/crypto/pem.h"
 
 namespace ccf
 {

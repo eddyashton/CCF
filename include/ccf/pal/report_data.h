@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/sha256_hash.h"
-
-#include <array>
-#include <span>
 #include <type_traits>
+#include <span>
+#include <array>
+
+#include "ccf/crypto/sha256_hash.h"
 
 namespace ccf::pal
 {

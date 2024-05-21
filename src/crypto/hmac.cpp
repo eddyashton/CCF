@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include "ccf/crypto/hmac.h"
+#include <openssl/hmac.h>
 
 #include "crypto/openssl/hash.h"
 
-#include <openssl/hmac.h>
+#include "ccf/crypto/hmac.h"
 
 namespace crypto
 {

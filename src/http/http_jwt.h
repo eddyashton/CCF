@@ -2,15 +2,15 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/base64.h"
-#include "ccf/crypto/verifier.h"
-#include "ccf/http_consts.h"
 #include "http_parser.h"
+#include "ccf/http_consts.h"
+#include "ccf/crypto/verifier.h"
+#include "ccf/crypto/base64.h"
 
 #define FMT_HEADER_ONLY
-#include <fmt/format.h>
-#include <optional>
 #include <string>
+#include <optional>
+#include <fmt/format.h>
 
 namespace http
 {

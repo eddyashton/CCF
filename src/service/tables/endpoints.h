@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/endpoint.h"
 #include "ccf/service/map.h"
+#include "ccf/endpoint.h"
 
 namespace ccf
 {

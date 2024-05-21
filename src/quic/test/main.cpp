@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include "tls/tls.h"
-
-#include <doctest/doctest.h>
 #include <openssl/ssl.h>
+#include <doctest/doctest.h>
+
+#include "tls/tls.h"
 
 using namespace std;
 using namespace crypto;

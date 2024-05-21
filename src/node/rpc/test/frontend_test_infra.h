@@ -2,22 +2,22 @@
 // Licensed under the Apache 2.0 License.
 #define DOCTEST_CONFIG_IMPLEMENT
 #define DOCTEST_CONFIG_NO_EXCEPTIONS_BUT_WITH_ALL_ASSERTS
-#include "ccf/app_interface.h"
-#include "ccf/crypto/rsa_key_pair.h"
-#include "ccf/ds/logger.h"
-#include "ccf/serdes.h"
-#include "ccf/service/signed_req.h"
-#include "ds/files.h"
-#include "kv/test/null_encryptor.h"
-#include "kv/test/stub_consensus.h"
-#include "node/history.h"
-#include "node/rpc/member_frontend.h"
-#include "node/rpc/user_frontend.h"
-#include "node_stub.h"
-
-#include <doctest/doctest.h>
-#include <iostream>
 #include <string>
+#include <iostream>
+#include <doctest/doctest.h>
+
+#include "node_stub.h"
+#include "node/rpc/user_frontend.h"
+#include "node/rpc/member_frontend.h"
+#include "node/history.h"
+#include "kv/test/stub_consensus.h"
+#include "kv/test/null_encryptor.h"
+#include "ds/files.h"
+#include "ccf/service/signed_req.h"
+#include "ccf/serdes.h"
+#include "ccf/ds/logger.h"
+#include "ccf/crypto/rsa_key_pair.h"
+#include "ccf/app_interface.h"
 
 using namespace ccfapp;
 using namespace ccf;
@@ -36,9 +36,9 @@ auto valid_to = crypto::compute_cert_valid_to_string(
   valid_from, certificate_validity_period_days);
 
 auto kp = crypto::make_key_pair();
-auto member_cert = kp -> self_sign("CN=name_member", valid_from, valid_to);
+auto member_cert = kp->self_sign("CN=name_member", valid_from, valid_to);
 auto verifier_mem = crypto::make_verifier(member_cert);
-auto user_cert = kp -> self_sign("CN=name_user", valid_from, valid_to);
+auto user_cert = kp->self_sign("CN=name_user", valid_from, valid_to);
 auto dummy_enc_pubk = crypto::make_rsa_key_pair() -> public_key_pem();
 
 auto encryptor = std::make_shared<kv::NullTxEncryptor>();

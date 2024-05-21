@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/ccf_exception.h"
-#include "enclave/forwarder_types.h"
-#include "enclave/rpc_map.h"
-#include "http/http_rpc_context.h"
-#include "kv/kv_types.h"
 #include "node/node_to_node.h"
+#include "kv/kv_types.h"
+#include "http/http_rpc_context.h"
+#include "enclave/rpc_map.h"
+#include "enclave/forwarder_types.h"
+#include "ccf/ds/ccf_exception.h"
 
 namespace ccf
 {

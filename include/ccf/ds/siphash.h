@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <cstddef>
-#include <cstdint>
 #include <vector>
+#include <cstdint>
+#include <cstddef>
 
 // C++ port of reference implementation
 namespace siphash

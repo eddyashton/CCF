@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/node/node_configuration_interface.h"
-#include "node/rpc/node_interface.h"
-
 #include <regex>
+
+#include "node/rpc/node_interface.h"
+#include "ccf/node/node_configuration_interface.h"
 
 namespace ccf
 {

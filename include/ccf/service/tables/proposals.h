@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/json.h"
-#include "ccf/service/map.h"
-
-#include <unordered_map>
 #include <vector>
+#include <unordered_map>
+
+#include "ccf/service/map.h"
+#include "ccf/ds/json.h"
 
 namespace ccf
 {

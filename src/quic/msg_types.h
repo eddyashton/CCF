@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ds/ring_buffer_types.h"
-
 #include <sys/socket.h>
+
+#include "ds/ring_buffer_types.h"
 
 namespace udp
 {

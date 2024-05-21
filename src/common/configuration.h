@@ -3,24 +3,24 @@
 
 #pragma once
 
-#include "ccf/crypto/curve.h"
-#include "ccf/crypto/pem.h"
-#include "ccf/ds/logger.h"
-#include "ccf/ds/unit_strings.h"
-#include "ccf/node/startup_config.h"
-#include "ccf/pal/attestation_sev_snp_endorsements.h"
-#include "ccf/service/node_info_network.h"
-#include "ccf/service/tables/members.h"
-#include "common/enclave_interface_types.h"
-#include "consensus/consensus_types.h"
-#include "ds/oversized.h"
-#include "enclave/consensus_type.h"
-#include "enclave/reconfiguration_type.h"
-#include "service/tables/config.h"
-
-#include <optional>
-#include <string>
 #include <vector>
+#include <string>
+#include <optional>
+
+#include "service/tables/config.h"
+#include "enclave/reconfiguration_type.h"
+#include "enclave/consensus_type.h"
+#include "ds/oversized.h"
+#include "consensus/consensus_types.h"
+#include "common/enclave_interface_types.h"
+#include "ccf/service/tables/members.h"
+#include "ccf/service/node_info_network.h"
+#include "ccf/pal/attestation_sev_snp_endorsements.h"
+#include "ccf/node/startup_config.h"
+#include "ccf/ds/unit_strings.h"
+#include "ccf/ds/logger.h"
+#include "ccf/crypto/pem.h"
+#include "ccf/crypto/curve.h"
 
 DECLARE_JSON_ENUM(
   LoggerLevel,

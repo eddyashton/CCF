@@ -2,19 +2,20 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/base64.h"
-#include "ccf/ds/json.h"
-#include "ccf/service/tables/uvm_endorsements.h"
-#include "crypto/openssl/cose_verifier.h"
-#include "node/cose_common.h"
-#include "node/did.h"
-
-#include <didx509cpp/didx509cpp.h>
-#include <nlohmann/json.hpp>
-#include <qcbor/qcbor.h>
-#include <qcbor/qcbor_spiffy_decode.h>
-#include <span>
 #include <t_cose/t_cose_sign1_verify.h>
+#include <span>
+#include <qcbor/qcbor_spiffy_decode.h>
+#include <qcbor/qcbor.h>
+#include <nlohmann/json.hpp>
+#include <didx509cpp/didx509cpp.h>
+
+#include "node/did.h"
+#include "node/cose_common.h"
+#include "crypto/openssl/cose_verifier.h"
+#include "ccf/service/tables/uvm_endorsements.h"
+#include "ccf/pal/measurement.h"
+#include "ccf/ds/json.h"
+#include "ccf/crypto/base64.h"
 
 namespace ccf
 {

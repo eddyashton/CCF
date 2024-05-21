@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/json.h"
-#include "ccf/ds/unit_strings.h"
-
 #include <optional>
+
+#include "ccf/ds/unit_strings.h"
+#include "ccf/ds/json.h"
 
 namespace http
 {

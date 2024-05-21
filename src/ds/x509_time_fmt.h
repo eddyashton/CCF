@@ -3,13 +3,13 @@
 #pragma once
 
 #define FMT_HEADER_ONLY
-#include <chrono>
-#include <fmt/chrono.h>
-#include <fmt/format.h>
-#include <iomanip>
-#include <sstream>
-#include <time.h>
 #include <vector>
+#include <time.h>
+#include <sstream>
+#include <iomanip>
+#include <fmt/format.h>
+#include <fmt/chrono.h>
+#include <chrono>
 
 namespace ds
 {

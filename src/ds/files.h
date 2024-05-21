@@ -2,19 +2,19 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <cstring>
-#include <fstream>
-#include <glob.h>
-#include <iostream>
-#include <nlohmann/json.hpp>
-#include <optional>
-#include <sstream>
-#include <string>
 #include <vector>
+#include <string>
+#include <sstream>
+#include <optional>
+#include <nlohmann/json.hpp>
+#include <iostream>
+#include <glob.h>
+#include <fstream>
+#include <cstring>
 
 #define FMT_HEADER_ONLY
-#include <fmt/format.h>
 #include <fmt/ostream.h>
+#include <fmt/format.h>
 
 namespace files
 {

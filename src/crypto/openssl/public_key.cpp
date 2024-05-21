@@ -1,26 +1,26 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
+#include <string>
+#include <stdexcept>
+#include <openssl/x509v3.h>
+#include <openssl/x509.h>
+#include <openssl/pem.h>
+#include <openssl/ossl_typ.h>
+#include <openssl/evp.h>
+#include <openssl/err.h>
+#include <openssl/engine.h>
+#include <openssl/ec.h>
+
+#include "openssl_wrappers.h"
+#include "crypto/openssl/hash.h"
+#include "ccf/ds/logger.h"
+
 #include "crypto/openssl/public_key.h"
 
-#include "ccf/ds/logger.h"
-#include "crypto/openssl/hash.h"
-#include "openssl_wrappers.h"
-
-#include <openssl/ec.h>
-#include <openssl/engine.h>
-#include <openssl/err.h>
-#include <openssl/evp.h>
-#include <openssl/ossl_typ.h>
-#include <openssl/pem.h>
-#include <openssl/x509.h>
-#include <openssl/x509v3.h>
-#include <stdexcept>
-#include <string>
-
 #if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
-#  include <openssl/core_names.h>
 #  include <openssl/param_build.h>
+#  include <openssl/core_names.h>
 #endif
 
 namespace crypto

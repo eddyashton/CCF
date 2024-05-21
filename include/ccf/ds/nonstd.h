@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <algorithm>
-#include <array>
-#include <cctype>
-#include <filesystem>
-#include <string>
-#include <string_view>
-#include <type_traits>
 #include <vector>
+#include <type_traits>
+#include <string_view>
+#include <string>
+#include <filesystem>
+#include <cctype>
+#include <array>
+#include <algorithm>
 
 /**
  * This file defines various type traits and utils that are not available in the

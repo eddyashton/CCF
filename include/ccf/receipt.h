@@ -3,15 +3,15 @@
 
 #pragma once
 
-#include "ccf/claims_digest.h"
-#include "ccf/crypto/pem.h"
-#include "ccf/crypto/sha256_hash.h"
-#include "ccf/ds/json.h"
-#include "ccf/ds/openapi.h"
-#include "ccf/entity_id.h"
-
-#include <optional>
 #include <string>
+#include <optional>
+
+#include "ccf/entity_id.h"
+#include "ccf/ds/openapi.h"
+#include "ccf/ds/json.h"
+#include "ccf/crypto/sha256_hash.h"
+#include "ccf/crypto/pem.h"
+#include "ccf/claims_digest.h"
 
 namespace ccf
 {
@@ -159,10 +159,10 @@ namespace ccf
   void add_schema_components(
     T& helper, nlohmann::json& schema, const ProofReceipt::Components* comp)
   {
-    helper.template add_schema_component<decltype(
-      ProofReceipt::Components::write_set_digest)>();
-    helper.template add_schema_component<decltype(
-      ProofReceipt::Components::claims_digest)>();
+    helper.template add_schema_component<
+      decltype(ProofReceipt::Components::write_set_digest)>();
+    helper.template add_schema_component<
+      decltype(ProofReceipt::Components::claims_digest)>();
 
     fill_json_schema(schema, comp);
   }

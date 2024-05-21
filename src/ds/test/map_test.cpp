@@ -1,17 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include "ccf/byte_vector.h"
-#include "ccf/ds/logger.h"
-#include "ccf/kv/serialisers/serialised_entry.h"
-#include "ds/champ_map.h"
-#include "ds/rb_map.h"
-#include "ds/std_formatters.h"
-#include "kv/untyped_change_set.h"
-
-#include <doctest/doctest.h>
-#include <random>
 #include <unordered_map>
+#include <random>
+#include <doctest/doctest.h>
+
+#include "kv/untyped_change_set.h"
+#include "ds/std_formatters.h"
+#include "ds/rb_map.h"
+#include "ds/champ_map.h"
+#include "ccf/kv/serialisers/serialised_entry.h"
+#include "ccf/ds/logger.h"
+#include "ccf/byte_vector.h"
 
 template <class K>
 struct CollisionHash

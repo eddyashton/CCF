@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/rsa_key_pair.h"
-#include "ccf/crypto/rsa_public_key.h"
-#include "crypto/openssl/rsa_public_key.h"
-
-#include <optional>
-#include <string>
 #include <vector>
+#include <string>
+#include <optional>
+
+#include "crypto/openssl/rsa_public_key.h"
+#include "ccf/crypto/rsa_public_key.h"
+#include "ccf/crypto/rsa_key_pair.h"
 
 namespace crypto
 {

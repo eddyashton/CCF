@@ -2,16 +2,16 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/logger.h"
-#include "ds/messaging.h"
-#include "ds/ring_buffer.h"
-#include "ds/thread_messaging.h"
-#include "enclave/session.h"
-#include "tls/context.h"
-#include "tls/msg_types.h"
-#include "tls/tls.h"
-
 #include <exception>
+
+#include "tls/tls.h"
+#include "tls/msg_types.h"
+#include "tls/context.h"
+#include "enclave/session.h"
+#include "ds/thread_messaging.h"
+#include "ds/ring_buffer.h"
+#include "ds/messaging.h"
+#include "ccf/ds/logger.h"
 
 namespace ccf
 {

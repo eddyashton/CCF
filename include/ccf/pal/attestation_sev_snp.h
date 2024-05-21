@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/pal/attestation_sev_snp_endorsements.h"
-#include "ccf/pal/measurement.h"
-#include "ccf/pal/report_data.h"
-
-#include <array>
-#include <map>
 #include <string>
+#include <map>
+#include <array>
+
+#include "ccf/pal/report_data.h"
+#include "ccf/pal/measurement.h"
+#include "ccf/pal/attestation_sev_snp_endorsements.h"
 
 namespace ccf::pal::snp
 {

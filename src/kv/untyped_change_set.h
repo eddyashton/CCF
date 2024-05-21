@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/byte_vector.h"
-#include "ccf/kv/hooks.h"
-#include "ccf/kv/untyped.h"
-#include "kv/kv_types.h"
 #include "kv/version_v.h"
+#include "kv/kv_types.h"
+#include "ccf/kv/untyped.h"
+#include "ccf/kv/hooks.h"
+#include "ccf/byte_vector.h"
 
 #ifndef KV_STATE_RB
 #  include "ds/champ_map.h"

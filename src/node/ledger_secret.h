@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/entropy.h"
-#include "ccf/crypto/hmac.h"
-#include "ccf/crypto/symmetric_key.h"
-#include "kv/kv_types.h"
-#include "service/tables/secrets.h"
-#include "service/tables/shares.h"
-
 #include <openssl/crypto.h>
+
+#include "service/tables/shares.h"
+#include "service/tables/secrets.h"
+#include "kv/kv_types.h"
+#include "ccf/crypto/symmetric_key.h"
+#include "ccf/crypto/hmac.h"
+#include "ccf/crypto/entropy.h"
 
 namespace ccf
 {

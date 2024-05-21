@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include "../oversized.h"
-
 #include <doctest/doctest.h>
+
+#include "../oversized.h"
 
 enum : ringbuffer::Message
 {

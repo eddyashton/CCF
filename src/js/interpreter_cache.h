@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "./interpreter_cache_interface.h"
-#include "ccf/pal/locking.h"
 #include "ds/lru.h"
+#include "ccf/pal/locking.h"
+#include "./interpreter_cache_interface.h"
 
 namespace ccf::js
 {

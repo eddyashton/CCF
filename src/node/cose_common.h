@@ -3,10 +3,11 @@
 
 #pragma once
 
-#include <qcbor/qcbor.h>
-#include <stdexcept>
-#include <string>
 #include <t_cose/t_cose_common.h>
+#include <string>
+#include <stdexcept>
+#include <qcbor/qcbor.h>
+#include <span>
 
 namespace ccf::cose
 {

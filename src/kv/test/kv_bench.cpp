@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #define PICOBENCH_IMPLEMENT
 
-#include "crypto/openssl/hash.h"
-#include "kv/store.h"
-#include "kv/test/stub_consensus.h"
-#include "node/encryptor.h"
-
-#include <picobench/picobench.hpp>
 #include <string>
+#include <picobench/picobench.hpp>
+
+#include "node/encryptor.h"
+#include "kv/test/stub_consensus.h"
+#include "kv/store.h"
+#include "crypto/openssl/hash.h"
 
 using KeyType = kv::serialisers::SerialisedEntry;
 using ValueType = kv::serialisers::SerialisedEntry;

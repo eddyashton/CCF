@@ -2,17 +2,17 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/symmetric_key.h"
-#include "ccf/pal/locking.h"
-#include "ccf/tx.h"
-#include "kv/kv_types.h"
-#include "ledger_secret.h"
-#include "service/tables/secrets.h"
-#include "service/tables/shares.h"
-
-#include <algorithm>
-#include <map>
 #include <optional>
+#include <map>
+#include <algorithm>
+
+#include "service/tables/shares.h"
+#include "service/tables/secrets.h"
+#include "ledger_secret.h"
+#include "kv/kv_types.h"
+#include "ccf/tx.h"
+#include "ccf/pal/locking.h"
+#include "ccf/crypto/symmetric_key.h"
 
 namespace ccf
 {

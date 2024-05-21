@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/pem.h"
-#include "ccf/endpoints/authentication/authentication_types.h"
-#include "ccf/entity_id.h"
 #include "ccf/service/signed_req.h"
+#include "ccf/entity_id.h"
+#include "ccf/endpoints/authentication/authentication_types.h"
+#include "ccf/crypto/pem.h"
 
 namespace ccf
 {

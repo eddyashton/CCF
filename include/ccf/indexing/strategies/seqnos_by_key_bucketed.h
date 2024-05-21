@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/indexing/strategies/visit_each_entry_in_map.h"
-#include "ccf/node_context.h"
 #include "ccf/seq_no_collection.h"
+#include "ccf/node_context.h"
+#include "ccf/indexing/strategies/visit_each_entry_in_map.h"
 
 namespace ccf::indexing::strategies
 {

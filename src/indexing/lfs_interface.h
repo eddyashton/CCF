@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/node_subsystem_interface.h"
-
-#include <memory>
-#include <string>
 #include <vector>
+#include <string>
+#include <memory>
+
+#include "ccf/node_subsystem_interface.h"
 
 /// Defines a simple Large-File System (LFS) interface for offloading large
 /// blobs of data to the host, and later requesting them asynchronously. These

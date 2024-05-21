@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "crypto/openssl/symmetric_key.h"
-
-#include "ccf/crypto/symmetric_key.h"
-#include "ccf/ds/logger.h"
-#include "crypto/openssl/openssl_wrappers.h"
-#include "ds/thread_messaging.h"
-
-#include <openssl/aes.h>
 #include <openssl/evp.h>
+#include <openssl/aes.h>
+
+#include "ds/thread_messaging.h"
+#include "crypto/openssl/openssl_wrappers.h"
+#include "ccf/ds/logger.h"
+#include "ccf/crypto/symmetric_key.h"
+
+#include "crypto/openssl/symmetric_key.h"
 
 namespace crypto
 {

@@ -2,15 +2,15 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "apply_changes.h"
-#include "ccf/ds/hex.h"
-#include "ccf/tx.h"
-#include "kv/tx_pimpl.h"
-#include "kv_serialiser.h"
-#include "kv_types.h"
-#include "node/rpc/claims.h"
-
 #include <list>
+
+#include "node/rpc/claims.h"
+#include "kv_types.h"
+#include "kv_serialiser.h"
+#include "kv/tx_pimpl.h"
+#include "ccf/tx.h"
+#include "ccf/ds/hex.h"
+#include "apply_changes.h"
 
 namespace kv
 {

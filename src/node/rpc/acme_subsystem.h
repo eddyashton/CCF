@@ -2,15 +2,15 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/http_header_map.h"
-#include "ccf/http_status.h"
-#include "ccf/node/acme_subsystem_interface.h"
-#include "ccf/rest_verb.h"
-#include "ccf/service/node_info_network.h"
-#include "http/http_parser.h"
-#include "node/rpc/node_interface.h"
-
 #include <optional>
+
+#include "node/rpc/node_interface.h"
+#include "http/http_parser.h"
+#include "ccf/service/node_info_network.h"
+#include "ccf/rest_verb.h"
+#include "ccf/node/acme_subsystem_interface.h"
+#include "ccf/http_status.h"
+#include "ccf/http_header_map.h"
 
 namespace ccf
 {

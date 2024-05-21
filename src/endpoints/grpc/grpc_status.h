@@ -2,10 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/http_consts.h"
-#include "ccf/http_header_map.h"
-
 #include <string>
+
+#include "ccf/http_header_map.h"
+#include "ccf/http_consts.h"
+#include "ccf/http_status.h"
 
 #define GRPC_STATUS_MAP(XX) \
   XX(0, OK, "Ok") \

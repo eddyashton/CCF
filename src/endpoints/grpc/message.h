@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ds/serialized.h"
-
-#include <arpa/inet.h>
 #include <vector>
+#include <arpa/inet.h>
+
+#include "ds/serialized.h"
 
 namespace ccf::grpc
 {

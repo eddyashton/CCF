@@ -2,17 +2,17 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/ecdsa.h"
-#include "ccf/crypto/pem.h"
-#include "ccf/crypto/verifier.h"
-#include "ccf/ds/hex.h"
-#include "ccf/ds/logger.h"
-#include "ccf/ds/quote_info.h"
-#include "ccf/pal/measurement.h"
-#include "ccf/pal/snp_ioctl.h"
-
-#include <fcntl.h>
 #include <functional>
+#include <fcntl.h>
+
+#include "ccf/pal/snp_ioctl.h"
+#include "ccf/pal/measurement.h"
+#include "ccf/ds/quote_info.h"
+#include "ccf/ds/logger.h"
+#include "ccf/ds/hex.h"
+#include "ccf/crypto/verifier.h"
+#include "ccf/crypto/pem.h"
+#include "ccf/crypto/ecdsa.h"
 
 #if !defined(INSIDE_ENCLAVE) || defined(VIRTUAL_ENCLAVE)
 #  include <sys/ioctl.h>

@@ -2,22 +2,22 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ccf_assert.h"
-#include "ccf/historical_queries_interface.h"
-#include "ccf/pal/locking.h"
-#include "consensus/ledger_enclave_types.h"
-#include "kv/store.h"
-#include "node/encryptor.h"
-#include "node/history.h"
-#include "node/ledger_secrets.h"
-#include "node/rpc/node_interface.h"
-#include "node/tx_receipt_impl.h"
-#include "service/tables/node_signature.h"
-
-#include <list>
-#include <map>
-#include <memory>
 #include <set>
+#include <memory>
+#include <map>
+#include <list>
+
+#include "service/tables/node_signature.h"
+#include "node/tx_receipt_impl.h"
+#include "node/rpc/node_interface.h"
+#include "node/ledger_secrets.h"
+#include "node/history.h"
+#include "node/encryptor.h"
+#include "kv/store.h"
+#include "consensus/ledger_enclave_types.h"
+#include "ccf/pal/locking.h"
+#include "ccf/historical_queries_interface.h"
+#include "ccf/ccf_assert.h"
 
 #ifdef ENABLE_HISTORICAL_VERBOSE_LOGGING
 #  define HISTORICAL_LOG(...) LOG_INFO_FMT(__VA_ARGS__)

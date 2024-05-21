@@ -2,19 +2,19 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/pem.h"
-#include "ccf/ds/quote_info.h"
-#include "ccf/node_startup_state.h"
-#include "ccf/service/acme_client_config.h"
-#include "ccf/service/node_info_network.h"
-#include "ccf/service/tables/code_id.h"
-#include "common/configuration.h"
-#include "http/http_builder.h"
-#include "http/http_parser.h"
-#include "kv/store.h"
-#include "node/rpc/gov_effects_interface.h"
-#include "node/rpc/node_operation_interface.h"
 #include "node/session_metrics.h"
+#include "node/rpc/node_operation_interface.h"
+#include "node/rpc/gov_effects_interface.h"
+#include "kv/store.h"
+#include "http/http_parser.h"
+#include "http/http_builder.h"
+#include "common/configuration.h"
+#include "ccf/service/tables/code_id.h"
+#include "ccf/service/node_info_network.h"
+#include "ccf/service/acme_client_config.h"
+#include "ccf/node_startup_state.h"
+#include "ccf/ds/quote_info.h"
+#include "ccf/crypto/pem.h"
 
 namespace ccf
 {

@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/http_query.h"
-#include "ccf/json_handler.h"
-
 #include <string>
+
+#include "ccf/json_handler.h"
+#include "ccf/http_query.h"
 
 namespace ccf::gov::endpoints
 {

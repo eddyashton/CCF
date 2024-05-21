@@ -2,10 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/json.h"
-#include "ds/serialized.h"
-
 #include <vector>
+
+#include "kv/kv_types.h"
+#include "ds/serialized.h"
+#include "ccf/ds/json.h"
+#include "ccf/crypto/sha256_hash.h"
 
 namespace ccf
 {

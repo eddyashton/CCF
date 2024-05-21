@@ -3,12 +3,12 @@
 #pragma once
 
 #define FMT_HEADER_ONLY
-#include <fmt/format.h>
-#include <fmt/ostream.h>
-#include <fmt/std.h>
-#include <limits>
-#include <map>
 #include <thread>
+#include <map>
+#include <limits>
+#include <fmt/std.h>
+#include <fmt/ostream.h>
+#include <fmt/format.h>
 
 namespace threading
 {

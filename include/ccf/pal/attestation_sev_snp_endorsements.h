@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/json.h"
-
-#include <list>
-#include <map>
-#include <string>
 #include <vector>
+#include <string>
+#include <map>
+#include <list>
+
+#include "ccf/ds/json.h"
 
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>

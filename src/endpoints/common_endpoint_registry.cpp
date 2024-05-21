@@ -1,20 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "ccf/common_endpoint_registry.h"
-
-#include "ccf/common_auth_policies.h"
-#include "ccf/ds/nonstd.h"
-#include "ccf/historical_queries_adapter.h"
-#include "ccf/http_consts.h"
-#include "ccf/http_query.h"
-#include "ccf/json_handler.h"
-#include "ccf/node_context.h"
-#include "ccf/service/tables/code_id.h"
-#include "ccf/service/tables/host_data.h"
-#include "ccf/service/tables/snp_measurements.h"
-#include "node/rpc/call_types.h"
 #include "node/rpc/serialization.h"
+#include "node/rpc/call_types.h"
+#include "ccf/service/tables/snp_measurements.h"
+#include "ccf/service/tables/host_data.h"
+#include "ccf/service/tables/code_id.h"
+#include "ccf/node_context.h"
+#include "ccf/json_handler.h"
+#include "ccf/http_query.h"
+#include "ccf/http_consts.h"
+#include "ccf/historical_queries_adapter.h"
+#include "ccf/ds/nonstd.h"
+#include "ccf/common_auth_policies.h"
+
+#include "ccf/common_endpoint_registry.h"
 
 namespace ccf
 {

@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include "ccf/ds/openapi.h"
-
-#include "ccf/ds/logger.h"
 #include "ccf/http_consts.h"
+#include "ccf/ds/logger.h"
+
+#include "ccf/ds/openapi.h"
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>

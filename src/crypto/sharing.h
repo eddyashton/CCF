@@ -2,17 +2,17 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <cstddef>
-#include <cstdint>
 #include <span>
+#include <cstdint>
+#include <cstddef>
 
 #define FMT_HEADER_ONLY
-#include "ccf/crypto/hkdf.h"
-#include "ccf/crypto/sha256.h"
-#include "ds/serialized.h"
-#include "openssl/crypto.h"
-
 #include <fmt/format.h>
+
+#include "openssl/crypto.h"
+#include "ds/serialized.h"
+#include "ccf/crypto/sha256.h"
+#include "ccf/crypto/hkdf.h"
 
 namespace crypto
 {

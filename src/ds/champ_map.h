@@ -2,15 +2,15 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ccf_assert.h"
-#include "ccf/ds/hash.h"
-#include "ds/map_serializers.h"
-
-#include <algorithm>
-#include <array>
-#include <memory>
-#include <optional>
 #include <vector>
+#include <optional>
+#include <memory>
+#include <array>
+#include <algorithm>
+
+#include "ds/map_serializers.h"
+#include "ccf/ds/hash.h"
+#include "ccf/ccf_assert.h"
 
 namespace champ
 {

@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include "ccf/ds/hash.h"
-
-#include "ccf/ds/siphash.h"
-#include "siphash_known_hashes.h"
-
-#include <doctest/doctest.h>
-#include <iostream>
 #include <set>
+#include <iostream>
+#include <doctest/doctest.h>
+
+#include "siphash_known_hashes.h"
+#include "ccf/ds/siphash.h"
+
+#include "ccf/ds/hash.h"
 
 TEST_CASE("SipHash-2-4 correctness" * doctest::test_suite("hash"))
 {

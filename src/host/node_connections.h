@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "consensus/aft/raft_types.h"
-#include "ledger.h"
-#include "node/node_types.h"
-#include "tcp.h"
-#include "timer.h"
-
 #include <unordered_map>
+
+#include "timer.h"
+#include "tcp.h"
+#include "node/node_types.h"
+#include "ledger.h"
+#include "consensus/aft/raft_types.h"
 
 namespace asynchost
 {

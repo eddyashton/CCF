@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/base_endpoint_registry.h"
-#include "node/gov/api_version.h"
-#include "node/gov/handlers/helpers.h"
 #include "node/share_manager.h"
+#include "node/gov/handlers/helpers.h"
+#include "node/gov/api_version.h"
+#include "ccf/base_endpoint_registry.h"
 
 namespace ccf::gov::endpoints
 {

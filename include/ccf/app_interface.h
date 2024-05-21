@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/actors.h"
-#include "ccf/ccf_deprecated.h"
-#include "ccf/common_endpoint_registry.h"
-#include "ccf/js_plugin.h"
-#include "ccf/node_context.h"
-
-#include <memory>
 #include <vector>
+#include <memory>
+
+#include "ccf/node_context.h"
+#include "ccf/js_plugin.h"
+#include "ccf/common_endpoint_registry.h"
+#include "ccf/ccf_deprecated.h"
+#include "ccf/actors.h"
 
 // Forward declarations, can be removed with deprecation
 namespace ccf

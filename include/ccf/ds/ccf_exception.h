@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/logger.h"
-
-#include <exception>
 #include <string>
+#include <exception>
+
+#include "ccf/ds/logger.h"
 
 namespace ccf
 {

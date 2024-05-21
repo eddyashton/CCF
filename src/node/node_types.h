@@ -2,13 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/crypto/sha256_hash.h"
-#include "ccf/frame_format.h"
-#include "ccf/tx_id.h"
-#include "ds/ring_buffer_types.h"
-
-#include <cstdint>
 #include <limits>
+#include <cstdint>
+
+#include "ds/ring_buffer_types.h"
+#include "ccf/tx_id.h"
+#include "ccf/frame_format.h"
+#include "ccf/entity_id.h"
+#include "ccf/crypto/sha256_hash.h"
 
 namespace ccf
 {

@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "js/extensions/ccf/rpc.h"
-
-#include "ccf/rpc_context.h"
-#include "js/core/context.h"
-
 #include <quickjs/quickjs.h>
+
+#include "js/core/context.h"
+#include "ccf/rpc_context.h"
+
+#include "js/extensions/ccf/rpc.h"
 
 namespace ccf::js::extensions
 {
