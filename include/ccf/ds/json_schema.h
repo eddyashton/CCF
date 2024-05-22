@@ -3,6 +3,7 @@
 #pragma once
 
 #include <optional>
+#include <limits>
 
 #include "ccf/ds/nonstd.h"
 #define FMT_HEADER_ONLY

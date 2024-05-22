@@ -4,6 +4,7 @@
 
 #include "ccf/service/service_config.h"
 #include "ccf/service/reconfiguration_type.h"
+#include "ccf/service/map.h"
 #include "ccf/service/consensus_type.h"
 #include "ccf/ds/json.h"
 

@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "ccf/service/map.h"
+#include "ccf/entity_id.h"
 
 namespace ccf
 {

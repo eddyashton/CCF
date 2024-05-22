@@ -5,8 +5,8 @@
 #include <vector>
 #include <string>
 
-#include "kv/kv_types.h"
 #include "node_signature.h"
+#include "kv/kv_types.h"
 #include "ccf/service/map.h"
 
 namespace ccf

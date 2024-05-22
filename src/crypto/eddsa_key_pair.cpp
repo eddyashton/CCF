@@ -8,9 +8,9 @@
 #include <cstring>
 
 #include "openssl/public_key.h"
-#include "openssl/eddsa_key_pair.h"
-
 #include "ccf/crypto/eddsa_key_pair.h"
+
+#include "openssl/eddsa_key_pair.h"
 
 namespace crypto
 {

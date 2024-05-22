@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "crypto/openssl/verifier.h"
-
 #include "ccf/crypto/verifier.h"
+
+#include "crypto/openssl/verifier.h"
 
 namespace crypto
 {

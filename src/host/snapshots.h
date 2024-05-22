@@ -9,8 +9,8 @@
 #include <charconv>
 
 #include "time_bound_logger.h"
-#include "consensus/ledger_enclave_types.h"
 #include "ds/messaging.h"
+#include "consensus/ledger_enclave_types.h"
 #include "ccf/ds/nonstd.h"
 
 namespace fs = std::filesystem;

@@ -5,6 +5,8 @@
 #include <quickjs/quickjs.h>
 
 #include "js/core/wrapped_value.h"
+#include "js/core/context.h"
+#include "ccf/version.h"
 #include "ccf/tx.h"
 #include "ccf/service/tables/modules.h"
 #include "ccf/ds/logger.h"

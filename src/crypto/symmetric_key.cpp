@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 
 #include "ds/serialized.h"
-#include "ccf/crypto/symmetric_key.h"
+#include "crypto/openssl/symmetric_key.h"
 #include "ccf/crypto/rsa_key_pair.h"
 
-#include "crypto/openssl/symmetric_key.h"
+#include "ccf/crypto/symmetric_key.h"
 
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>

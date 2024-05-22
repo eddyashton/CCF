@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/actors.h"
-#include "ccf/http_responder.h"
-#include "ccf/odata_error.h"
-#include "ccf/rpc_context.h"
-#include "enclave/rpc_map.h"
-#include "http_parser.h"
 #include "node/rpc/rpc_context_impl.h"
+#include "http_parser.h"
+#include "enclave/rpc_map.h"
+#include "ccf/rpc_context.h"
+#include "ccf/odata_error.h"
+#include "ccf/http_responder.h"
+#include "ccf/actors.h"
 
 namespace http
 {

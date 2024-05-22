@@ -7,6 +7,7 @@
 
 #include "ds/ring_buffer_types.h"
 #include "ds/oversized.h"
+#include "ccf/ds/json.h"
 
 /// General administrative messages
 enum AdminMessage : ringbuffer::Message

@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <dlfcn.h>
 
+#include "host/configuration.h"
 #include "enclave/interface.h"
 #include "ccf/version.h"
 #include "ccf/ds/logger.h"

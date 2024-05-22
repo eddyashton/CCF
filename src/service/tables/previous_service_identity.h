@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 
+#include "ccf/service/map.h"
 #include "ccf/kv/value.h"
 #include "ccf/crypto/pem.h"
 

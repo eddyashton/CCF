@@ -8,6 +8,7 @@
 #include "js/extensions/ccf/network.h"
 #include "js/extensions/ccf/gov_effects.h"
 #include "js/common_context.h"
+#include "ccf/crypto/hash_provider.h"
 #include "ccf/base_endpoint_registry.h"
 
 namespace ccf::gov::endpoints

@@ -5,6 +5,8 @@
 #include "kv/untyped_map.h"
 #include "js/map_access_permissions.h"
 #include "js/global_class_ids.h"
+#include "js/core/context.h"
+#include "js/checks.h"
 
 namespace ccf::js::extensions::kvhelpers
 {

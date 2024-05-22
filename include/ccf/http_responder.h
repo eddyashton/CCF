@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <functional>
 #include <span>
+#include <functional>
 
 #include "ccf/odata_error.h"
 #include "ccf/http_header_map.h"

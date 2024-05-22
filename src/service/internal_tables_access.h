@@ -5,9 +5,12 @@
 #include <ostream>
 #include <algorithm>
 
+#include "service/tables/signatures.h"
 #include "service/tables/previous_service_identity.h"
 #include "service/tables/governance_history.h"
+#include "service/tables/config.h"
 #include "node/uvm_endorsements.h"
+#include "node/rpc/call_types.h"
 #include "node/ledger_secrets.h"
 #include "ccf/tx.h"
 #include "ccf/service/tables/users.h"

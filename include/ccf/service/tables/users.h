@@ -6,8 +6,8 @@
 
 #include "ccf/service/map.h"
 #include "ccf/service/blit_serialiser_pem.h"
-#include "ccf/crypto/pem.h"
 #include "ccf/entity_id.h"
+#include "ccf/crypto/pem.h"
 
 namespace ccf
 {

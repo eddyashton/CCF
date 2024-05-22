@@ -11,9 +11,10 @@
 #include <chrono>
 
 #include "timer.h"
+#include "enclave/interface.h"
+#include "ds/non_blocking.h"
+#include "ds/files.h"
 #include "ccf/ds/logger.h"
-#include "../enclave/interface.h"
-#include "../ds/files.h"
 
 namespace asynchost
 {

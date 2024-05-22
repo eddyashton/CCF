@@ -6,8 +6,8 @@
 #include <t_cose/t_cose_common.h>
 #include <string>
 #include <stdexcept>
-#include <qcbor/qcbor.h>
 #include <span>
+#include <qcbor/qcbor.h>
 
 namespace ccf::cose
 {

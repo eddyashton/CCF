@@ -3,6 +3,7 @@
 #pragma once
 
 #include <vector>
+#include <limits>
 
 #include "ccf/tx_id.h"
 #include "ccf/service/signed_req.h"

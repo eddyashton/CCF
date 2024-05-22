@@ -2,6 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include <stdint.h>
+#include <limits>
+
 namespace kv
 {
   using Version = uint64_t;

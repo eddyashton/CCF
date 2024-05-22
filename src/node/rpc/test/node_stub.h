@@ -6,6 +6,7 @@
 #include "node/rpc/node_interface.h"
 #include "node/rpc/gov_effects_interface.h"
 #include "kv/test/stub_consensus.h"
+#include "ccf/node_context.h"
 #include "ccf/node/host_processes_interface.h"
 #include "ccf/historical_queries_interface.h"
 

@@ -2,6 +2,7 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "ccf/service/map.h"
 #include "ccf/kv/value_handle.h"
 #include "ccf/kv/untyped.h"
 #include "ccf/kv/serialisers/json_serialiser.h"

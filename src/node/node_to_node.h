@@ -8,6 +8,7 @@
 #include "enclave/rpc_handler.h"
 #include "ds/serialized.h"
 #include "ccf/ds/logger.h"
+#include "ccf/crypto/key_pair.h"
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>
 

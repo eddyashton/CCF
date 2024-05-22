@@ -5,6 +5,7 @@
 #include <chrono>
 
 #include "proxy.h"
+#include "ccf/ds/logger.h"
 
 namespace asynchost
 {
