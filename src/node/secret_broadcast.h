@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <optional>
-
-#include "service/internal_tables_access.h"
-#include "network_state.h"
-#include "ledger_secrets.h"
-#include "ccf/crypto/rsa_key_pair.h"
 #include "ccf/crypto/key_wrap.h"
+#include "ccf/crypto/rsa_key_pair.h"
+#include "ledger_secrets.h"
+#include "network_state.h"
+#include "service/internal_tables_access.h"
+
+#include <optional>
 
 namespace ccf
 {

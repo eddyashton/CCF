@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include <stdexcept>
+#include "sharing.h"
 
 #include "ccf/crypto/entropy.h"
 
-#include "sharing.h"
+#include <stdexcept>
 
 namespace crypto
 {

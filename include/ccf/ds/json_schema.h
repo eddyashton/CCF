@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <optional>
-#include <limits>
-
 #include "ccf/ds/nonstd.h"
+
+#include <limits>
+#include <optional>
 #define FMT_HEADER_ONLY
-#include <set>
-#include <nlohmann/json.hpp>
 #include <fmt/format.h>
+#include <nlohmann/json.hpp>
+#include <set>
 
 namespace ds
 {

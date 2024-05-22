@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "node/node_to_node.h"
-#include "channels.h"
 #include "ccf/pal/locking.h"
+#include "channels.h"
+#include "node/node_to_node.h"
 
 namespace ccf
 {

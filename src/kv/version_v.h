@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <stdint.h>
 #include <limits>
+#include <stdint.h>
 
 namespace kv
 {

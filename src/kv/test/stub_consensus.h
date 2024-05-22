@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <iostream>
-#include <algorithm>
-
-#include "kv/kv_types.h"
-#include "consensus/aft/impl/state.h"
 #include "ccf/crypto/symmetric_key.h"
+#include "consensus/aft/impl/state.h"
+#include "kv/kv_types.h"
+
+#include <algorithm>
+#include <iostream>
 
 namespace kv::test
 {

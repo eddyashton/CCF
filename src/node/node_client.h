@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "http/http_builder.h"
-#include "enclave/rpc_map.h"
-#include "consensus/aft/raft_types.h"
 #include "ccf/crypto/pem.h"
+#include "consensus/aft/raft_types.h"
+#include "enclave/rpc_map.h"
+#include "http/http_builder.h"
 
 namespace ccf
 {

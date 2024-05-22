@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include <quickjs/quickjs.h>
-
-#include "node/rpc/gov_logging.h"
-#include "js/core/context.h"
-
 #include "js/extensions/console.h"
+
+#include "js/core/context.h"
+#include "node/rpc/gov_logging.h"
+
+#include <quickjs/quickjs.h>
 
 namespace ccf::js::extensions
 {

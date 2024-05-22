@@ -4,15 +4,15 @@
 // NB: Despite the naming scheme used elsewhere, this populates functions
 // directly on the ccf object.
 
-#include <quickjs/quickjs.h>
-
-#include "node/rpc/jwt_management.h"
-#include "js/modules.h"
-#include "js/core/context.h"
-#include "js/checks.h"
-#include "ccf/version.h"
-
 #include "js/extensions/ccf/converters.h"
+
+#include "ccf/version.h"
+#include "js/checks.h"
+#include "js/core/context.h"
+#include "js/modules.h"
+#include "node/rpc/jwt_management.h"
+
+#include <quickjs/quickjs.h>
 
 namespace ccf::js::extensions
 {

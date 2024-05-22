@@ -2,18 +2,18 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/tx.h"
-#include "ccf/service/tables/proposals.h"
-#include "ccf/service/tables/jwt.h"
-#include "ccf/ds/hex.h"
 #include "ccf/crypto/verifier.h"
+#include "ccf/ds/hex.h"
+#include "ccf/service/tables/jwt.h"
+#include "ccf/service/tables/proposals.h"
+#include "ccf/tx.h"
 
 #ifdef SGX_ATTESTATION_VERIFICATION
 #  include <openenclave/attestation/verifier.h>
 #endif
 
-#include <sstream>
 #include <set>
+#include <sstream>
 #if defined(INSIDE_ENCLAVE) && !defined(VIRTUAL_ENCLAVE)
 #  include <openenclave/enclave.h>
 #elif defined(SGX_ATTESTATION_VERIFICATION)

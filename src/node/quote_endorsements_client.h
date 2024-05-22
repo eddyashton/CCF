@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "enclave/rpc_sessions.h"
 #include "ccf/pal/attestation.h"
+#include "enclave/rpc_sessions.h"
 
 namespace ccf
 {

@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "js/extensions/math/random.h"
-#include "js/extensions/console.h"
-#include "js/extensions/ccf/kv.h"
-#include "js/extensions/ccf/crypto.h"
-#include "js/extensions/ccf/converters.h"
 #include "js/core/context.h"
+#include "js/extensions/ccf/converters.h"
+#include "js/extensions/ccf/crypto.h"
+#include "js/extensions/ccf/kv.h"
+#include "js/extensions/console.h"
+#include "js/extensions/math/random.h"
 
 namespace ccf::js
 {

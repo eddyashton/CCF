@@ -2,19 +2,19 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <string>
-#include <optional>
-#include <cstdint>
-
-#include "ccf/crypto/san.h"
-#include "ccf/crypto/public_key.h"
-#include "ccf/crypto/pem.h"
-#include "ccf/crypto/key_pair.h"
-#include "ccf/crypto/jwk.h"
-#include "ccf/crypto/eddsa_public_key.h"
-#include "ccf/crypto/eddsa_key_pair.h"
 #include "ccf/crypto/curve.h"
+#include "ccf/crypto/eddsa_key_pair.h"
+#include "ccf/crypto/eddsa_public_key.h"
+#include "ccf/crypto/jwk.h"
+#include "ccf/crypto/key_pair.h"
+#include "ccf/crypto/pem.h"
+#include "ccf/crypto/public_key.h"
+#include "ccf/crypto/san.h"
+
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
 
 namespace crypto
 {

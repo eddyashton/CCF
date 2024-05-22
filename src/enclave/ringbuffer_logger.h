@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "enclave/interface.h"
-#include "ds/ring_buffer_types.h"
 #include "ccf/ds/logger.h"
+#include "ds/ring_buffer_types.h"
+#include "enclave/interface.h"
 
 namespace ccf
 {

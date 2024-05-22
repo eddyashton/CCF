@@ -1,19 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include <thread>
-
-#include "node/share_manager.h"
-#include "indexing/test/common.h"
-#include "indexing/historical_transaction_fetcher.h"
-#include "indexing/enclave_lfs_access.h"
-#include "host/lfs_file_handler.h"
-#include "ds/test/stub_writer.h"
-#include "crypto/openssl/hash.h"
-#include "consensus/aft/test/logging_stub.h"
-#include "consensus/aft/raft.h"
-#include "ccf/indexing/strategies/seqnos_by_key_in_memory.h"
 #include "ccf/indexing/strategies/seqnos_by_key_bucketed.h"
+#include "ccf/indexing/strategies/seqnos_by_key_in_memory.h"
+#include "consensus/aft/raft.h"
+#include "consensus/aft/test/logging_stub.h"
+#include "crypto/openssl/hash.h"
+#include "ds/test/stub_writer.h"
+#include "host/lfs_file_handler.h"
+#include "indexing/enclave_lfs_access.h"
+#include "indexing/historical_transaction_fetcher.h"
+#include "indexing/test/common.h"
+#include "node/share_manager.h"
+
+#include <thread>
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 

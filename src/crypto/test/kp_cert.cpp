@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include <CLI11/CLI11.hpp>
-
-#include "ds/cli_helper.h"
-#include "crypto/certs.h"
 #include "ccf/crypto/key_pair.h"
+#include "crypto/certs.h"
+#include "ds/cli_helper.h"
+
+#include <CLI11/CLI11.hpp>
 
 constexpr size_t certificate_validity_period_days = 365;
 auto valid_from = ds::to_x509_time_string(std::chrono::system_clock::now());

@@ -2,27 +2,27 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <uv.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <string>
-#include <map>
-#include <list>
-#include <filesystem>
-#include <cstdio>
-#include <cstdint>
-
-#include "time_bound_logger.h"
-#include "kv/serialised_entry_format.h"
-#include "kv/kv_types.h"
-#include "ds/serialized.h"
-#include "ds/messaging.h"
-#include "ds/files.h"
-#include "consensus/ledger_enclave_types.h"
-#include "ccf/pal/locking.h"
-#include "ccf/ds/nonstd.h"
 #include "ccf/ds/logger.h"
+#include "ccf/ds/nonstd.h"
+#include "ccf/pal/locking.h"
+#include "consensus/ledger_enclave_types.h"
+#include "ds/files.h"
+#include "ds/messaging.h"
+#include "ds/serialized.h"
+#include "kv/kv_types.h"
+#include "kv/serialised_entry_format.h"
+#include "time_bound_logger.h"
+
+#include <cstdint>
+#include <cstdio>
+#include <filesystem>
+#include <list>
+#include <map>
+#include <string>
+#include <sys/types.h>
+#include <unistd.h>
+#include <uv.h>
+#include <vector>
 
 namespace fs = std::filesystem;
 

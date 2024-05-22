@@ -2,17 +2,17 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <string>
-#include <queue>
-#include <map>
-#include <llhttp/llhttp.h>
-#include <endian.h>
-#include <cctype>
-#include <algorithm>
-
-#include "http_builder.h"
-#include "http2_types.h"
 #include "enclave/tls_session.h"
+#include "http2_types.h"
+#include "http_builder.h"
+
+#include <algorithm>
+#include <cctype>
+#include <endian.h>
+#include <llhttp/llhttp.h>
+#include <map>
+#include <queue>
+#include <string>
 
 namespace http
 {

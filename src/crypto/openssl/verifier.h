@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <openssl/x509.h>
-#include <chrono>
-
-#include "crypto/openssl/openssl_wrappers.h"
 #include "ccf/crypto/verifier.h"
+#include "crypto/openssl/openssl_wrappers.h"
+
+#include <chrono>
+#include <openssl/x509.h>
 
 namespace crypto
 {

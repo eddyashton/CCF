@@ -1,18 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include <openssl/x509_vfy.h>
-#include <openssl/x509.h>
-#include <openssl/ossl_typ.h>
-#include <openssl/evp.h>
-
-#include "x509_time.h"
-#include "crypto/openssl/rsa_key_pair.h"
-#include "crypto/openssl/openssl_wrappers.h"
-#include "ccf/ds/logger.h"
-#include "ccf/crypto/public_key.h"
-
 #include "crypto/openssl/verifier.h"
+
+#include "ccf/crypto/public_key.h"
+#include "ccf/ds/logger.h"
+#include "crypto/openssl/openssl_wrappers.h"
+#include "crypto/openssl/rsa_key_pair.h"
+#include "x509_time.h"
+
+#include <openssl/evp.h>
+#include <openssl/ossl_typ.h>
+#include <openssl/x509.h>
+#include <openssl/x509_vfy.h>
 
 namespace crypto
 {

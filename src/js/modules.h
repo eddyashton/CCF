@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <quickjs/quickjs.h>
-
-#include "js/core/wrapped_value.h"
-#include "js/core/context.h"
-#include "ccf/version.h"
-#include "ccf/tx.h"
-#include "ccf/service/tables/modules.h"
 #include "ccf/ds/logger.h"
+#include "ccf/service/tables/modules.h"
+#include "ccf/tx.h"
+#include "ccf/version.h"
+#include "js/core/context.h"
+#include "js/core/wrapped_value.h"
+
+#include <quickjs/quickjs.h>
 
 namespace ccf::js
 {

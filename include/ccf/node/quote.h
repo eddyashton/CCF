@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <optional>
-
-#include "ccf/tx.h"
-#include "ccf/service/tables/host_data.h"
-#include "ccf/pal/measurement.h"
-#include "ccf/ds/quote_info.h"
 #include "ccf/ccf_deprecated.h"
+#include "ccf/ds/quote_info.h"
+#include "ccf/pal/measurement.h"
+#include "ccf/service/tables/host_data.h"
+#include "ccf/tx.h"
+
+#include <optional>
+#include <vector>
 
 namespace ccf
 {

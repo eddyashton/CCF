@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "js/core/context.h"
-
 #include "js/global_class_ids.h"
+
+#include "js/core/context.h"
 
 namespace ccf::js
 {

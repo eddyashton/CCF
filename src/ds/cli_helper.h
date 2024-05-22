@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <optional>
-#include <charconv>
-#include <CLI11/CLI11.hpp>
-
-#include "ccf/service/node_info_network.h"
-#include "ccf/ds/nonstd.h"
 #include "ccf/crypto/san.h"
+#include "ccf/ds/nonstd.h"
+#include "ccf/service/node_info_network.h"
+
+#include <CLI11/CLI11.hpp>
+#include <charconv>
+#include <optional>
 
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>

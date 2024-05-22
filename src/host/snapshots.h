@@ -2,16 +2,16 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <optional>
-#include <iostream>
-#include <fstream>
-#include <filesystem>
-#include <charconv>
-
-#include "time_bound_logger.h"
-#include "ds/messaging.h"
-#include "consensus/ledger_enclave_types.h"
 #include "ccf/ds/nonstd.h"
+#include "consensus/ledger_enclave_types.h"
+#include "ds/messaging.h"
+#include "time_bound_logger.h"
+
+#include <charconv>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <optional>
 
 namespace fs = std::filesystem;
 

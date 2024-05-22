@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <string_view>
-#include <span>
-#include <memory>
-#include <exception>
-#include <cstring>
-
 #include "ccf/ds/json.h"
+
+#include <cstring>
+#include <exception>
+#include <memory>
+#include <span>
+#include <string_view>
+#include <vector>
 
 namespace crypto
 {

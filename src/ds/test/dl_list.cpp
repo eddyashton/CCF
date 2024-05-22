@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include <doctest/doctest.h>
-
 #include "ds/dl_list.h"
+
+#include <doctest/doctest.h>
 
 using namespace ds;
 

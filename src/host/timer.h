@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <chrono>
-
-#include "proxy.h"
 #include "ccf/ds/logger.h"
+#include "proxy.h"
+
+#include <chrono>
 
 namespace asynchost
 {

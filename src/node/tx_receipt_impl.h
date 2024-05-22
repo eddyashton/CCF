@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "node/history.h"
 #include "ccf/receipt.h"
+#include "node/history.h"
 
 namespace ccf
 {

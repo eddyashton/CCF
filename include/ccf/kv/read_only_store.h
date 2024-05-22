@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <memory>
-
-#include "ccf/tx_id.h"
 #include "ccf/tx.h"
+#include "ccf/tx_id.h"
+
+#include <memory>
 
 namespace kv
 {

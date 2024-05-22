@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "node/gov/handlers/helpers.h"
-#include "node/gov/api_version.h"
-#include "ccf/tx_status.h"
-#include "ccf/tx_id.h"
-#include "ccf/json_handler.h"
 #include "ccf/base_endpoint_registry.h"
+#include "ccf/json_handler.h"
+#include "ccf/tx_id.h"
+#include "ccf/tx_status.h"
+#include "node/gov/api_version.h"
+#include "node/gov/handlers/helpers.h"
 
 namespace ccf::gov::endpoints
 {

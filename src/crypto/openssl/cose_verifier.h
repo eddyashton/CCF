@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <openssl/x509.h>
-#include <chrono>
-
-#include "crypto/openssl/public_key.h"
-#include "crypto/openssl/openssl_wrappers.h"
-#include "ccf/crypto/verifier.h"
-#include "ccf/crypto/rsa_key_pair.h"
 #include "ccf/crypto/cose_verifier.h"
+#include "ccf/crypto/rsa_key_pair.h"
+#include "ccf/crypto/verifier.h"
+#include "crypto/openssl/openssl_wrappers.h"
+#include "crypto/openssl/public_key.h"
+
+#include <chrono>
+#include <openssl/x509.h>
 
 namespace crypto
 {

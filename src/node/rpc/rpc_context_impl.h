@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "node/rpc/claims.h"
-#include "endpoints/grpc/grpc_status.h"
 #include "ccf/rpc_context.h"
+#include "endpoints/grpc/grpc_status.h"
+#include "node/rpc/claims.h"
 
 namespace ccf
 {

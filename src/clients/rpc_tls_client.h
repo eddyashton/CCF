@@ -2,18 +2,18 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "tls_client.h"
-#include "http/http_parser.h"
-#include "http/http_builder.h"
-#include "ccf/serdes.h"
-#include "ccf/http_consts.h"
 #include "ccf/crypto/key_pair.h"
+#include "ccf/http_consts.h"
+#include "ccf/serdes.h"
+#include "http/http_builder.h"
+#include "http/http_parser.h"
+#include "tls_client.h"
 
 #define FMT_HEADER_ONLY
-#include <thread>
-#include <optional>
-#include <nlohmann/json.hpp>
 #include <fmt/format.h>
+#include <nlohmann/json.hpp>
+#include <optional>
+#include <thread>
 
 namespace client
 {

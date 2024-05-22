@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <string>
-
-#include "ccf/service/map.h"
-#include "ccf/kv/value.h"
 #include "ccf/crypto/pem.h"
+#include "ccf/kv/value.h"
+#include "ccf/service/map.h"
+
+#include <string>
+#include <vector>
 
 namespace ccf
 {

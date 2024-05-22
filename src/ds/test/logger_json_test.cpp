@@ -5,9 +5,9 @@
 #include "ccf/ds/logger.h"
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <nlohmann/json.hpp>
-#include <fstream>
 #include <doctest/doctest.h>
+#include <fstream>
+#include <nlohmann/json.hpp>
 
 TEST_CASE("Test custom log format")
 {

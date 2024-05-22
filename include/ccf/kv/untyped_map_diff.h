@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <string>
-#include <optional>
-#include <functional>
-
-#include "ccf/kv/version.h"
-#include "ccf/kv/untyped.h"
-#include "ccf/kv/serialisers/serialised_entry.h"
 #include "ccf/kv/abstract_handle.h"
+#include "ccf/kv/serialisers/serialised_entry.h"
+#include "ccf/kv/untyped.h"
+#include "ccf/kv/version.h"
+
+#include <functional>
+#include <optional>
+#include <string>
 
 namespace kv::untyped
 {

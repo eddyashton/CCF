@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <chrono>
-
-#include "ccf/crypto/rsa_key_pair.h"
-#include "ccf/crypto/public_key.h"
-#include "ccf/crypto/pem.h"
 #include "ccf/crypto/key_pair.h"
+#include "ccf/crypto/pem.h"
+#include "ccf/crypto/public_key.h"
+#include "ccf/crypto/rsa_key_pair.h"
+
+#include <chrono>
 
 namespace crypto
 {

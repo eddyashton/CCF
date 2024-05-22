@@ -2,21 +2,21 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "kv_types.h"
-#include "kv_serialiser.h"
-#include "kv/untyped_map.h"
-#include "kv/snapshot.h"
-#include "kv/committable_tx.h"
-#include "deserialise.h"
-#include "ccf/pal/locking.h"
-#include "ccf/kv/read_only_store.h"
-#include "ccf/ds/ccf_exception.h"
 #include "apply_changes.h"
+#include "ccf/ds/ccf_exception.h"
+#include "ccf/kv/read_only_store.h"
+#include "ccf/pal/locking.h"
+#include "deserialise.h"
+#include "kv/committable_tx.h"
+#include "kv/snapshot.h"
+#include "kv/untyped_map.h"
+#include "kv_serialiser.h"
+#include "kv_types.h"
 
 #define FMT_HEADER_ONLY
-#include <memory>
-#include <fmt/format.h>
 #include <atomic>
+#include <fmt/format.h>
+#include <memory>
 
 namespace kv
 {

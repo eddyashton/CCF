@@ -5,8 +5,8 @@
 #include "ccf/ds/hex.h"
 
 #define FMT_HEADER_ONLY
-#include <sstream>
 #include <fmt/format.h>
+#include <sstream>
 
 /// Defines fmt::formatter instantiations for commonly used std:: container
 /// types

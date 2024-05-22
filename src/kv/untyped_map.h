@@ -2,19 +2,19 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <unordered_set>
-#include <optional>
-#include <list>
-#include <functional>
-
-#include "kv/untyped_change_set.h"
-#include "kv/kv_types.h"
-#include "kv/kv_serialiser.h"
-#include "ds/dl_list.h"
-#include "ccf/pal/locking.h"
-#include "ccf/kv/untyped_map_handle.h"
-#include "ccf/kv/untyped_map_diff.h"
 #include "ccf/ds/logger.h"
+#include "ccf/kv/untyped_map_diff.h"
+#include "ccf/kv/untyped_map_handle.h"
+#include "ccf/pal/locking.h"
+#include "ds/dl_list.h"
+#include "kv/kv_serialiser.h"
+#include "kv/kv_types.h"
+#include "kv/untyped_change_set.h"
+
+#include <functional>
+#include <list>
+#include <optional>
+#include <unordered_set>
 
 namespace kv::untyped
 {

@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "http_rpc_context.h"
-#include "http_proc.h"
-#include "http2_types.h"
-#include "http2_callbacks.h"
-#include "enclave/session.h"
-#include "ccf/ds/nonstd.h"
 #include "ccf/ds/logger.h"
+#include "ccf/ds/nonstd.h"
+#include "enclave/session.h"
+#include "http2_callbacks.h"
+#include "http2_types.h"
+#include "http_proc.h"
+#include "http_rpc_context.h"
 
 namespace http2
 {

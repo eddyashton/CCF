@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <string>
-#include <nlohmann/json.hpp>
-#include <cmath>
-#include <charconv>
-
-#include "ccf/ds/nonstd.h"
 #include "ccf/ds/logger.h"
+#include "ccf/ds/nonstd.h"
+
+#include <charconv>
+#include <cmath>
+#include <nlohmann/json.hpp>
+#include <string>
 
 namespace ds
 {

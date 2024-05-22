@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <string>
-
 #include "ccf/node_subsystem_interface.h"
+
+#include <string>
+#include <vector>
 
 namespace ccf
 {

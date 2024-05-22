@@ -2,19 +2,19 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <string>
-#include <openssl/bio.h>
-#include <netinet/tcp.h>
-#include <netinet/in.h>
-#include <iostream>
-#include <cstring>
-#include <cstdint>
-
-#include "tls/cert.h"
-#include "tls/ca.h"
-#include "crypto/openssl/openssl_wrappers.h"
 #include "ccf/ds/logger.h"
+#include "crypto/openssl/openssl_wrappers.h"
+#include "tls/ca.h"
+#include "tls/cert.h"
+
+#include <cstdint>
+#include <cstring>
+#include <iostream>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <openssl/bio.h>
+#include <string>
+#include <vector>
 
 using namespace crypto::OpenSSL;
 

@@ -2,15 +2,15 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <memory>
-#include <functional>
-
-#include "node/rpc/node_interface.h"
-#include "ccf/service/node_info_network.h"
-#include "ccf/rpc_context.h"
-#include "ccf/research/custom_protocol_subsystem_interface.h"
-#include "ccf/node/session.h"
 #include "ccf/endpoint_context.h"
+#include "ccf/node/session.h"
+#include "ccf/research/custom_protocol_subsystem_interface.h"
+#include "ccf/rpc_context.h"
+#include "ccf/service/node_info_network.h"
+#include "node/rpc/node_interface.h"
+
+#include <functional>
+#include <memory>
 
 namespace ccf
 {

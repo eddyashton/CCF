@@ -2,37 +2,37 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <tuple>
-#include <memory>
-
-#include "tables/submitted_shares.h"
-#include "tables/snapshot_evidence.h"
-#include "tables/signatures.h"
-#include "tables/shares.h"
-#include "tables/secrets.h"
-#include "tables/previous_service_identity.h"
-#include "tables/governance_history.h"
-#include "tables/config.h"
-#include "tables/backup_signatures.h"
-#include "kv/store.h"
-#include "ccf/service/tables/uvm_endorsements.h"
-#include "ccf/service/tables/users.h"
-#include "ccf/service/tables/snp_measurements.h"
-#include "ccf/service/tables/service.h"
-#include "ccf/service/tables/proposals.h"
-#include "ccf/service/tables/nodes.h"
-#include "ccf/service/tables/modules.h"
-#include "ccf/service/tables/members.h"
-#include "ccf/service/tables/jwt.h"
-#include "ccf/service/tables/jsengine.h"
-#include "ccf/service/tables/host_data.h"
-#include "ccf/service/tables/gov.h"
-#include "ccf/service/tables/constitution.h"
-#include "ccf/service/tables/code_id.h"
-#include "ccf/service/tables/cert_bundles.h"
-#include "ccf/service/tables/acme_certificates.h"
-#include "ccf/service/signed_req.h"
 #include "ccf/endpoint.h"
+#include "ccf/service/signed_req.h"
+#include "ccf/service/tables/acme_certificates.h"
+#include "ccf/service/tables/cert_bundles.h"
+#include "ccf/service/tables/code_id.h"
+#include "ccf/service/tables/constitution.h"
+#include "ccf/service/tables/gov.h"
+#include "ccf/service/tables/host_data.h"
+#include "ccf/service/tables/jsengine.h"
+#include "ccf/service/tables/jwt.h"
+#include "ccf/service/tables/members.h"
+#include "ccf/service/tables/modules.h"
+#include "ccf/service/tables/nodes.h"
+#include "ccf/service/tables/proposals.h"
+#include "ccf/service/tables/service.h"
+#include "ccf/service/tables/snp_measurements.h"
+#include "ccf/service/tables/users.h"
+#include "ccf/service/tables/uvm_endorsements.h"
+#include "kv/store.h"
+#include "tables/backup_signatures.h"
+#include "tables/config.h"
+#include "tables/governance_history.h"
+#include "tables/previous_service_identity.h"
+#include "tables/secrets.h"
+#include "tables/shares.h"
+#include "tables/signatures.h"
+#include "tables/snapshot_evidence.h"
+#include "tables/submitted_shares.h"
+
+#include <memory>
+#include <tuple>
 
 namespace ccf
 {

@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <span>
-
-#include "tls/msg_types.h"
-#include "ds/thread_messaging.h"
 #include "ccf/node/session.h"
+#include "ds/thread_messaging.h"
+#include "tls/msg_types.h"
+
+#include <span>
 
 namespace ccf
 {

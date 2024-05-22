@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <optional>
-#include <map>
-
-#include "ccf/service/map.h"
 #include "ccf/entity_id.h"
+#include "ccf/service/map.h"
+
+#include <map>
+#include <optional>
+#include <vector>
 
 namespace ccf
 {

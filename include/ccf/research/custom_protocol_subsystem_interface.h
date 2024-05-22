@@ -2,15 +2,15 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <memory>
-#include <functional>
-
-#include "ccf/tx.h"
-#include "ccf/service/node_info_network.h"
-#include "ccf/rpc_context.h"
-#include "ccf/node_subsystem_interface.h"
-#include "ccf/node/session.h"
 #include "ccf/endpoint_context.h"
+#include "ccf/node/session.h"
+#include "ccf/node_subsystem_interface.h"
+#include "ccf/rpc_context.h"
+#include "ccf/service/node_info_network.h"
+#include "ccf/tx.h"
+
+#include <functional>
+#include <memory>
 
 namespace tls
 {

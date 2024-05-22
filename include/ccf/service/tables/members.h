@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-
-#include "ccf/service/signed_req.h"
-#include "ccf/service/map.h"
-#include "ccf/service/blit_serialiser_pem.h"
-#include "ccf/entity_id.h"
-#include "ccf/crypto/sha256_hash.h"
 #include "ccf/crypto/pem.h"
+#include "ccf/crypto/sha256_hash.h"
+#include "ccf/entity_id.h"
+#include "ccf/service/blit_serialiser_pem.h"
+#include "ccf/service/map.h"
+#include "ccf/service/signed_req.h"
+
+#include <vector>
 
 namespace ccf
 {

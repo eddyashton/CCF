@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 
-#include <doctest/doctest.h>
+#include "crypto/key_exchange.h"
 
 #include "crypto/openssl/key_pair.h"
 
-#include "crypto/key_exchange.h"
+#include <doctest/doctest.h>
 
 TEST_CASE("Simple key exchange")
 {

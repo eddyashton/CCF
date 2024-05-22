@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <map>
-#include <functional>
-
-#include "kv_types.h"
-#include "kv/untyped_change_set.h"
 #include "ccf/tx.h"
+#include "kv/untyped_change_set.h"
+#include "kv_types.h"
+
+#include <functional>
+#include <map>
 
 namespace kv
 {

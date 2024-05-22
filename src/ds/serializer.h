@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <type_traits>
-#include <tuple>
-#include <span>
-#include <memory>
-
-#include "serialized.h"
 #include "ccf/ds/nonstd.h"
+#include "serialized.h"
+
+#include <memory>
+#include <span>
+#include <tuple>
+#include <type_traits>
+#include <vector>
 
 namespace serializer
 {

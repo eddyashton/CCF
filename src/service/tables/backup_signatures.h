@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <string>
-
-#include "node_signature.h"
 #include "ccf/service/map.h"
+#include "node_signature.h"
+
+#include <string>
+#include <vector>
 
 namespace ccf
 {

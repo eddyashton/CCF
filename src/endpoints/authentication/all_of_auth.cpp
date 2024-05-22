@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "ccf/ds/nonstd.h"
-
 #include "ccf/endpoints/authentication/all_of_auth.h"
+
+#include "ccf/ds/nonstd.h"
 
 namespace ccf
 {

@@ -2,17 +2,17 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <unordered_set>
-#include <unordered_map>
-#include <string>
-#include <sstream>
-#include <set>
-#include <random>
-#include <chrono>
-
-#include "logging_stub.h"
-#include "consensus/aft/raft.h"
 #include "ccf/ds/logger.h"
+#include "consensus/aft/raft.h"
+#include "logging_stub.h"
+
+#include <chrono>
+#include <random>
+#include <set>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 #ifdef CCF_RAFT_TRACING
 #  define RAFT_DRIVER_PRINT(...) \

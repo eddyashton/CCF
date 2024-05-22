@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <string>
-#include <optional>
-
-#include "status.pb.h"
 #include "grpc_status.h"
+#include "status.pb.h"
+
+#include <optional>
+#include <string>
 
 namespace ccf::grpc
 {

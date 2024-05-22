@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <string>
-#include <optional>
-
 #include "ccf/ds/json.h"
+
+#include <optional>
+#include <string>
+#include <vector>
 
 namespace ccf
 {

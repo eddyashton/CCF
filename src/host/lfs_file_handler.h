@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <fstream>
-#include <filesystem>
-
-#include "indexing/lfs_ringbuffer_types.h"
 #include "ds/messaging.h"
+#include "indexing/lfs_ringbuffer_types.h"
+
+#include <filesystem>
+#include <fstream>
 
 namespace asynchost
 {

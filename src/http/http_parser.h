@@ -2,21 +2,21 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <string_view>
-#include <string>
-#include <regex>
-#include <queue>
-#include <map>
-#include <llhttp/llhttp.h>
-#include <cctype>
-#include <algorithm>
-
-#include "http_proc.h"
-#include "http_builder.h"
-#include "http/http_exceptions.h"
-#include "enclave/tls_session.h"
-#include "ccf/http_configuration.h"
 #include "ccf/ds/hex.h"
+#include "ccf/http_configuration.h"
+#include "enclave/tls_session.h"
+#include "http/http_exceptions.h"
+#include "http_builder.h"
+#include "http_proc.h"
+
+#include <algorithm>
+#include <cctype>
+#include <llhttp/llhttp.h>
+#include <map>
+#include <queue>
+#include <regex>
+#include <string>
+#include <string_view>
 
 namespace http
 {

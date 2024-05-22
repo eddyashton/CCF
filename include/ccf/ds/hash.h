@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <string_view>
-#include <small_vector/SmallVector.h>
-#include <cstdint>
-#include <array>
-
 #include "ccf/ds/siphash.h"
+
+#include <array>
+#include <cstdint>
+#include <small_vector/SmallVector.h>
+#include <string_view>
+#include <vector>
 
 namespace ds::hashutils
 {

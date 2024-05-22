@@ -1,20 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include <vector>
-#include <unordered_map>
-#include <regex>
-#include <quickjs/quickjs.h>
-#include <openenclave/attestation/verifier.h>
-#include <openenclave/attestation/custom_claims.h>
-#include <algorithm>
-
-#include "js/core/context.h"
-#include "js/checks.h"
-#include "ccf/version.h"
-#include "ccf/js_plugin.h"
-#include "ccf/js_openenclave_plugin.h"
 #include "ccf/ds/hex.h"
+#include "ccf/js_openenclave_plugin.h"
+#include "ccf/js_plugin.h"
+#include "ccf/version.h"
+#include "js/checks.h"
+#include "js/core/context.h"
+
+#include <algorithm>
+#include <openenclave/attestation/custom_claims.h>
+#include <openenclave/attestation/verifier.h>
+#include <quickjs/quickjs.h>
+#include <regex>
+#include <unordered_map>
+#include <vector>
 #if defined(INSIDE_ENCLAVE) && !defined(VIRTUAL_ENCLAVE)
 #  include <openenclave/enclave.h>
 #else

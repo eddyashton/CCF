@@ -2,15 +2,15 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/service/node_info_network.h"
-#include "ccf/kv/version.h"
-#include "ccf/ds/quote_info.h"
-#include "ccf/ds/json.h"
 #include "ccf/crypto/pem.h"
+#include "ccf/ds/json.h"
+#include "ccf/ds/quote_info.h"
+#include "ccf/kv/version.h"
+#include "ccf/service/node_info_network.h"
 
 #define FMT_HEADER_ONLY
-#include <optional>
 #include <fmt/format.h>
+#include <optional>
 
 namespace ccf
 {

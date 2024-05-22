@@ -2,15 +2,15 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <utility>
-#include <stdexcept>
-#include <memory>
-#include <cstring>
-#include <cstdint>
-#include <cassert>
-
 #include "ccf/pal/hardware_info.h"
+
+#include <cassert>
+#include <cstdint>
+#include <cstring>
+#include <memory>
+#include <stdexcept>
+#include <utility>
+#include <vector>
 
 // Adapted from:
 // https://software.intel.com/en-us/articles/intel-digital-random-number-generator-drng-software-implementation-guide

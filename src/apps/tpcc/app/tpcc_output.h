@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <unordered_set>
-#include <unordered_map>
-#include <stdint.h>
-#include <cstring>
-
 #include "tpcc_tables.h"
+
+#include <cstring>
+#include <stdint.h>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 namespace tpcc
 {

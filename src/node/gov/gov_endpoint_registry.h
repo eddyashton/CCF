@@ -2,15 +2,15 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "node/share_manager.h"
-#include "node/gov/handlers/transactions.h"
-#include "node/gov/handlers/service_state.h"
-#include "node/gov/handlers/recovery.h"
-#include "node/gov/handlers/proposals.h"
-#include "node/gov/handlers/acks.h"
-#include "node/gov/api_version.h"
-#include "node/gov/api_schema.h"
 #include "ccf/common_endpoint_registry.h"
+#include "node/gov/api_schema.h"
+#include "node/gov/api_version.h"
+#include "node/gov/handlers/acks.h"
+#include "node/gov/handlers/proposals.h"
+#include "node/gov/handlers/recovery.h"
+#include "node/gov/handlers/service_state.h"
+#include "node/gov/handlers/transactions.h"
+#include "node/share_manager.h"
 
 namespace ccf
 {

@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <cstdint>
-#include <cstddef>
-
-#include "ccf/crypto/symmetric_key.h"
 #include "ccf/crypto/rsa_key_pair.h"
+#include "ccf/crypto/symmetric_key.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <vector>
 
 namespace crypto
 {

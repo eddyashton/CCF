@@ -1,19 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include "kv/serialised_entry_format.h"
-#include "host/snapshots.h"
-#include "ds/serialized.h"
-#include "ds/files.h"
-#include "crypto/openssl/hash.h"
-#include "ccf/ds/logger.h"
-#include "ccf/crypto/sha256_hash.h"
-
 #include "host/ledger.h"
 
+#include "ccf/crypto/sha256_hash.h"
+#include "ccf/ds/logger.h"
+#include "crypto/openssl/hash.h"
+#include "ds/files.h"
+#include "ds/serialized.h"
+#include "host/snapshots.h"
+#include "kv/serialised_entry_format.h"
+
 #define DOCTEST_CONFIG_IMPLEMENT
-#include <string>
-#include <random>
 #include <doctest/doctest.h>
+#include <random>
+#include <string>
 
 using namespace asynchost;
 

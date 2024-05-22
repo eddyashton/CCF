@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include <sys/time.h>
-#include <sys/resource.h>
-#include <random>
-#include <algorithm>
-
-#include "ccf/ds/logger.h"
 #include "../history.h"
+#include "ccf/ds/logger.h"
+
+#include <algorithm>
+#include <random>
+#include <sys/resource.h>
+#include <sys/time.h>
 
 using namespace std;
 

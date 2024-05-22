@@ -2,15 +2,15 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <string>
-#include <optional>
-#include <memory>
-#include <map>
-#include <list>
-
-#include "ccf/tx_id.h"
-#include "ccf/crypto/sha256_hash.h"
 #include "ccf/ccf_assert.h"
+#include "ccf/crypto/sha256_hash.h"
+#include "ccf/tx_id.h"
+
+#include <list>
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
 
 namespace kv
 {

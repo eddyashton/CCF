@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <stdexcept>
-#include <optional>
-#include <memory>
-#include <cassert>
-
 #include "ds/map_serializers.h"
+
+#include <cassert>
+#include <memory>
+#include <optional>
+#include <stdexcept>
 
 namespace rb
 {

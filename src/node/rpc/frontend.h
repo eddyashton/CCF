@@ -2,32 +2,32 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "service/internal_tables_access.h"
-#include "rpc_exception.h"
-#include "node/node_configuration_subsystem.h"
-#include "node/endpoint_context_impl.h"
-#include "kv/store.h"
-#include "kv/compacted_version_conflict.h"
-#include "http/http_jwt.h"
-#include "forwarder.h"
-#include "endpoints/grpc/grpc_status.h"
-#include "enclave/rpc_handler.h"
-#include "common/configuration.h"
-#include "ccf/service/tables/service.h"
-#include "ccf/service/tables/nodes.h"
-#include "ccf/service/tables/jwt.h"
-#include "ccf/service/signed_req.h"
-#include "ccf/service/node_info_network.h"
-#include "ccf/pal/locking.h"
-#include "ccf/node_context.h"
-#include "ccf/http_status.h"
 #include "ccf/endpoint_registry.h"
+#include "ccf/http_status.h"
+#include "ccf/node_context.h"
+#include "ccf/pal/locking.h"
+#include "ccf/service/node_info_network.h"
+#include "ccf/service/signed_req.h"
+#include "ccf/service/tables/jwt.h"
+#include "ccf/service/tables/nodes.h"
+#include "ccf/service/tables/service.h"
+#include "common/configuration.h"
+#include "enclave/rpc_handler.h"
+#include "endpoints/grpc/grpc_status.h"
+#include "forwarder.h"
+#include "http/http_jwt.h"
+#include "kv/compacted_version_conflict.h"
+#include "kv/store.h"
+#include "node/endpoint_context_impl.h"
+#include "node/node_configuration_subsystem.h"
+#include "rpc_exception.h"
+#include "service/internal_tables_access.h"
 
 #define FMT_HEADER_ONLY
 
-#include <vector>
-#include <utility>
 #include <fmt/format.h>
+#include <utility>
+#include <vector>
 
 namespace ccf
 {

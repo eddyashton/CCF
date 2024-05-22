@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <functional>
-#include <cstring>
-#include <atomic>
-
-#include "ring_buffer_types.h"
 #include "ccf/pal/mem.h"
+#include "ring_buffer_types.h"
+
+#include <atomic>
+#include <cstring>
+#include <functional>
 
 // Ideally this would be _mm_pause or similar, but finding cross-platform
 // headers that expose this neatly through OE (ie - non-standard std libs) is

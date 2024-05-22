@@ -2,20 +2,20 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <string.h>
-#include <deque>
-#include <array>
-
-#include "service/tables/signatures.h"
-#include "node_signature_verify.h"
-#include "kv/store.h"
-#include "kv/kv_types.h"
-#include "endian.h"
-#include "ds/thread_messaging.h"
-#include "crypto/openssl/hash.h"
-#include "ccf/service/tables/nodes.h"
-#include "ccf/pal/locking.h"
 #include "ccf/ds/logger.h"
+#include "ccf/pal/locking.h"
+#include "ccf/service/tables/nodes.h"
+#include "crypto/openssl/hash.h"
+#include "ds/thread_messaging.h"
+#include "endian.h"
+#include "kv/kv_types.h"
+#include "kv/store.h"
+#include "node_signature_verify.h"
+#include "service/tables/signatures.h"
+
+#include <array>
+#include <deque>
+#include <string.h>
 
 #define HAVE_OPENSSL
 // merklecpp traces are off by default, even when CCF tracing is enabled

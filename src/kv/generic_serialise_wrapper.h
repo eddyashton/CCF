@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <optional>
-
-#include "serialised_entry_format.h"
-#include "node/rpc/claims.h"
-#include "kv_types.h"
-#include "ds/serialized.h"
-#include "ccf/kv/serialisers/serialised_entry.h"
 #include "ccf/ccf_assert.h"
+#include "ccf/kv/serialisers/serialised_entry.h"
+#include "ds/serialized.h"
+#include "kv_types.h"
+#include "node/rpc/claims.h"
+#include "serialised_entry_format.h"
+
+#include <optional>
 
 namespace kv
 {

@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <variant>
-#include <string>
-#include <optional>
-#include <google/protobuf/empty.pb.h>
-
-#include "status.h"
-#include "ccf/http_header_map.h"
 #include "ccf/http_consts.h"
+#include "ccf/http_header_map.h"
+#include "status.h"
+
+#include <google/protobuf/empty.pb.h>
+#include <optional>
+#include <string>
+#include <variant>
 
 namespace ccf::grpc
 {

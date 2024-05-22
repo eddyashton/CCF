@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <deque>
-
 #include "ring_buffer.h"
+
+#include <deque>
 #define FMT_HEADER_ONLY
-#include <vector>
-#include <memory>
 #include <fmt/format.h>
+#include <memory>
+#include <vector>
 
 namespace ringbuffer
 {

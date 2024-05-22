@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include <doctest/doctest.h>
-
-#include "kv/test/null_encryptor.h"
-#include "kv/store.h"
 #include "kv/kv_serialiser.h"
+#include "kv/store.h"
+#include "kv/test/null_encryptor.h"
+
+#include <doctest/doctest.h>
 #undef FAIL
 
 struct MapTypes

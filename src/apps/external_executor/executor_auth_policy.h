@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include "executor_code_id.h"
-#include "ccf/crypto/verifier.h"
-#include "ccf/common_auth_policies.h"
 #include "ccf/app_interface.h"
+#include "ccf/common_auth_policies.h"
+#include "ccf/crypto/verifier.h"
+#include "executor_code_id.h"
 
 namespace externalexecutor
 {

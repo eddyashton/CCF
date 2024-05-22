@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <string>
-#include <exception>
-
 #include "ccf/odata_error.h"
+
+#include <exception>
+#include <string>
 
 namespace ccf
 {

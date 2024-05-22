@@ -2,19 +2,19 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <filesystem>
-#include <dlfcn.h>
-
-#include "host/configuration.h"
-#include "enclave/interface.h"
-#include "ccf/version.h"
 #include "ccf/ds/logger.h"
+#include "ccf/version.h"
+#include "enclave/interface.h"
+#include "host/configuration.h"
+
+#include <dlfcn.h>
+#include <filesystem>
 
 #ifdef PLATFORM_SGX
-#  include <openenclave/bits/result.h>
-#  include <openenclave/trace.h>
-#  include <openenclave/host.h>
 #  include <ccf_u.h>
+#  include <openenclave/bits/result.h>
+#  include <openenclave/host.h>
+#  include <openenclave/trace.h>
 #endif
 
 #if defined(PLATFORM_VIRTUAL) || defined(PLATFORM_SNP)

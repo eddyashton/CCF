@@ -5,20 +5,20 @@
 #include "logging_schema.h"
 
 // CCF
-#include <charconv>
-
-#include "ccf/version.h"
-#include "ccf/json_handler.h"
-#include "ccf/indexing/strategy.h"
-#include "ccf/indexing/strategies/seqnos_by_key_bucketed.h"
-#include "ccf/http_query.h"
-#include "ccf/http_etag.h"
-#include "ccf/historical_queries_adapter.h"
-#include "ccf/endpoints/authentication/all_of_auth.h"
-#include "ccf/ds/hash.h"
-#include "ccf/crypto/verifier.h"
-#include "ccf/common_auth_policies.h"
 #include "ccf/app_interface.h"
+#include "ccf/common_auth_policies.h"
+#include "ccf/crypto/verifier.h"
+#include "ccf/ds/hash.h"
+#include "ccf/endpoints/authentication/all_of_auth.h"
+#include "ccf/historical_queries_adapter.h"
+#include "ccf/http_etag.h"
+#include "ccf/http_query.h"
+#include "ccf/indexing/strategies/seqnos_by_key_bucketed.h"
+#include "ccf/indexing/strategy.h"
+#include "ccf/json_handler.h"
+#include "ccf/version.h"
+
+#include <charconv>
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>
 

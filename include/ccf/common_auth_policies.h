@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <memory>
-
-#include "ccf/endpoints/authentication/jwt_auth.h"
-#include "ccf/endpoints/authentication/empty_auth.h"
-#include "ccf/endpoints/authentication/cose_auth.h"
 #include "ccf/endpoints/authentication/cert_auth.h"
+#include "ccf/endpoints/authentication/cose_auth.h"
+#include "ccf/endpoints/authentication/empty_auth.h"
+#include "ccf/endpoints/authentication/jwt_auth.h"
+
+#include <memory>
 
 /**
  * Defines static instances of common framework-provided authentication

@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <unordered_map>
-
-#include "http2_types.h"
-#include "ccf/pal/locking.h"
 #include "ccf/odata_error.h"
+#include "ccf/pal/locking.h"
+#include "http2_types.h"
+
+#include <unordered_map>
 
 namespace http
 {

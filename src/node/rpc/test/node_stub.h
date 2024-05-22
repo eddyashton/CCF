@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "node/rpc/node_operation_interface.h"
-#include "node/rpc/node_interface.h"
-#include "node/rpc/gov_effects_interface.h"
-#include "kv/test/stub_consensus.h"
-#include "ccf/node_context.h"
-#include "ccf/node/host_processes_interface.h"
 #include "ccf/historical_queries_interface.h"
+#include "ccf/node/host_processes_interface.h"
+#include "ccf/node_context.h"
+#include "kv/test/stub_consensus.h"
+#include "node/rpc/gov_effects_interface.h"
+#include "node/rpc/node_interface.h"
+#include "node/rpc/node_operation_interface.h"
 
 namespace ccf
 {

@@ -2,29 +2,29 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <unordered_set>
-#include <string>
-#include <set>
-#include <memory>
-#include <list>
-#include <limits>
-#include <functional>
-#include <chrono>
-#include <array>
-
-#include "serialiser_declare.h"
-#include "enclave/reconfiguration_type.h"
-#include "enclave/consensus_type.h"
-#include "ccf/tx_id.h"
-#include "ccf/kv/version.h"
-#include "ccf/kv/hooks.h"
-#include "ccf/kv/get_name.h"
-#include "ccf/entity_id.h"
-#include "ccf/ds/nonstd.h"
-#include "ccf/crypto/pem.h"
-#include "ccf/crypto/hash_bytes.h"
 #include "ccf/claims_digest.h"
+#include "ccf/crypto/hash_bytes.h"
+#include "ccf/crypto/pem.h"
+#include "ccf/ds/nonstd.h"
+#include "ccf/entity_id.h"
+#include "ccf/kv/get_name.h"
+#include "ccf/kv/hooks.h"
+#include "ccf/kv/version.h"
+#include "ccf/tx_id.h"
+#include "enclave/consensus_type.h"
+#include "enclave/reconfiguration_type.h"
+#include "serialiser_declare.h"
+
+#include <array>
+#include <chrono>
+#include <functional>
+#include <limits>
+#include <list>
+#include <memory>
+#include <set>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
 namespace ccf
 {

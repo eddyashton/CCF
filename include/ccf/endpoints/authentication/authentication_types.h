@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <string>
-#include <nlohmann/json.hpp>
-#include <memory>
-
 #include "ccf/tx.h"
+
+#include <memory>
+#include <nlohmann/json.hpp>
+#include <string>
 
 namespace ccf
 {

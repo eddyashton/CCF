@@ -2,18 +2,18 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <unordered_map>
-#include <set>
-#include <optional>
-
-#include "indexing/lfs_ringbuffer_types.h"
-#include "indexing/lfs_interface.h"
-#include "ds/messaging.h"
-#include "ccf/pal/locking.h"
-#include "ccf/ds/hex.h"
-#include "ccf/crypto/symmetric_key.h"
-#include "ccf/crypto/sha256.h"
 #include "ccf/crypto/entropy.h"
+#include "ccf/crypto/sha256.h"
+#include "ccf/crypto/symmetric_key.h"
+#include "ccf/ds/hex.h"
+#include "ccf/pal/locking.h"
+#include "ds/messaging.h"
+#include "indexing/lfs_interface.h"
+#include "indexing/lfs_ringbuffer_types.h"
+
+#include <optional>
+#include <set>
+#include <unordered_map>
 
 // Uncomment to disable encryption and obfuscation, writing cache content
 // directly unencrypted to host disk

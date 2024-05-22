@@ -1,26 +1,26 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "x509_time.h"
-#include "openssl_wrappers.h"
-#include "crypto/openssl/public_key.h"
-#include "crypto/openssl/hash.h"
-#include "ccf/crypto/curve.h"
-
 #include "crypto/openssl/key_pair.h"
 
+#include "ccf/crypto/curve.h"
+#include "crypto/openssl/hash.h"
+#include "crypto/openssl/public_key.h"
+#include "openssl_wrappers.h"
+#include "x509_time.h"
+
 #define FMT_HEADER_ONLY
-#include <string>
-#include <stdexcept>
-#include <openssl/x509v3.h>
-#include <openssl/rand.h>
-#include <openssl/pem.h>
-#include <openssl/evp.h>
-#include <openssl/err.h>
-#include <openssl/engine.h>
-#include <openssl/ec.h>
-#include <openssl/asn1.h>
 #include <fmt/format.h>
+#include <openssl/asn1.h>
+#include <openssl/ec.h>
+#include <openssl/engine.h>
+#include <openssl/err.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/rand.h>
+#include <openssl/x509v3.h>
+#include <stdexcept>
+#include <string>
 
 #if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
 #  include <openssl/core_names.h>

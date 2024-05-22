@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <string>
-
-#include "ccf/ds/logger.h"
-#include "ccf/ds/json.h"
 #include "ccf/crypto/curve.h"
+#include "ccf/ds/json.h"
+#include "ccf/ds/logger.h"
+
+#include <string>
 
 namespace crypto
 {

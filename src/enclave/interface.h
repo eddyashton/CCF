@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <chrono>
-
-#include "ds/ring_buffer_types.h"
-#include "ds/oversized.h"
 #include "ccf/ds/json.h"
+#include "ds/oversized.h"
+#include "ds/ring_buffer_types.h"
+
+#include <chrono>
+#include <vector>
 
 /// General administrative messages
 enum AdminMessage : ringbuffer::Message

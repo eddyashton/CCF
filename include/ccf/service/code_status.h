@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/pal/measurement.h"
-#include "ccf/ds/json.h"
 #include "ccf/ds/hex.h"
+#include "ccf/ds/json.h"
+#include "ccf/pal/measurement.h"
 
 namespace ccf
 {

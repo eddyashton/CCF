@@ -1,33 +1,33 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "node/rpc/rpc_context_impl.h"
-#include "node/rpc/network_identity_subsystem.h"
-#include "node/endpoint_context_impl.h"
-#include "misc.pb.h"
-#include "kv.pb.h"
-#include "index.pb.h"
-#include "http/http_builder.h"
-#include "historical.pb.h"
-#include "external_executor_indexing.h"
-#include "executor_registration.pb.h"
-#include "executor_code_id.h"
-#include "executor_auth_policy.h"
-#include "ccf/service/tables/nodes.h"
-#include "ccf/json_handler.h"
-#include "ccf/http_responder.h"
-#include "ccf/http_consts.h"
-#include "ccf/historical_queries_utils.h"
-#include "ccf/historical_queries_adapter.h"
-#include "ccf/entity_id.h"
-#include "ccf/crypto/verifier.h"
-#include "ccf/common_auth_policies.h"
 #include "ccf/app_interface.h"
+#include "ccf/common_auth_policies.h"
+#include "ccf/crypto/verifier.h"
+#include "ccf/entity_id.h"
+#include "ccf/historical_queries_adapter.h"
+#include "ccf/historical_queries_utils.h"
+#include "ccf/http_consts.h"
+#include "ccf/http_responder.h"
+#include "ccf/json_handler.h"
+#include "ccf/service/tables/nodes.h"
+#include "executor_auth_policy.h"
+#include "executor_code_id.h"
+#include "executor_registration.pb.h"
+#include "external_executor_indexing.h"
+#include "historical.pb.h"
+#include "http/http_builder.h"
+#include "index.pb.h"
+#include "kv.pb.h"
+#include "misc.pb.h"
+#include "node/endpoint_context_impl.h"
+#include "node/rpc/network_identity_subsystem.h"
+#include "node/rpc/rpc_context_impl.h"
 
 #define FMT_HEADER_ONLY
-#include <string>
-#include <queue>
 #include <fmt/format.h>
+#include <queue>
+#include <string>
 
 namespace externalexecutor
 {

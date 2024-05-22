@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <optional>
-#include <map>
-
-#include "ccf/kv/serialisers/serialised_entry.h"
 #include "ccf/kv/hooks.h"
+#include "ccf/kv/serialisers/serialised_entry.h"
+
+#include <map>
+#include <optional>
 
 namespace kv::untyped
 {

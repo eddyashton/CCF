@@ -2,18 +2,18 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <string>
-#include <optional>
-
-#include "ccf/service/tables/members.h"
-#include "ccf/service/tables/host_data.h"
-#include "ccf/service/service_config.h"
-#include "ccf/service/node_info_network.h"
-#include "ccf/service/consensus_config.h"
-#include "ccf/pal/attestation_sev_snp_endorsements.h"
-#include "ccf/ds/unit_strings.h"
 #include "ccf/crypto/curve.h"
+#include "ccf/ds/unit_strings.h"
+#include "ccf/pal/attestation_sev_snp_endorsements.h"
+#include "ccf/service/consensus_config.h"
+#include "ccf/service/node_info_network.h"
+#include "ccf/service/service_config.h"
+#include "ccf/service/tables/host_data.h"
+#include "ccf/service/tables/members.h"
+
+#include <optional>
+#include <string>
+#include <vector>
 
 struct CCFConfig
 {

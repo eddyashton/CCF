@@ -5,20 +5,20 @@
 // Uncomment this to aid debugging
 // #define ENABLE_HISTORICAL_VERBOSE_LOGGING
 
-#include <random>
-#include <algorithm>
-
-#include "node/share_manager.h"
-#include "node/history.h"
-#include "kv/test/stub_consensus.h"
-#include "kv/test/null_encryptor.h"
-#include "ds/test/stub_writer.h"
-#include "ds/messaging.h"
-#include "crypto/openssl/hash.h"
-#include "ccf/pal/locking.h"
-#include "ccf/crypto/rsa_key_pair.h"
-
 #include "node/historical_queries.h"
+
+#include "ccf/crypto/rsa_key_pair.h"
+#include "ccf/pal/locking.h"
+#include "crypto/openssl/hash.h"
+#include "ds/messaging.h"
+#include "ds/test/stub_writer.h"
+#include "kv/test/null_encryptor.h"
+#include "kv/test/stub_consensus.h"
+#include "node/history.h"
+#include "node/share_manager.h"
+
+#include <algorithm>
+#include <random>
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 

@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-
-#include "service/tables/snapshot_evidence.h"
-#include "service/tables/signatures.h"
-#include "service/tables/shares.h"
-#include "kv_types.h"
-#include "kv/committable_tx.h"
 #include "apply_changes.h"
+#include "kv/committable_tx.h"
+#include "kv_types.h"
+#include "service/tables/shares.h"
+#include "service/tables/signatures.h"
+#include "service/tables/snapshot_evidence.h"
+
+#include <vector>
 
 namespace kv
 {

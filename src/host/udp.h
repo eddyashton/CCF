@@ -2,15 +2,15 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <optional>
-
-#include "socket.h"
-#include "proxy.h"
-#include "ds/pending_io.h"
-#include "dns.h"
-#include "ccf/pal/locking.h"
-#include "ccf/ds/logger.h"
 #include "before_io.h"
+#include "ccf/ds/logger.h"
+#include "ccf/pal/locking.h"
+#include "dns.h"
+#include "ds/pending_io.h"
+#include "proxy.h"
+#include "socket.h"
+
+#include <optional>
 
 namespace asynchost
 {

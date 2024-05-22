@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <span>
-
 #include "ccf/crypto/hash_bytes.h"
+
+#include <span>
+#include <vector>
 
 namespace crypto
 {

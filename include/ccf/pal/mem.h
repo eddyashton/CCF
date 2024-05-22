@@ -5,13 +5,13 @@
 #include <stdlib.h>
 
 #if !defined(INSIDE_ENCLAVE) || defined(VIRTUAL_ENCLAVE)
-#  include <limits>
 #  include <cstring>
+#  include <limits>
 #else
-#  include <openenclave/bits/security.h>
-#  include <openenclave/advanced/mallinfo.h>
-
 #  include "ccf/pal/hardware_info.h"
+
+#  include <openenclave/advanced/mallinfo.h>
+#  include <openenclave/bits/security.h>
 #endif
 
 namespace ccf::pal

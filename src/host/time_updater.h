@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <chrono>
-#include <atomic>
-
 #include "timer.h"
+
+#include <atomic>
+#include <chrono>
 
 namespace asynchost
 {

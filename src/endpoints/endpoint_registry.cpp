@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "node/rpc/rpc_context_impl.h"
-#include "http/http_parser.h"
-#include "ccf/pal/locking.h"
-#include "ccf/common_auth_policies.h"
-
 #include "ccf/endpoint_registry.h"
+
+#include "ccf/common_auth_policies.h"
+#include "ccf/pal/locking.h"
+#include "http/http_parser.h"
+#include "node/rpc/rpc_context_impl.h"
 
 namespace ccf::endpoints
 {

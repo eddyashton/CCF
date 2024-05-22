@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <string>
-#include <quickjs/quickjs.h>
-
 #include "js/core/constants.h"
+
+#include <quickjs/quickjs.h>
+#include <string>
 
 namespace ccf::js::core
 {

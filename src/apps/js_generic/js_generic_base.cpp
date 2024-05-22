@@ -1,38 +1,38 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include <vector>
-#include <stdexcept>
-#include <quickjs/quickjs.h>
-#include <quickjs/quickjs-exports.h>
-#include <memory>
-
-#include "service/tables/endpoints.h"
-#include "node/rpc/rpc_context_impl.h"
-#include "js/modules.h"
-#include "js/interpreter_cache_interface.h"
-#include "js/global_class_ids.h"
-#include "js/extensions/math/random.h"
-#include "js/extensions/console.h"
-#include "js/extensions/ccf/rpc.h"
-#include "js/extensions/ccf/kv.h"
-#include "js/extensions/ccf/host.h"
-#include "js/extensions/ccf/historical.h"
-#include "js/extensions/ccf/crypto.h"
-#include "js/extensions/ccf/converters.h"
-#include "js/extensions/ccf/consensus.h"
-#include "js/core/wrapped_property_enum.h"
-#include "js/core/context.h"
-#include "enclave/enclave_time.h"
-#include "ccf/version.h"
-#include "ccf/service/tables/jsengine.h"
-#include "ccf/node/host_processes_interface.h"
-#include "ccf/historical_queries_adapter.h"
-#include "ccf/endpoints/authentication/all_of_auth.h"
-#include "ccf/crypto/rsa_key_pair.h"
-#include "ccf/crypto/key_wrap.h"
-#include "ccf/app_interface.h"
-#include "apps/js_generic/request_extension.h"
 #include "apps/js_generic/named_auth_policies.h"
+#include "apps/js_generic/request_extension.h"
+#include "ccf/app_interface.h"
+#include "ccf/crypto/key_wrap.h"
+#include "ccf/crypto/rsa_key_pair.h"
+#include "ccf/endpoints/authentication/all_of_auth.h"
+#include "ccf/historical_queries_adapter.h"
+#include "ccf/node/host_processes_interface.h"
+#include "ccf/service/tables/jsengine.h"
+#include "ccf/version.h"
+#include "enclave/enclave_time.h"
+#include "js/core/context.h"
+#include "js/core/wrapped_property_enum.h"
+#include "js/extensions/ccf/consensus.h"
+#include "js/extensions/ccf/converters.h"
+#include "js/extensions/ccf/crypto.h"
+#include "js/extensions/ccf/historical.h"
+#include "js/extensions/ccf/host.h"
+#include "js/extensions/ccf/kv.h"
+#include "js/extensions/ccf/rpc.h"
+#include "js/extensions/console.h"
+#include "js/extensions/math/random.h"
+#include "js/global_class_ids.h"
+#include "js/interpreter_cache_interface.h"
+#include "js/modules.h"
+#include "node/rpc/rpc_context_impl.h"
+#include "service/tables/endpoints.h"
+
+#include <memory>
+#include <quickjs/quickjs-exports.h>
+#include <quickjs/quickjs.h>
+#include <stdexcept>
+#include <vector>
 
 namespace ccfapp
 {

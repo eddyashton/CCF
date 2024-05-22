@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <type_traits>
-#include <span>
-#include <array>
-
-#include "ccf/kv/serialisers/blit_serialiser.h"
-#include "ccf/ds/json.h"
 #include "ccf/ds/hex.h"
+#include "ccf/ds/json.h"
+#include "ccf/kv/serialisers/blit_serialiser.h"
+
+#include <array>
+#include <span>
+#include <type_traits>
 
 namespace ccf::pal
 {

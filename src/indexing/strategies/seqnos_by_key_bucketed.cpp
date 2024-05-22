@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "kv/kv_types.h"
-#include "indexing/lfs_interface.h"
-#include "ds/serialized.h"
-#include "ds/lru.h"
-#include "ccf/pal/locking.h"
-#include "ccf/ds/logger.h"
-#include "ccf/ds/hex.h"
-
 #include "ccf/indexing/strategies/seqnos_by_key_bucketed.h"
+
+#include "ccf/ds/hex.h"
+#include "ccf/ds/logger.h"
+#include "ccf/pal/locking.h"
+#include "ds/lru.h"
+#include "ds/serialized.h"
+#include "indexing/lfs_interface.h"
+#include "kv/kv_types.h"
 
 namespace ccf::indexing::strategies
 {

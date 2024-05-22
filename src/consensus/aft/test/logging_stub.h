@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <optional>
-#include <map>
-
-#include "consensus/aft/raft_types.h"
-#include "consensus/aft/raft.h"
 #include "ccf/entity_id.h"
+#include "consensus/aft/raft.h"
+#include "consensus/aft/raft_types.h"
+
+#include <map>
+#include <optional>
+#include <vector>
 
 namespace aft
 {

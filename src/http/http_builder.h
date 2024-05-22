@@ -2,18 +2,18 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/http_status.h"
-#include "ccf/http_header_map.h"
-#include "ccf/http_consts.h"
-#include "ccf/ds/nonstd.h"
 #include "ccf/ds/enum_formatter.h"
+#include "ccf/ds/nonstd.h"
+#include "ccf/http_consts.h"
+#include "ccf/http_header_map.h"
+#include "ccf/http_status.h"
 
 #define FMT_HEADER_ONLY
-#include <vector>
-#include <string>
-#include <map>
-#include <llhttp/llhttp.h>
 #include <fmt/format.h>
+#include <llhttp/llhttp.h>
+#include <map>
+#include <string>
+#include <vector>
 
 namespace http
 {

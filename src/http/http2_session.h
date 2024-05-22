@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "http_rpc_context.h"
-#include "http2_parser.h"
-#include "http/responder_lookup.h"
-#include "error_reporter.h"
-#include "enclave/rpc_map.h"
-#include "enclave/client_session.h"
-#include "ccf/http_responder.h"
 #include "ccf/ds/logger.h"
+#include "ccf/http_responder.h"
+#include "enclave/client_session.h"
+#include "enclave/rpc_map.h"
+#include "error_reporter.h"
+#include "http/responder_lookup.h"
+#include "http2_parser.h"
+#include "http_rpc_context.h"
 
 namespace http
 {

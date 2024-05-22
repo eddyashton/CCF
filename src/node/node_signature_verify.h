@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/tx.h"
-#include "ccf/service/tables/nodes.h"
 #include "ccf/crypto/verifier.h"
+#include "ccf/service/tables/nodes.h"
+#include "ccf/tx.h"
 
 namespace ccf
 {

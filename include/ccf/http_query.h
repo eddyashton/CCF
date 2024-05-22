@@ -5,11 +5,11 @@
 #include "ccf/ds/nonstd.h"
 
 #define FMT_HEADER_ONLY
-#include <string_view>
-#include <optional>
-#include <map>
-#include <fmt/format.h>
 #include <charconv>
+#include <fmt/format.h>
+#include <map>
+#include <optional>
+#include <string_view>
 
 namespace http
 {

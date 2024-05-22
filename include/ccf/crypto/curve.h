@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/json.h"
-#include "ccf/ds/enum_formatter.h"
 #include "ccf/crypto/md_type.h"
+#include "ccf/ds/enum_formatter.h"
+#include "ccf/ds/json.h"
 
 #define FMT_HEADER_ONLY
-#include <string>
-#include <stdexcept>
 #include <fmt/format.h>
+#include <stdexcept>
+#include <string>
 
 namespace crypto
 {

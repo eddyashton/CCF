@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include <string>
-#include <stdlib.h>
-#include <doctest/doctest.h>
-#include <algorithm>
-
 #include "ccf/ds/nonstd.h"
+
+#include <algorithm>
+#include <doctest/doctest.h>
+#include <stdlib.h>
+#include <string>
 
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>

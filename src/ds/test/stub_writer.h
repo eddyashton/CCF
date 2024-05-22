@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <limits>
-
-#include "ds/ring_buffer_types.h"
 #include "ccf/pal/locking.h"
+#include "ds/ring_buffer_types.h"
+
+#include <limits>
+#include <vector>
 
 struct StubWriter : public ringbuffer::AbstractWriter
 {

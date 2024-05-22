@@ -3,12 +3,12 @@
 
 #pragma once
 
-#include <vector>
-#include <t_cose/t_cose_common.h>
-#include <string>
-#include <stdexcept>
-#include <span>
 #include <qcbor/qcbor.h>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <t_cose/t_cose_common.h>
+#include <vector>
 
 namespace ccf::cose
 {

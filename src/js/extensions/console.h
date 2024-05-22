@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <string_view>
-
-#include "js/tx_access.h"
 #include "js/extensions/extension_interface.h"
+#include "js/tx_access.h"
+
+#include <string_view>
 
 namespace ccf::js::extensions
 {

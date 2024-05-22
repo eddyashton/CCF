@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <string>
-#include <atomic>
-
 #include "ccf/ds/logger.h"
+
+#include <atomic>
+#include <string>
 
 namespace ds
 {

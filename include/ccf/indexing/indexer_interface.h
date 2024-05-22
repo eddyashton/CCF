@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <set>
-#include <memory>
-#include <map>
-
-#include "ccf/node_subsystem_interface.h"
 #include "ccf/indexing/strategy.h"
+#include "ccf/node_subsystem_interface.h"
+
+#include <map>
+#include <memory>
+#include <set>
 
 namespace ccf::indexing
 {

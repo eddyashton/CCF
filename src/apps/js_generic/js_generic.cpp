@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include "js_generic_base.h"
-#include "ccf/js_snp_attestation_plugin.h"
-#include "ccf/js_openenclave_plugin.h"
 #include "ccf/app_interface.h"
+#include "ccf/js_openenclave_plugin.h"
+#include "ccf/js_snp_attestation_plugin.h"
+#include "js_generic_base.h"
 
 namespace ccfapp
 {

@@ -3,9 +3,9 @@
 #pragma once
 
 #define FMT_HEADER_ONLY
-#include <vector>
-#include <numeric>
 #include <fmt/format.h>
+#include <numeric>
+#include <vector>
 
 namespace ds
 {

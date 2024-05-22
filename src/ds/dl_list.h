@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <type_traits>
 #include <cassert>
+#include <type_traits>
 
 namespace ds
 {

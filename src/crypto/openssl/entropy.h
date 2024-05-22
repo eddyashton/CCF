@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <openssl/rand.h>
-#include <memory>
-#include <functional>
-
-#include "openssl_wrappers.h"
 #include "ccf/crypto/entropy.h"
+#include "openssl_wrappers.h"
+
+#include <functional>
+#include <memory>
+#include <openssl/rand.h>
+#include <vector>
 
 namespace crypto
 {

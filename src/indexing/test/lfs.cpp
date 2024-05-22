@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include <doctest/doctest.h>
-
-#include "indexing/test/common.h"
-#include "indexing/enclave_lfs_access.h"
-#include "host/lfs_file_handler.h"
 #include "ccf/indexing/strategies/seqnos_by_key_bucketed.h"
+#include "host/lfs_file_handler.h"
+#include "indexing/enclave_lfs_access.h"
+#include "indexing/test/common.h"
+
+#include <doctest/doctest.h>
 
 std::vector<uint8_t> read_file(const std::filesystem::path& p)
 {

@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include <string>
-#include <optional>
-
-#include "common/configuration.h"
 #include "ccf/ds/unit_strings.h"
+#include "common/configuration.h"
+
+#include <optional>
+#include <string>
 
 namespace host
 {

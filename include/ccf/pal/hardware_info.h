@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <set>
-#include <cstring>
 #include <cstdint>
+#include <cstring>
+#include <set>
 
 namespace ccf::pal
 {

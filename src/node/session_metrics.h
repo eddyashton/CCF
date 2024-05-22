@@ -3,9 +3,9 @@
 
 #pragma once
 
-#include <map>
-
 #include "ccf/ds/json.h"
+
+#include <map>
 
 namespace ccf
 {

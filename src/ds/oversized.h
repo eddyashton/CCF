@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "serialized.h"
-#include "ring_buffer.h"
 #include "messaging.h"
+#include "ring_buffer.h"
+#include "serialized.h"
 
 #define FMT_HEADER_ONLY
-#include <unordered_map>
 #include <fmt/format.h>
+#include <unordered_map>
 
 #define LOG_AND_THROW(ERROR_TYPE, ...) \
   do \

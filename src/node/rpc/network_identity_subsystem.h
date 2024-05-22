@@ -2,9 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "node/rpc/node_interface.h"
-#include "node/identity.h"
 #include "ccf/network_identity_interface.h"
+#include "node/identity.h"
+#include "node/rpc/node_interface.h"
 
 namespace ccf
 {

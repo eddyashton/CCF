@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <type_traits>
-#include <span>
-#include <array>
-
-#include "ccf/ds/hex.h"
 #include "ccf/crypto/sha256_hash.h"
+#include "ccf/ds/hex.h"
+
+#include <array>
+#include <span>
+#include <type_traits>
 
 namespace ccf::pal
 {

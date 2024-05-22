@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <string>
-#include <openssl/crypto.h>
-
-#include "crypto/openssl/key_pair.h"
-#include "crypto/certs.h"
 #include "ccf/crypto/curve.h"
+#include "crypto/certs.h"
+#include "crypto/openssl/key_pair.h"
+
+#include <openssl/crypto.h>
+#include <string>
+#include <vector>
 
 namespace ccf
 {

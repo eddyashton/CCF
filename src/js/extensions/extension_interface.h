@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
 #include <memory>
+#include <vector>
 
 namespace ccf::js::core
 {

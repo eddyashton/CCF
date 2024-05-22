@@ -1,41 +1,41 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include <unistd.h>
-#include <thread>
-#include <sys/types.h>
-#include <string>
-#include <locale>
-#include <iostream>
-#include <fstream>
-#include <filesystem>
-#include <cstdlib>
-#include <codecvt>
-#include <CLI11/CLI11.hpp>
-
-#include "time_updater.h"
-#include "ticker.h"
-#include "snapshots.h"
-#include "sig_term.h"
-#include "rpc_connections.h"
-#include "process_launcher.h"
-#include "node_connections.h"
-#include "load_monitor.h"
-#include "lfs_file_handler.h"
-#include "json_schema.h"
-#include "handle_ring_buffer.h"
-#include "enclave.h"
-#include "ds/x509_time_fmt.h"
-#include "ds/oversized.h"
-#include "ds/non_blocking.h"
-#include "ds/files.h"
-#include "ds/cli_helper.h"
-#include "configuration.h"
-#include "config_schema.h"
-#include "ccf/version.h"
-#include "ccf/pal/platform.h"
-#include "ccf/pal/attestation.h"
 #include "ccf/ds/logger.h"
+#include "ccf/pal/attestation.h"
+#include "ccf/pal/platform.h"
+#include "ccf/version.h"
+#include "config_schema.h"
+#include "configuration.h"
+#include "ds/cli_helper.h"
+#include "ds/files.h"
+#include "ds/non_blocking.h"
+#include "ds/oversized.h"
+#include "ds/x509_time_fmt.h"
+#include "enclave.h"
+#include "handle_ring_buffer.h"
+#include "json_schema.h"
+#include "lfs_file_handler.h"
+#include "load_monitor.h"
+#include "node_connections.h"
+#include "process_launcher.h"
+#include "rpc_connections.h"
+#include "sig_term.h"
+#include "snapshots.h"
+#include "ticker.h"
+#include "time_updater.h"
+
+#include <CLI11/CLI11.hpp>
+#include <codecvt>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <locale>
+#include <string>
+#include <sys/types.h>
+#include <thread>
+#include <unistd.h>
 
 namespace fs = std::filesystem;
 

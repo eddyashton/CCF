@@ -6,13 +6,13 @@
 #  include <intrin.h>
 #endif
 
-#include <utility>
-#include <map>
-#include <limits>
-#include <chrono>
-#include <cassert>
-
 #include "ccf/pal/locking.h"
+
+#include <cassert>
+#include <chrono>
+#include <limits>
+#include <map>
+#include <utility>
 
 namespace histogram
 {

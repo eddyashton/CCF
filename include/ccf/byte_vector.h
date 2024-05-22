@@ -5,8 +5,8 @@
 #include "ccf/ds/siphash.h"
 
 #define FMT_HEADER_ONLY
-#include <small_vector/SmallVector.h>
 #include <fmt/format.h>
+#include <small_vector/SmallVector.h>
 
 namespace ccf
 {

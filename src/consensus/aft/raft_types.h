@@ -2,17 +2,17 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <limits>
-#include <cstdint>
-#include <chrono>
-#include <array>
-
-#include "kv/kv_types.h"
-#include "enclave/rpc_handler.h"
-#include "ds/ring_buffer_types.h"
-#include "consensus/consensus_types.h"
-#include "ccf/entity_id.h"
 #include "ccf/crypto/ecdsa.h"
+#include "ccf/entity_id.h"
+#include "consensus/consensus_types.h"
+#include "ds/ring_buffer_types.h"
+#include "enclave/rpc_handler.h"
+#include "kv/kv_types.h"
+
+#include <array>
+#include <chrono>
+#include <cstdint>
+#include <limits>
 
 namespace aft
 {

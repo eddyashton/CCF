@@ -1,17 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "http/http_parser.h"
-#include "http/http_builder.h"
-#include "http/http_accept.h"
-#include "ccf/http_query.h"
 #include "ccf/crypto/key_pair.h"
+#include "ccf/http_query.h"
+#include "http/http_accept.h"
+#include "http/http_builder.h"
+#include "http/http_parser.h"
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #define DOCTEST_CONFIG_NO_SHORT_MACRO_NAMES
-#include <string>
-#include <queue>
 #include <doctest/doctest.h>
+#include <queue>
+#include <string>
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>
 

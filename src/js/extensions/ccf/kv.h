@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <memory>
-
-#include "js/extensions/extension_interface.h"
 #include "ccf/tx.h"
+#include "js/extensions/extension_interface.h"
+
+#include <memory>
 
 namespace ccf::js::extensions
 {

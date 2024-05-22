@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include <charconv>
-
-#include "ccf/node_context.h"
-#include "ccf/json_handler.h"
-#include "ccf/ds/json.h"
-#include "ccf/common_auth_policies.h"
-#include "ccf/base_endpoint_registry.h"
 #include "ccf/app_interface.h"
+#include "ccf/base_endpoint_registry.h"
+#include "ccf/common_auth_policies.h"
+#include "ccf/ds/json.h"
+#include "ccf/json_handler.h"
+#include "ccf/node_context.h"
+
+#include <charconv>
 
 namespace nobuiltins
 {

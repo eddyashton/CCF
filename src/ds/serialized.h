@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <string>
-#include <stdexcept>
-#include <cstring>
 #include <cstdint>
+#include <cstring>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>

@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <string>
-#include <memory>
-
-#include "kv/store.h"
-#include "kv/kv_types.h"
-#include "indexing/transaction_fetcher_interface.h"
-#include "ccf/indexing/indexer_interface.h"
 #include "ccf/ds/logger.h"
+#include "ccf/indexing/indexer_interface.h"
+#include "indexing/transaction_fetcher_interface.h"
+#include "kv/kv_types.h"
+#include "kv/store.h"
+
+#include <memory>
+#include <string>
 
 namespace ccf::indexing
 {

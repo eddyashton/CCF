@@ -2,17 +2,17 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <stdexcept>
-#include <openssl/ossl_typ.h>
-#include <openssl/ec.h>
-#include <openssl/crypto.h>
-#include <map>
-#include <iostream>
-
-#include "crypto/openssl/public_key.h"
-#include "crypto/openssl/openssl_wrappers.h"
-#include "ccf/ds/logger.h"
 #include "ccf/crypto/key_pair.h"
+#include "ccf/ds/logger.h"
+#include "crypto/openssl/openssl_wrappers.h"
+#include "crypto/openssl/public_key.h"
+
+#include <iostream>
+#include <map>
+#include <openssl/crypto.h>
+#include <openssl/ec.h>
+#include <openssl/ossl_typ.h>
+#include <stdexcept>
 
 namespace tls
 {

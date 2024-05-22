@@ -2,21 +2,21 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <nlohmann/json.hpp>
-
-#include "node/uvm_endorsements.h"
-#include "node/ledger_secrets.h"
-#include "node/identity.h"
-#include "enclave/interface.h"
-#include "common/configuration.h"
-#include "ccf/service/tables/service.h"
-#include "ccf/service/tables/members.h"
-#include "ccf/service/tables/host_data.h"
-#include "ccf/service/tables/code_id.h"
-#include "ccf/service/node_info_network.h"
-#include "ccf/pal/mem.h"
-#include "ccf/node_startup_state.h"
 #include "ccf/ds/json_schema.h"
+#include "ccf/node_startup_state.h"
+#include "ccf/pal/mem.h"
+#include "ccf/service/node_info_network.h"
+#include "ccf/service/tables/code_id.h"
+#include "ccf/service/tables/host_data.h"
+#include "ccf/service/tables/members.h"
+#include "ccf/service/tables/service.h"
+#include "common/configuration.h"
+#include "enclave/interface.h"
+#include "node/identity.h"
+#include "node/ledger_secrets.h"
+#include "node/uvm_endorsements.h"
+
+#include <nlohmann/json.hpp>
 
 namespace ccf
 {

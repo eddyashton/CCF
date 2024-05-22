@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/service/service_config.h"
-#include "ccf/service/reconfiguration_type.h"
-#include "ccf/service/map.h"
-#include "ccf/service/consensus_type.h"
 #include "ccf/ds/json.h"
+#include "ccf/service/consensus_type.h"
+#include "ccf/service/map.h"
+#include "ccf/service/reconfiguration_type.h"
+#include "ccf/service/service_config.h"
 
 namespace ccf
 {

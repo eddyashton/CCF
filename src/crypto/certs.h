@@ -2,12 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <string>
-#include <chrono>
-
-#include "ds/x509_time_fmt.h"
-#include "ccf/crypto/pem.h"
 #include "ccf/crypto/key_pair.h"
+#include "ccf/crypto/pem.h"
+#include "ds/x509_time_fmt.h"
+
+#include <chrono>
+#include <string>
 
 namespace crypto
 {

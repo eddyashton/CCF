@@ -2,21 +2,21 @@
 // Licensed under the Apache 2.0 License.
 #define OVERRIDE_DEFAULT_N2N_MESSAGE_LIMIT 1000
 
-#include <random>
-#include <queue>
-#include <cstring>
-#include <algorithm>
-
-#include "node/node_types.h"
-#include "node/node_to_node_channel_manager.h"
-#include "ds/ring_buffer.h"
-#include "ds/non_blocking.h"
-#include "crypto/openssl/x509_time.h"
-#include "crypto/certs.h"
-#include "ccf/ds/hex.h"
-#include "ccf/crypto/verifier.h"
-
 #include "../channels.h"
+
+#include "ccf/crypto/verifier.h"
+#include "ccf/ds/hex.h"
+#include "crypto/certs.h"
+#include "crypto/openssl/x509_time.h"
+#include "ds/non_blocking.h"
+#include "ds/ring_buffer.h"
+#include "node/node_to_node_channel_manager.h"
+#include "node/node_types.h"
+
+#include <algorithm>
+#include <cstring>
+#include <queue>
+#include <random>
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>

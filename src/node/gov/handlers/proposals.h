@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "node/gov/handlers/helpers.h"
-#include "node/gov/api_version.h"
-#include "js/extensions/ccf/node.h"
-#include "js/extensions/ccf/network.h"
-#include "js/extensions/ccf/gov_effects.h"
-#include "js/common_context.h"
-#include "ccf/crypto/hash_provider.h"
 #include "ccf/base_endpoint_registry.h"
+#include "ccf/crypto/hash_provider.h"
+#include "js/common_context.h"
+#include "js/extensions/ccf/gov_effects.h"
+#include "js/extensions/ccf/network.h"
+#include "js/extensions/ccf/node.h"
+#include "node/gov/api_version.h"
+#include "node/gov/handlers/helpers.h"
 
 namespace ccf::gov::endpoints
 {

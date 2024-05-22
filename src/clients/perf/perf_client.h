@@ -6,21 +6,21 @@
 #include "timing.h"
 
 // CCF
-#include "ds/files.h"
-#include "ds/cli_helper.h"
-#include "clients/rpc_tls_client.h"
-#include "ccf/ds/logger.h"
-#include "ccf/crypto/verifier.h"
 #include "ccf/crypto/sha256_hash.h"
+#include "ccf/crypto/verifier.h"
+#include "ccf/ds/logger.h"
+#include "clients/rpc_tls_client.h"
+#include "ds/cli_helper.h"
+#include "ds/files.h"
 
 // STL/3rdparty
-#include <unistd.h>
-#include <thread>
-#include <random>
-#include <nlohmann/json.hpp>
-#include <fstream>
-#include <chrono>
 #include <CLI11/CLI11.hpp>
+#include <chrono>
+#include <fstream>
+#include <nlohmann/json.hpp>
+#include <random>
+#include <thread>
+#include <unistd.h>
 
 namespace client
 {

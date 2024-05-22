@@ -2,19 +2,19 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <vector>
-#include <string>
-#include <optional>
-#include <memory>
-#include <list>
-
-#include "http_builder.h"
-#include "ccf/rest_verb.h"
-#include "ccf/http_status.h"
-#include "ccf/http_responder.h"
-#include "ccf/http_header_map.h"
-#include "ccf/http_configuration.h"
 #include "ccf/ds/nonstd.h"
+#include "ccf/http_configuration.h"
+#include "ccf/http_header_map.h"
+#include "ccf/http_responder.h"
+#include "ccf/http_status.h"
+#include "ccf/rest_verb.h"
+#include "http_builder.h"
+
+#include <list>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
 
 namespace http2
 {

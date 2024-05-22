@@ -6,13 +6,13 @@
 #  error Should only be included in cchost builds with virtual support
 #endif
 
-#include <wchar.h>
-#include <string.h>
-#include <stdlib.h>
-#include <dlfcn.h>
-
-#include "consensus_type.h"
 #include "common/enclave_interface_types.h"
+#include "consensus_type.h"
+
+#include <dlfcn.h>
+#include <stdlib.h>
+#include <string.h>
+#include <wchar.h>
 
 template <typename T>
 T get_enclave_exported_function(

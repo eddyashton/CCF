@@ -2,11 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "kv/serialised_entry_format.h"
-#include "kv/kv_types.h"
-#include "ds/serialized.h"
-#include "consensus/ledger_enclave_types.h"
 #include "ccf/ccf_assert.h"
+#include "consensus/ledger_enclave_types.h"
+#include "ds/serialized.h"
+#include "kv/kv_types.h"
+#include "kv/serialised_entry_format.h"
 
 namespace consensus
 {

@@ -4,28 +4,28 @@
 #include "ccf/tx.h"
 
 #define DOCTEST_CONFIG_IMPLEMENT
-#include <string>
-#include <iostream>
-#include <doctest/doctest.h>
-
-#include "service/internal_tables_access.h"
-#include "node_stub.h"
-#include "node/test/channel_stub.h"
-#include "node/rpc/node_frontend.h"
-#include "node/rpc/member_frontend.h"
-#include "node/network_state.h"
-#include "node/history.h"
-#include "kv/test/stub_consensus.h"
-#include "kv/test/null_encryptor.h"
-#include "frontend_test_infra.h"
-#include "enclave/enclave_time.h"
-#include "ds/files.h"
-#include "crypto/openssl/hash.h"
-#include "ccf/serdes.h"
-#include "ccf/kv/map.h"
-#include "ccf/json_handler.h"
-#include "ccf/ds/logger.h"
 #include "ccf/app_interface.h"
+#include "ccf/ds/logger.h"
+#include "ccf/json_handler.h"
+#include "ccf/kv/map.h"
+#include "ccf/serdes.h"
+#include "crypto/openssl/hash.h"
+#include "ds/files.h"
+#include "enclave/enclave_time.h"
+#include "frontend_test_infra.h"
+#include "kv/test/null_encryptor.h"
+#include "kv/test/stub_consensus.h"
+#include "node/history.h"
+#include "node/network_state.h"
+#include "node/rpc/member_frontend.h"
+#include "node/rpc/node_frontend.h"
+#include "node/test/channel_stub.h"
+#include "node_stub.h"
+#include "service/internal_tables_access.h"
+
+#include <doctest/doctest.h>
+#include <iostream>
+#include <string>
 
 std::unique_ptr<threading::ThreadMessaging>
   threading::ThreadMessaging::singleton = nullptr;

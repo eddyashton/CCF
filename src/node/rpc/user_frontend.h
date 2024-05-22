@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "node/rpc/frontend.h"
-#include "node/network_state.h"
-#include "ccf/node_context.h"
 #include "ccf/app_interface.h"
+#include "ccf/node_context.h"
+#include "node/network_state.h"
+#include "node/rpc/frontend.h"
 
 namespace ccf
 {

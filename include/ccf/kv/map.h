@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/kv/untyped.h"
-#include "ccf/kv/serialisers/json_serialiser.h"
-#include "ccf/kv/serialisers/blit_serialiser.h"
-#include "ccf/kv/map_handle.h"
-#include "ccf/kv/map_diff.h"
-#include "ccf/kv/hooks.h"
 #include "ccf/kv/get_name.h"
+#include "ccf/kv/hooks.h"
+#include "ccf/kv/map_diff.h"
+#include "ccf/kv/map_handle.h"
+#include "ccf/kv/serialisers/blit_serialiser.h"
+#include "ccf/kv/serialisers/json_serialiser.h"
+#include "ccf/kv/untyped.h"
 
 namespace kv
 {

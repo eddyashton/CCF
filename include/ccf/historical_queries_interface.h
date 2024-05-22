@@ -2,14 +2,14 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include <memory>
-#include <chrono>
-
-#include "ccf/tx_id.h"
-#include "ccf/seq_no_collection.h"
-#include "ccf/receipt.h"
-#include "ccf/node_subsystem_interface.h"
 #include "ccf/kv/read_only_store.h"
+#include "ccf/node_subsystem_interface.h"
+#include "ccf/receipt.h"
+#include "ccf/seq_no_collection.h"
+#include "ccf/tx_id.h"
+
+#include <chrono>
+#include <memory>
 
 namespace ccf::historical
 {

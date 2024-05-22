@@ -3,15 +3,15 @@
 
 #pragma once
 
-#include <string>
-#include <optional>
-
-#include "ccf/entity_id.h"
-#include "ccf/ds/openapi.h"
-#include "ccf/ds/json.h"
-#include "ccf/crypto/sha256_hash.h"
-#include "ccf/crypto/pem.h"
 #include "ccf/claims_digest.h"
+#include "ccf/crypto/pem.h"
+#include "ccf/crypto/sha256_hash.h"
+#include "ccf/ds/json.h"
+#include "ccf/ds/openapi.h"
+#include "ccf/entity_id.h"
+
+#include <optional>
+#include <string>
 
 namespace ccf
 {

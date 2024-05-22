@@ -1,21 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#include <chrono>
-#include <atomic>
-
-#include "kv/test/stub_consensus.h"
-#include "kv/test/null_encryptor.h"
-#include "kv/store.h"
-#include "kv/kv_serialiser.h"
-#include "kv/compacted_version_conflict.h"
-#include "crypto/openssl/hash.h"
 #include "ccf/ds/logger.h"
+#include "crypto/openssl/hash.h"
+#include "kv/compacted_version_conflict.h"
+#include "kv/kv_serialiser.h"
+#include "kv/store.h"
+#include "kv/test/null_encryptor.h"
+#include "kv/test/stub_consensus.h"
+
+#include <atomic>
+#include <chrono>
 #define DOCTEST_CONFIG_NO_SHORT_MACRO_NAMES
 
-#include <vector>
-#include <thread>
-#include <string>
 #include <doctest/doctest.h>
+#include <string>
+#include <thread>
+#include <vector>
 
 class SlowStubConsensus : public kv::test::StubConsensus
 {
