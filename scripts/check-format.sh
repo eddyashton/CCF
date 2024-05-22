@@ -28,10 +28,10 @@ else
   echo "Checking file format in" "$@"
 fi
 
-CLANG_FORMAT=/data/src/llvm-project/build/bin/clang-format
-# if [ -x "$(command -v clang-format-11)" ]; then
-#     CLANG_FORMAT=clang-format-11
-# fi
+CLANG_FORMAT=clang-format
+if [ -x "$(command -v clang-format-11)" ]; then
+    CLANG_FORMAT=clang-format-11
+fi
 
 file_name_regex="^[[:lower:]0-9_]+$"
 unformatted_files=""

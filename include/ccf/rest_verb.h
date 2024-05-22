@@ -3,7 +3,10 @@
 #pragma once
 
 #include "ccf/ds/hash.h"
+#include "ccf/ds/nonstd.h"
 
+#define FMT_HEADER_ONLY
+#include <fmt/format.h>
 #include <limits>
 #include <llhttp/llhttp.h>
 #include <nlohmann/json.hpp>

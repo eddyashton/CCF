@@ -3,6 +3,7 @@
 #pragma once
 
 #include "ccf/node/host_processes_interface.h"
+#include "node/rpc/node_interface.h"
 
 namespace ccf
 {

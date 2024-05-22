@@ -2,6 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include <cstdint>
+
 namespace ccf
 {
   enum class FrameFormat : uint8_t

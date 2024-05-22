@@ -2,6 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include <cstdint>
+
 const uint8_t siphash_2_4_vectors[64][8] = {
   {
     0x31,

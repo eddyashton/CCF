@@ -36,9 +36,9 @@ auto valid_to = crypto::compute_cert_valid_to_string(
   valid_from, certificate_validity_period_days);
 
 auto kp = crypto::make_key_pair();
-auto member_cert = kp->self_sign("CN=name_member", valid_from, valid_to);
+auto member_cert = kp -> self_sign("CN=name_member", valid_from, valid_to);
 auto verifier_mem = crypto::make_verifier(member_cert);
-auto user_cert = kp->self_sign("CN=name_user", valid_from, valid_to);
+auto user_cert = kp -> self_sign("CN=name_user", valid_from, valid_to);
 auto dummy_enc_pubk = crypto::make_rsa_key_pair() -> public_key_pem();
 
 auto encryptor = std::make_shared<kv::NullTxEncryptor>();

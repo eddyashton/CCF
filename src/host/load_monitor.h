@@ -3,6 +3,7 @@
 #pragma once
 
 #include "ds/messaging.h"
+#include "enclave/interface.h"
 #include "timer.h"
 
 namespace asynchost

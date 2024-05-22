@@ -4,6 +4,7 @@
 
 #include "ds/messaging.h"
 #include "enclave/interface.h"
+#include "host/proxy.h"
 
 #include <chrono>
 #include <queue>

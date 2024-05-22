@@ -3,6 +3,7 @@
 #pragma once
 
 #include "ccf/tx.h"
+#include "kv/kv_types.h"
 
 namespace kv
 {

@@ -3,7 +3,10 @@
 #pragma once
 
 #include "ccf/base_endpoint_registry.h"
+#include "ccf/common_auth_policies.h"
 #include "node/gov/api_version.h"
+#include "node/gov/handlers/helpers.h"
+#include "node/rpc/gov_logging.h"
 
 namespace ccf::gov::endpoints
 {

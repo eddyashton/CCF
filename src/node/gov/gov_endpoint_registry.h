@@ -2,6 +2,7 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "ccf/actors.h"
 #include "ccf/common_endpoint_registry.h"
 #include "node/gov/api_schema.h"
 #include "node/gov/api_version.h"

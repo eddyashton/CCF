@@ -2,7 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "kv/generic_serialise_wrapper.h"
 #include "kv/kv_types.h"
+#include "node/rpc/claims.h"
 
 namespace kv
 {

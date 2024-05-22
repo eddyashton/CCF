@@ -4,6 +4,7 @@
 
 #include "../quic/msg_types.h"
 #include "../tls/msg_types.h"
+#include "ds/messaging.h"
 #include "tcp.h"
 #include "udp.h"
 

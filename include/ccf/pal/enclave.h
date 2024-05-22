@@ -2,6 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "ccf/ds/ccf_exception.h"
+#include "ccf/ds/logger.h"
+
 #include <stdlib.h>
 
 #if !defined(INSIDE_ENCLAVE) || defined(VIRTUAL_ENCLAVE)
