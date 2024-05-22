@@ -11,9 +11,9 @@
 #include "ccf/ds/logger.h"
 
 #ifdef PLATFORM_SGX
+#  include <openenclave/bits/result.h>
 #  include <openenclave/trace.h>
 #  include <openenclave/host.h>
-#  include <openenclave/bits/result.h>
 #  include <ccf_u.h>
 #endif
 

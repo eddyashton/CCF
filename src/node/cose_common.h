@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <vector>
 #include <t_cose/t_cose_common.h>
 #include <string>
 #include <stdexcept>
