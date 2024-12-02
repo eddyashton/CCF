@@ -10,8 +10,8 @@
 struct Bar
 {
   size_t a = {};
-  std::string b = {};
-  size_t c = {};
+  std::optional<std::string> b = {};
+  std::optional<size_t> c = {};
 };
 DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(Bar);
 DECLARE_JSON_REQUIRED_FIELDS(Bar, a);
@@ -49,7 +49,7 @@ DECLARE_JSON_REQUIRED_FIELDS(Biz, f);
 struct Baz : public Bar
 {
   size_t d = {};
-  size_t e = {};
+  std::optional<size_t> e = {};
 };
 DECLARE_JSON_TYPE_WITH_BASE_AND_OPTIONAL_FIELDS(Baz, Bar);
 DECLARE_JSON_REQUIRED_FIELDS(Baz, d);
@@ -98,13 +98,13 @@ TEST_CASE("macro parser generation with base classes")
 struct Foo
 {
   size_t n_0 = 42;
-  size_t n_1 = 43;
+  std::optional<size_t> n_1 = 43;
   int i_0 = -1;
   int64_t i64_0 = -2;
   std::string s_0 = "Default value";
-  std::string s_1 = "Other default value";
+  std::optional<std::string> s_1 = "Other default value";
   std::optional<size_t> opt = std::nullopt;
-  std::vector<std::string> vec_s = {};
+  std::optional<std::vector<std::string>> vec_s = {};
   size_t ignored;
 };
 DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(Foo);
@@ -545,7 +545,7 @@ namespace examples
   struct Y
   {
     bool c;
-    std::string d;
+    std::optional<std::string> d;
   };
   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(Y)
   DECLARE_JSON_REQUIRED_FIELDS(Y, c)
@@ -560,7 +560,7 @@ namespace examples
 
   struct X_B : X
   {
-    int n;
+    std::optional<int> n;
   };
   DECLARE_JSON_TYPE_WITH_BASE_AND_OPTIONAL_FIELDS(X_B, X)
   DECLARE_JSON_REQUIRED_FIELDS(X_B)
@@ -575,9 +575,9 @@ namespace renamed
     size_t y;
     size_t z;
 
-    size_t a;
-    size_t b;
-    size_t c;
+    std::optional<size_t> a;
+    std::optional<size_t> b;
+    std::optional<size_t> c;
   };
   DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(Foo)
   DECLARE_JSON_REQUIRED_FIELDS_WITH_RENAMES(

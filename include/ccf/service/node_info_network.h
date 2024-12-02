@@ -72,7 +72,7 @@ namespace ccf
   struct RedirectionResolverConfig
   {
     RedirectionResolutionKind kind = RedirectionResolutionKind::NodeByRole;
-    nlohmann::json target;
+    std::optional<nlohmann::json> target;
 
     bool operator==(const RedirectionResolverConfig&) const = default;
   };
@@ -91,8 +91,8 @@ namespace ccf
     struct NetInterface
     {
       NetAddress bind_address;
-      NetAddress published_address;
-      NetProtocol protocol;
+      std::optional<NetAddress> published_address;
+      std::optional<NetProtocol> protocol;
       std::optional<ApplicationProtocol> app_protocol = std::nullopt;
 
       /// Maximum open sessions soft limit
@@ -117,8 +117,8 @@ namespace ccf
 
       struct Redirections
       {
-        RedirectionResolverConfig to_primary;
-        RedirectionResolverConfig to_backup;
+        std::optional<RedirectionResolverConfig> to_primary;
+        std::optional<RedirectionResolverConfig> to_backup;
 
         bool operator==(const Redirections& other) const = default;
       };

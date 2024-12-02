@@ -97,7 +97,7 @@ TEST_CASE("Simple custom types")
 struct Bar
 {
   std::string name;
-  double f;
+  std::optional<double> f;
 };
 DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(Bar);
 DECLARE_JSON_REQUIRED_FIELDS(Bar, name);
@@ -119,8 +119,8 @@ DECLARE_JSON_ENUM(
 struct Baz : public Bar
 {
   uint16_t n;
-  double x;
-  double y;
+  std::optional<double> x;
+  std::optional<double> y;
   Vehicle v;
 };
 DECLARE_JSON_TYPE_WITH_BASE_AND_OPTIONAL_FIELDS(Baz, Bar);
@@ -130,7 +130,7 @@ DECLARE_JSON_OPTIONAL_FIELDS(Baz, x, y);
 struct Buzz : public Baz
 {
   Foo required_and_only_in_c;
-  uint16_t optional_and_only_in_c;
+  std::optional<uint16_t> optional_and_only_in_c;
 };
 DECLARE_JSON_TYPE_WITH_BASE_AND_OPTIONAL_FIELDS(Buzz, Baz);
 DECLARE_JSON_REQUIRED_FIELDS_WITH_RENAMES(
