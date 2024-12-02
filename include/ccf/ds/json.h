@@ -385,6 +385,10 @@ namespace std
 
 #define WRITE_OPTIONAL_WITH_RENAMES_FOR_JSON_NEXT(TYPE, C_FIELD, JSON_FIELD) \
   { \
+    static_assert( \
+      ccf::nonstd::is_specialization<decltype(t.C_FIELD), std::optional>:: \
+        value, \
+      #C_FIELD " in " #TYPE " must be std::optional!"); \
     if (t.C_FIELD != t_default.C_FIELD) \
     { \
       j[JSON_FIELD] = t.C_FIELD; \
@@ -503,7 +507,7 @@ namespace std
 #define JSON_FIELD_FOR_JSON_FINAL(TYPE, FIELD) \
   ccf::JsonField<decltype(TYPE::FIELD)> \
   { \
-#    FIELD \
+    #FIELD \
   }
 
 /** Defines from_json, to_json, fill_json_schema, schema_name and
