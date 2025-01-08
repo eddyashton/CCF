@@ -2,28 +2,34 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "ccf/ds/macro_machinery.h"
+
+// TODO: Eventually remove this include?
 #include "ccf/ds/json.h"
 
 #include <cstdint>
 
-struct JsonSerdeBehaviour
+namespace ccf::json
 {
-  using Flags = uint8_t;
+  struct SerdeBehaviour
+  {
+    using Flags = uint8_t;
 
-  static constexpr Flags omit_write_if_default = 1 << 0;
-  static constexpr Flags allow_read_if_missing = 1 << 1;
+    static constexpr Flags omit_write_if_default = 1 << 0;
+    static constexpr Flags allow_read_if_missing = 1 << 1;
 
-  static constexpr Flags always_required = 0;
-  static constexpr Flags fully_optional =
-    omit_write_if_default | allow_read_if_missing;
-};
+    static constexpr Flags always_required = 0;
+    static constexpr Flags fully_optional =
+      omit_write_if_default | allow_read_if_missing;
+  };
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // CCF_TO_JSON
 #define CCF_TO_JSON_FOR_JSON_NEXT(TYPE, FLAGS, C_FIELD, JSON_FIELD) \
   { \
     if ( \
-      ((FLAGS & JsonSerdeBehaviour::omit_write_if_default) == 0) || \
+      ((FLAGS & ::ccf::json::SerdeBehaviour::omit_write_if_default) == 0) || \
       (t.C_FIELD != t_default.C_FIELD)) \
     { \
       j[JSON_FIELD] = t.C_FIELD; \
@@ -41,7 +47,8 @@ struct JsonSerdeBehaviour
     const auto it = j.find(JSON_FIELD); \
     if (it == j.end()) \
     { \
-      if constexpr ((FLAGS & JsonSerdeBehaviour::allow_read_if_missing) == 0) \
+      if constexpr ( \
+        (FLAGS & ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0) \
       { \
         throw ccf::JsonParseError( \
           "Missing required field '" JSON_FIELD "' in object: " + j.dump()); \
@@ -74,7 +81,8 @@ struct JsonSerdeBehaviour
   { \
     j["properties"][JSON_FIELD] = \
       ::ccf::ds::json::schema_element<decltype(TYPE::C_FIELD)>(); \
-    if constexpr ((FLAGS & JsonSerdeBehaviour::allow_read_if_missing) == 0) \
+    if constexpr ( \
+      (FLAGS & ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0) \
     { \
       j["required"].push_back(JSON_FIELD); \
     } \
@@ -90,7 +98,8 @@ struct JsonSerdeBehaviour
   { \
     j["properties"][JSON_FIELD] = \
       ::ccf::ds::json::schema_element<decltype(TYPE::C_FIELD)>(); \
-    if constexpr ((FLAGS & JsonSerdeBehaviour::allow_read_if_missing) == 0) \
+    if constexpr ( \
+      (FLAGS & ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0) \
     { \
       j["required"].push_back(JSON_FIELD); \
     } \
@@ -168,21 +177,21 @@ struct JsonSerdeBehaviour
     (POP3)(CCF_ADD_COMPONENTS, TYPE, ##__VA_ARGS__) \
   }
 
-#define CCF_JSON_REQUIRED(x) JsonSerdeBehaviour::always_required, x, #x
+#define CCF_JSON_REQUIRED(x) ::ccf::json::SerdeBehaviour::always_required, x, #x
 #define CCF_JSON_REQUIRED_RENAME(x, j_field) \
-  JsonSerdeBehaviour::always_required, x, j_field
-#define CCF_JSON_OPTIONAL(x) JsonSerdeBehaviour::fully_optional, x, #x
+  ::ccf::json::SerdeBehaviour::always_required, x, j_field
+#define CCF_JSON_OPTIONAL(x) ::ccf::json::SerdeBehaviour::fully_optional, x, #x
 #define CCF_JSON_OPTIONAL_RENAME(x, j_field) \
-  JsonSerdeBehaviour::fully_optional, x, j_field
+  ::ccf::json::SerdeBehaviour::fully_optional, x, j_field
 
 #define CCF_JSON_OMIT_DEFAULT(x) \
-  JsonSerdeBehaviour::omit_write_if_default, x, #x
+  ::ccf::json::SerdeBehaviour::omit_write_if_default, x, #x
 #define CCF_JSON_OMIT_DEFAULT_RENAME(x, j_field) \
-  JsonSerdeBehaviour::omit_write_if_default, x, x
+  ::ccf::json::SerdeBehaviour::omit_write_if_default, x, x
 #define CCF_JSON_ALLOW_MISSING(x) \
-  JsonSerdeBehaviour::allow_read_if_missing, x, #x
+  ::ccf::json::SerdeBehaviour::allow_read_if_missing, x, #x
 #define CCF_JSON_ALLOW_MISSING_RENAME(x, j_field) \
-  JsonSerdeBehaviour::allow_read_if_missing, x, x
+  ::ccf::json::SerdeBehaviour::allow_read_if_missing, x, x
 
 #define CCF_JSON_TYPE(TYPE, ...) CCF_JSON_TYPE_(TYPE, TYPE, __VA_ARGS__)
 #define CCF_JSON_TYPE_WITH_BASE(TYPE, BASE, ...) \
