@@ -43,7 +43,7 @@ struct JsonSerdeBehaviour
     { \
       if constexpr ((FLAGS & JsonSerdeBehaviour::allow_read_if_missing) == 0) \
       { \
-        throw JsonParseError( \
+        throw ccf::JsonParseError( \
           "Missing required field '" JSON_FIELD "' in object: " + j.dump()); \
       } \
       else \
@@ -56,7 +56,7 @@ struct JsonSerdeBehaviour
       { \
         t.C_FIELD = it->get<decltype(TYPE::C_FIELD)>(); \
       } \
-      catch (JsonParseError & jpe) \
+      catch (ccf::JsonParseError & jpe) \
       { \
         jpe.pointer_elements.push_back(JSON_FIELD); \
         throw; \
@@ -73,7 +73,7 @@ struct JsonSerdeBehaviour
 #define CCF_FILL_SCHEMA_FOR_JSON_NEXT(TYPE, FLAGS, C_FIELD, JSON_FIELD) \
   { \
     j["properties"][JSON_FIELD] = \
-      ::ds::json::schema_element<decltype(TYPE::C_FIELD)>(); \
+      ::ccf::ds::json::schema_element<decltype(TYPE::C_FIELD)>(); \
     if constexpr ((FLAGS & JsonSerdeBehaviour::allow_read_if_missing) == 0) \
     { \
       j["required"].push_back(JSON_FIELD); \
@@ -89,7 +89,7 @@ struct JsonSerdeBehaviour
 #define CCF_ADD_COMPONENTS_FOR_JSON_NEXT(TYPE, FLAGS, C_FIELD, JSON_FIELD) \
   { \
     j["properties"][JSON_FIELD] = \
-      ::ds::json::schema_element<decltype(TYPE::C_FIELD)>(); \
+      ::ccf::ds::json::schema_element<decltype(TYPE::C_FIELD)>(); \
     if constexpr ((FLAGS & JsonSerdeBehaviour::allow_read_if_missing) == 0) \
     { \
       j["required"].push_back(JSON_FIELD); \
@@ -119,7 +119,7 @@ struct JsonSerdeBehaviour
   { \
     if (!j.is_object()) \
     { \
-      throw JsonParseError("Expected object, found: " + j.dump()); \
+      throw ccf::JsonParseError("Expected object, found: " + j.dump()); \
     } \
     if constexpr (!std::is_same_v<BASE, TYPE>) \
     { \
@@ -127,7 +127,7 @@ struct JsonSerdeBehaviour
     } \
     if (!j.is_object()) \
     { \
-      throw JsonParseError("Expected object, found: " + j.dump()); \
+      throw ccf::JsonParseError("Expected object, found: " + j.dump()); \
     } \
     _FOR_JSON_COUNT_NN(__VA_ARGS__)(POP3)(CCF_FROM_JSON, TYPE, ##__VA_ARGS__) \
   } \
@@ -153,7 +153,7 @@ struct JsonSerdeBehaviour
   } \
 \
   inline void add_schema_components( \
-    ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE* t) \
+    ccf::ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE* t) \
   { \
     if (!j.is_object()) \
     { \

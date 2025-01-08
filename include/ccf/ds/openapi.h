@@ -271,7 +271,7 @@ namespace ccf::ds
     // json.h macros, and this could be implemented manually for other types.
     struct SchemaHelper;
     template <typename T>
-    void add_schema_components(SchemaHelper&, nlohmann::json& j, const T& t)
+    void add_schema_components(SchemaHelper&, nlohmann::json& j, const T* t)
     {
       fill_json_schema(j, t);
     }

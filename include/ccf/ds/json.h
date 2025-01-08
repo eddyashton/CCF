@@ -136,7 +136,7 @@ namespace nlohmann
     {
       if (!j.is_array())
       {
-        throw JsonParseError(
+        throw ccf::JsonParseError(
           fmt::format("Vector object \"{}\" is not an array", j.dump()));
       }
 
@@ -146,7 +146,7 @@ namespace nlohmann
         {
           t.push_back(j.at(i).template get<T>());
         }
-        catch (JsonParseError& jpe)
+        catch (ccf::JsonParseError& jpe)
         {
           jpe.pointer_elements.push_back(std::to_string(i));
           throw;
@@ -198,7 +198,7 @@ namespace nlohmann
   {
     static inline void to_json(nlohmann::json& j, const std::vector<uint8_t>& t)
     {
-      j = crypto::b64_from_raw(t);
+      j = ccf::crypto::b64_from_raw(t);
     }
 
     static inline void from_json(
@@ -208,12 +208,12 @@ namespace nlohmann
       {
         try
         {
-          t = crypto::raw_from_b64(j.get<std::string>());
+          t = ccf::crypto::raw_from_b64(j.get<std::string>());
           return;
         }
         catch (const std::exception& e)
         {
-          throw JsonParseError(fmt::format(
+          throw ccf::JsonParseError(fmt::format(
             "Vector of bytes object \"{}\" is not valid base64", j.dump()));
         }
       }
@@ -362,7 +362,7 @@ namespace nlohmann
 #define JSON_FIELD_FOR_JSON_FINAL(TYPE, FIELD) \
   ccf::JsonField<decltype(TYPE::FIELD)> \
   { \
-#    FIELD \
+    #FIELD \
   }
 
 /** Defines from_json, to_json, fill_json_schema, schema_name and
@@ -481,12 +481,12 @@ namespace nlohmann
   void to_json_optional_fields(nlohmann::json& j, const TYPE& t); \
   void from_json_required_fields(const nlohmann::json& j, TYPE& t); \
   void from_json_optional_fields(const nlohmann::json& j, TYPE& t); \
-  void fill_json_schema_required_fields(nlohmann::json& j, const TYPE& t); \
-  void fill_json_schema_optional_fields(nlohmann::json& j, const TYPE& t); \
+  void fill_json_schema_required_fields(nlohmann::json& j, const TYPE*); \
+  void fill_json_schema_optional_fields(nlohmann::json& j, const TYPE*); \
   void add_schema_components_required_fields( \
-    ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE& t); \
+    ccf::ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE*); \
   void add_schema_components_optional_fields( \
-    ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE& t); \
+    ccf::ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE*); \
   inline void to_json(nlohmann::json& j, const TYPE& t) \
   { \
     PRE_TO_JSON; \
@@ -510,7 +510,7 @@ namespace nlohmann
     return #TYPE; \
   } \
   inline void add_schema_components( \
-    ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE& t) \
+    ccf::ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE* t) \
   { \
     PRE_ADD_SCHEMA; \
     add_schema_components_required_fields(doc, j, t); \
@@ -597,7 +597,7 @@ namespace nlohmann
     (POP1)(FILL_SCHEMA_REQUIRED, TYPE, ##__VA_ARGS__) \
   } \
   inline void add_schema_components_required_fields( \
-    [[maybe_unused]] ds::openapi::SchemaHelper& doc, \
+    [[maybe_unused]] ccf::ds::openapi::SchemaHelper& doc, \
     nlohmann::json& j, \
     [[maybe_unused]] const TYPE& t) \
   { \
@@ -633,7 +633,7 @@ namespace nlohmann
     (POP2)(FILL_SCHEMA_REQUIRED_WITH_RENAMES, TYPE, ##__VA_ARGS__) \
   } \
   inline void add_schema_components_required_fields( \
-    ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE& t) \
+    ccf::ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE& t) \
   { \
     j["type"] = "object"; \
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
@@ -656,7 +656,7 @@ namespace nlohmann
     (POP1)(FILL_SCHEMA_OPTIONAL, TYPE, ##__VA_ARGS__) \
   } \
   inline void add_schema_components_optional_fields( \
-    ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE&) \
+    ccf::ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE&) \
   { \
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
     (POP1)(ADD_SCHEMA_COMPONENTS_OPTIONAL, TYPE, ##__VA_ARGS__); \
@@ -681,7 +681,7 @@ namespace nlohmann
     (POP2)(FILL_SCHEMA_OPTIONAL_WITH_RENAMES, TYPE, ##__VA_ARGS__) \
   } \
   inline void add_schema_components_optional_fields( \
-    ds::openapi::SchemaHelper& doc, \
+    ccf::ds::openapi::SchemaHelper& doc, \
     nlohmann::json& j, \
     [[maybe_unused]] const TYPE& t) \
   { \
