@@ -85,7 +85,7 @@ TEST_CASE("macro parser generation with base classes")
   j["e"] = 101;
   const Baz baz_1 = j;
   REQUIRE(baz_1.a == j["a"]);
-  REQUIRE(baz_1.b == j["b"]);
+  REQUIRE(baz_1.b == j["b"].get<std::string>());
   REQUIRE(baz_1.c == j["c"]);
   REQUIRE(baz_1.d == j["d"]);
   REQUIRE(baz_1.e == j["e"]);
@@ -366,9 +366,6 @@ TEST_CASE("nested")
   }
 }
 
-/**
- * TODO
-
 struct EnumStruct
 {
   enum class SampleEnum
@@ -387,8 +384,7 @@ DECLARE_JSON_ENUM(
   {{EnumStruct::SampleEnum::One, "one"},
    {EnumStruct::SampleEnum::Two, "two"},
    {EnumStruct::SampleEnum::Three, "three"}})
-DECLARE_JSON_TYPE(EnumStruct);
-DECLARE_JSON_REQUIRED_FIELDS(EnumStruct, se);
+CCF_JSON_TYPE(EnumStruct, CCF_JSON_REQUIRED(se));
 
 TEST_CASE("enum")
 {
@@ -540,32 +536,26 @@ namespace examples
   {
     int a, b;
   };
-  DECLARE_JSON_TYPE(X)
-  DECLARE_JSON_REQUIRED_FIELDS(X, a, b)
+  CCF_JSON_TYPE(X, CCF_JSON_REQUIRED(a), CCF_JSON_REQUIRED(b));
 
   struct Y
   {
     bool c;
     std::string d;
   };
-  DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(Y)
-  DECLARE_JSON_REQUIRED_FIELDS(Y, c)
-  DECLARE_JSON_OPTIONAL_FIELDS(Y, d)
+  CCF_JSON_TYPE(Y, CCF_JSON_REQUIRED(c), CCF_JSON_OPTIONAL(d));
 
   struct X_A : X
   {
     int m;
   };
-  DECLARE_JSON_TYPE_WITH_BASE(X_A, X)
-  DECLARE_JSON_REQUIRED_FIELDS(X_A, m)
+  CCF_JSON_TYPE_WITH_BASE(X_A, X, CCF_JSON_REQUIRED(m));
 
   struct X_B : X
   {
     int n;
   };
-  DECLARE_JSON_TYPE_WITH_BASE_AND_OPTIONAL_FIELDS(X_B, X)
-  DECLARE_JSON_REQUIRED_FIELDS(X_B)
-  DECLARE_JSON_OPTIONAL_FIELDS(X_B, n)
+  CCF_JSON_TYPE_WITH_BASE(X_B, X, CCF_JSON_OPTIONAL(n));
 }
 
 namespace renamed
@@ -580,11 +570,430 @@ namespace renamed
     size_t b;
     size_t c;
   };
-  DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(Foo)
-  DECLARE_JSON_REQUIRED_FIELDS_WITH_RENAMES(
-    Foo, x, "X", y, "SOMETHING_ELSE", z, "z-z!?(),;")
-  DECLARE_JSON_OPTIONAL_FIELDS_WITH_RENAMES(
-    Foo, a, "A", b, "OTHER_NAME", c, "c")
+  // CCF_JSON_TYPE(
+  //   Foo,
+  //   CCF_JSON_REQUIRED_RENAME(x, "X"),
+  //   CCF_JSON_REQUIRED_RENAME(y, "SOMETHING_ELSE"),
+  //   CCF_JSON_REQUIRED_RENAME(z, "z-z!?(),;"),
+  //   CCF_JSON_OPTIONAL_RENAME(a, "A"),
+  //   CCF_JSON_OPTIONAL_RENAME(b, "OTHER_NAME"),
+  //   CCF_JSON_OPTIONAL_RENAME(c, "c"));
+  inline void to_json(nlohmann::json& j, const Foo& t)
+  {
+    if constexpr (!std::is_same_v<Foo, Foo>)
+    {
+      to_json(j, static_cast<const Foo&>(t));
+    }
+    if (!j.is_object())
+    {
+      j = nlohmann::json::object();
+    }
+    Foo t_default;
+    {
+      if (
+        ((::ccf::json::SerdeBehaviour::always_required &
+          ::ccf::json::SerdeBehaviour::omit_write_if_default) == 0) ||
+        (t.x != t_default.x))
+      {
+        j["X"] = t.x;
+      }
+    }
+    {
+      if (
+        ((::ccf::json::SerdeBehaviour::always_required &
+          ::ccf::json::SerdeBehaviour::omit_write_if_default) == 0) ||
+        (t.y != t_default.y))
+      {
+        j["SOMETHING_ELSE"] = t.y;
+      }
+    }
+    {
+      if (
+        ((::ccf::json::SerdeBehaviour::always_required &
+          ::ccf::json::SerdeBehaviour::omit_write_if_default) == 0) ||
+        (t.z != t_default.z))
+      {
+        j["z-z!?(),;"] = t.z;
+      }
+    }
+    {
+      if (
+        ((::ccf::json::SerdeBehaviour::fully_optional &
+          ::ccf::json::SerdeBehaviour::omit_write_if_default) == 0) ||
+        (t.a != t_default.a))
+      {
+        j["A"] = t.a;
+      }
+    }
+    {
+      if (
+        ((::ccf::json::SerdeBehaviour::fully_optional &
+          ::ccf::json::SerdeBehaviour::omit_write_if_default) == 0) ||
+        (t.b != t_default.b))
+      {
+        j["OTHER_NAME"] = t.b;
+      }
+    }
+    {
+      if (
+        ((::ccf::json::SerdeBehaviour::fully_optional &
+          ::ccf::json::SerdeBehaviour::omit_write_if_default) == 0) ||
+        (t.c != t_default.c))
+      {
+        j["c"] = t.c;
+      }
+    }
+  }
+  inline void from_json(const nlohmann::json& j, Foo& t)
+  {
+    if (!j.is_object())
+    {
+      throw ccf::JsonParseError("Expected object, found: " + j.dump());
+    }
+    if constexpr (!std::is_same_v<Foo, Foo>)
+    {
+      from_json(j, static_cast<Foo&>(t));
+    }
+    if (!j.is_object())
+    {
+      throw ccf::JsonParseError("Expected object, found: " + j.dump());
+    }
+    {
+      const auto it = j.find("X");
+      if (it == j.end())
+      {
+        if constexpr (
+          (::ccf::json::SerdeBehaviour::always_required &
+           ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+        {
+          throw ccf::JsonParseError(
+            "Missing required field '"
+            "X"
+            "' in object: " +
+            j.dump());
+        }
+        else
+        {
+        }
+      }
+      else
+      {
+        try
+        {
+          t.x = it->get<decltype(Foo::x)>();
+        }
+        catch (ccf::JsonParseError& jpe)
+        {
+          jpe.pointer_elements.push_back("X");
+          throw;
+        }
+      }
+    }
+    {
+      const auto it = j.find("SOMETHING_ELSE");
+      if (it == j.end())
+      {
+        if constexpr (
+          (::ccf::json::SerdeBehaviour::always_required &
+           ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+        {
+          throw ccf::JsonParseError(
+            "Missing required field '"
+            "SOMETHING_ELSE"
+            "' in object: " +
+            j.dump());
+        }
+        else
+        {
+        }
+      }
+      else
+      {
+        try
+        {
+          t.y = it->get<decltype(Foo::y)>();
+        }
+        catch (ccf::JsonParseError& jpe)
+        {
+          jpe.pointer_elements.push_back("SOMETHING_ELSE");
+          throw;
+        }
+      }
+    }
+    {
+      const auto it = j.find("z-z!?(),;");
+      if (it == j.end())
+      {
+        if constexpr (
+          (::ccf::json::SerdeBehaviour::always_required &
+           ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+        {
+          throw ccf::JsonParseError(
+            "Missing required field '"
+            "z-z!?(),;"
+            "' in object: " +
+            j.dump());
+        }
+        else
+        {
+        }
+      }
+      else
+      {
+        try
+        {
+          t.z = it->get<decltype(Foo::z)>();
+        }
+        catch (ccf::JsonParseError& jpe)
+        {
+          jpe.pointer_elements.push_back("z-z!?(),;");
+          throw;
+        }
+      }
+    }
+    {
+      const auto it = j.find("A");
+      if (it == j.end())
+      {
+        if constexpr (
+          (::ccf::json::SerdeBehaviour::fully_optional &
+           ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+        {
+          throw ccf::JsonParseError(
+            "Missing required field '"
+            "A"
+            "' in object: " +
+            j.dump());
+        }
+        else
+        {
+        }
+      }
+      else
+      {
+        try
+        {
+          t.a = it->get<decltype(Foo::a)>();
+        }
+        catch (ccf::JsonParseError& jpe)
+        {
+          jpe.pointer_elements.push_back("A");
+          throw;
+        }
+      }
+    }
+    {
+      const auto it = j.find("OTHER_NAME");
+      if (it == j.end())
+      {
+        if constexpr (
+          (::ccf::json::SerdeBehaviour::fully_optional &
+           ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+        {
+          throw ccf::JsonParseError(
+            "Missing required field '"
+            "OTHER_NAME"
+            "' in object: " +
+            j.dump());
+        }
+        else
+        {
+        }
+      }
+      else
+      {
+        try
+        {
+          t.b = it->get<decltype(Foo::b)>();
+        }
+        catch (ccf::JsonParseError& jpe)
+        {
+          jpe.pointer_elements.push_back("OTHER_NAME");
+          throw;
+        }
+      }
+    }
+    {
+      const auto it = j.find("c");
+      if (it == j.end())
+      {
+        if constexpr (
+          (::ccf::json::SerdeBehaviour::fully_optional &
+           ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+        {
+          throw ccf::JsonParseError(
+            "Missing required field '"
+            "c"
+            "' in object: " +
+            j.dump());
+        }
+        else
+        {
+        }
+      }
+      else
+      {
+        try
+        {
+          t.c = it->get<decltype(Foo::c)>();
+        }
+        catch (ccf::JsonParseError& jpe)
+        {
+          jpe.pointer_elements.push_back("c");
+          throw;
+        }
+      }
+    }
+  }
+  inline void fill_json_schema(nlohmann::json& j, const Foo* t)
+  {
+    if (!j.is_object())
+    {
+      j = nlohmann::json::object();
+    }
+    j["type"] = "object";
+    if constexpr (!std::is_same_v<Foo, Foo>)
+    {
+      fill_json_schema(j, static_cast<const Foo*>(t));
+    }
+    {
+      j["properties"]["X"] =
+        ::ccf::ds::json::schema_element<decltype(Foo::x)>();
+      if constexpr (
+        (::ccf::json::SerdeBehaviour::always_required &
+         ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+      {
+        j["required"].push_back("X");
+      }
+    }
+    {
+      j["properties"]["SOMETHING_ELSE"] =
+        ::ccf::ds::json::schema_element<decltype(Foo::y)>();
+      if constexpr (
+        (::ccf::json::SerdeBehaviour::always_required &
+         ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+      {
+        j["required"].push_back("SOMETHING_ELSE");
+      }
+    }
+    {
+      j["properties"]["z-z!?(),;"] =
+        ::ccf::ds::json::schema_element<decltype(Foo::z)>();
+      if constexpr (
+        (::ccf::json::SerdeBehaviour::always_required &
+         ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+      {
+        j["required"].push_back("z-z!?(),;");
+      }
+    }
+    {
+      j["properties"]["A"] =
+        ::ccf::ds::json::schema_element<decltype(Foo::a)>();
+      if constexpr (
+        (::ccf::json::SerdeBehaviour::fully_optional &
+         ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+      {
+        j["required"].push_back("A");
+      }
+    }
+    {
+      j["properties"]["OTHER_NAME"] =
+        ::ccf::ds::json::schema_element<decltype(Foo::b)>();
+      if constexpr (
+        (::ccf::json::SerdeBehaviour::fully_optional &
+         ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+      {
+        j["required"].push_back("OTHER_NAME");
+      }
+    }
+    {
+      j["properties"]["c"] =
+        ::ccf::ds::json::schema_element<decltype(Foo::c)>();
+      if constexpr (
+        (::ccf::json::SerdeBehaviour::fully_optional &
+         ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+      {
+        j["required"].push_back("c");
+      }
+    }
+  }
+  inline std::string schema_name(const Foo*)
+  {
+    return "Foo";
+  }
+  inline void add_schema_components(
+    ccf::ds::openapi::SchemaHelper& doc, nlohmann::json& j, const Foo* t)
+  {
+    if (!j.is_object())
+    {
+      j = nlohmann::json::object();
+    }
+    j["type"] = "object";
+    if constexpr (!std::is_same_v<Foo, Foo>)
+    {
+      add_schema_components(doc, j, static_cast<const Foo*>(t));
+    }
+    {
+      j["properties"]["X"] =
+        ::ccf::ds::json::schema_element<decltype(Foo::x)>();
+      if constexpr (
+        (::ccf::json::SerdeBehaviour::always_required &
+         ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+      {
+        j["required"].push_back("X");
+      }
+    }
+    {
+      j["properties"]["SOMETHING_ELSE"] =
+        ::ccf::ds::json::schema_element<decltype(Foo::y)>();
+      if constexpr (
+        (::ccf::json::SerdeBehaviour::always_required &
+         ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+      {
+        j["required"].push_back("SOMETHING_ELSE");
+      }
+    }
+    {
+      j["properties"]["z-z!?(),;"] =
+        ::ccf::ds::json::schema_element<decltype(Foo::z)>();
+      if constexpr (
+        (::ccf::json::SerdeBehaviour::always_required &
+         ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+      {
+        j["required"].push_back("z-z!?(),;");
+      }
+    }
+    {
+      j["properties"]["A"] =
+        ::ccf::ds::json::schema_element<decltype(Foo::a)>();
+      if constexpr (
+        (::ccf::json::SerdeBehaviour::fully_optional &
+         ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+      {
+        j["required"].push_back("A");
+      }
+    }
+    {
+      j["properties"]["OTHER_NAME"] =
+        ::ccf::ds::json::schema_element<decltype(Foo::b)>();
+      if constexpr (
+        (::ccf::json::SerdeBehaviour::fully_optional &
+         ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+      {
+        j["required"].push_back("OTHER_NAME");
+      }
+    }
+    {
+      j["properties"]["c"] =
+        ::ccf::ds::json::schema_element<decltype(Foo::c)>();
+      if constexpr (
+        (::ccf::json::SerdeBehaviour::fully_optional &
+         ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0)
+      {
+        j["required"].push_back("c");
+      }
+    }
+  };
 }
 
 TEST_CASE("JSON with different field names")
@@ -681,4 +1090,3 @@ TEST_CASE("example validation")
     REQUIRE_THROWS("{ \"n\": 101 }"_json.get<X_B>());
   }
 }
- */

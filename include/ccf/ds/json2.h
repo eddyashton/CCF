@@ -187,11 +187,11 @@ namespace ccf::json
 #define CCF_JSON_OMIT_DEFAULT(x) \
   ::ccf::json::SerdeBehaviour::omit_write_if_default, x, #x
 #define CCF_JSON_OMIT_DEFAULT_RENAME(x, j_field) \
-  ::ccf::json::SerdeBehaviour::omit_write_if_default, x, x
+  ::ccf::json::SerdeBehaviour::omit_write_if_default, x, j_field
 #define CCF_JSON_ALLOW_MISSING(x) \
   ::ccf::json::SerdeBehaviour::allow_read_if_missing, x, #x
 #define CCF_JSON_ALLOW_MISSING_RENAME(x, j_field) \
-  ::ccf::json::SerdeBehaviour::allow_read_if_missing, x, x
+  ::ccf::json::SerdeBehaviour::allow_read_if_missing, x, j_field
 
 #define CCF_JSON_TYPE(TYPE, ...) CCF_JSON_TYPE_(TYPE, TYPE, __VA_ARGS__)
 #define CCF_JSON_TYPE_WITH_BASE(TYPE, BASE, ...) \
