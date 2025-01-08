@@ -478,7 +478,7 @@
   static_assert( \
     false, \
     "This macro requires args in doubles, ie the total number of args must " \
-    "be a multiple of 3");
+    "be a multiple of 2");
 #define _FOR_JSON_0_POP2(FUNC, TYPE)
 #define _FOR_JSON_1_POP2(FUNC, TYPE, ARG1) INVALID_ODD_ARGS
 #define _FOR_JSON_2_POP2(FUNC, TYPE, ARG1, ARG2) \
