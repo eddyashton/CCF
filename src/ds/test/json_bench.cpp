@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 #include "ccf/ds/json.h"
+#include "ccf/ds/json2.h"
 #include "ccf/ds/json_schema.h"
 
 #define PICOBENCH_IMPLEMENT_WITH_MAIN
@@ -65,6 +66,10 @@ void randomise(bool& b)
         ::randomise(n); \
         ::randomise(s); \
       } \
+      bool operator==(const Foo& other) const \
+      { \
+        return n == other.n && s == other.s; \
+      } \
     }; \
     struct Bar \
     { \
@@ -80,6 +85,10 @@ void randomise(bool& b)
         { \
           e.randomise(); \
         } \
+      } \
+      bool operator==(const Bar& other) const \
+      { \
+        return a == other.a && b == other.b && foos == other.foos; \
       } \
     }; \
     bool b; \
@@ -157,17 +166,35 @@ void from_json(const nlohmann::json& j, Complex_manual& c)
   c.bars = j["bars"].get<decltype(c.bars)>();
 }
 
-DECLARE_SIMPLE_STRUCT(macros)
-DECLARE_JSON_TYPE(Simple_macros);
-DECLARE_JSON_REQUIRED_FIELDS(Simple_macros, x, y);
+DECLARE_SIMPLE_STRUCT(oldmacros)
+DECLARE_JSON_TYPE(Simple_oldmacros);
+DECLARE_JSON_REQUIRED_FIELDS(Simple_oldmacros, x, y);
 
-DECLARE_COMPLEX_STRUCT(macros)
-DECLARE_JSON_TYPE(Complex_macros::Foo);
-DECLARE_JSON_REQUIRED_FIELDS(Complex_macros::Foo, n, s);
-DECLARE_JSON_TYPE(Complex_macros::Bar);
-DECLARE_JSON_REQUIRED_FIELDS(Complex_macros::Bar, a, b, foos);
-DECLARE_JSON_TYPE(Complex_macros);
-DECLARE_JSON_REQUIRED_FIELDS(Complex_macros, b, i, s, bars);
+DECLARE_SIMPLE_STRUCT(newmacros);
+CCF_JSON_TYPE(Simple_newmacros, CCF_JSON_REQUIRED(x), CCF_JSON_REQUIRED(y));
+
+DECLARE_COMPLEX_STRUCT(oldmacros)
+DECLARE_JSON_TYPE(Complex_oldmacros::Foo);
+DECLARE_JSON_REQUIRED_FIELDS(Complex_oldmacros::Foo, n, s);
+DECLARE_JSON_TYPE(Complex_oldmacros::Bar);
+DECLARE_JSON_REQUIRED_FIELDS(Complex_oldmacros::Bar, a, b, foos);
+DECLARE_JSON_TYPE(Complex_oldmacros);
+DECLARE_JSON_REQUIRED_FIELDS(Complex_oldmacros, b, i, s, bars);
+
+DECLARE_COMPLEX_STRUCT(newmacros);
+CCF_JSON_TYPE(
+  Complex_newmacros::Foo, CCF_JSON_REQUIRED(n), CCF_JSON_REQUIRED(s));
+CCF_JSON_TYPE(
+  Complex_newmacros::Bar,
+  CCF_JSON_REQUIRED(a),
+  CCF_JSON_REQUIRED(b),
+  CCF_JSON_REQUIRED(foos));
+CCF_JSON_TYPE(
+  Complex_newmacros,
+  CCF_JSON_REQUIRED(b),
+  CCF_JSON_REQUIRED(i),
+  CCF_JSON_REQUIRED(s),
+  CCF_JSON_REQUIRED(bars));
 
 template <typename T, typename R = T>
 std::vector<R> build_entries(picobench::state& s)
@@ -221,14 +248,18 @@ const std::vector<int> sizes = {200, 2'000};
 
 PICOBENCH_SUITE("simple");
 PICOBENCH(conv<Simple_manual>).iterations(sizes).samples(10);
-PICOBENCH(conv<Simple_macros>).iterations(sizes).samples(10);
+PICOBENCH(conv<Simple_oldmacros>).iterations(sizes).samples(10);
+PICOBENCH(conv<Simple_newmacros>).iterations(sizes).samples(10);
 
 PICOBENCH_SUITE("complex");
 PICOBENCH(conv<Complex_manual>).iterations(sizes).samples(10);
-PICOBENCH(conv<Complex_macros>).iterations(sizes).samples(10);
+PICOBENCH(conv<Complex_oldmacros>).iterations(sizes).samples(10);
+PICOBENCH(conv<Complex_newmacros>).iterations(sizes).samples(10);
 
 PICOBENCH_SUITE("validation simple");
-PICOBENCH(valmacro<Simple_macros>).iterations(sizes).samples(10);
+PICOBENCH(valmacro<Simple_oldmacros>).iterations(sizes).samples(10);
+PICOBENCH(valmacro<Simple_newmacros>).iterations(sizes).samples(10);
 
 PICOBENCH_SUITE("validation complex");
-PICOBENCH(valmacro<Complex_macros>).iterations(sizes).samples(10);
+PICOBENCH(valmacro<Complex_oldmacros>).iterations(sizes).samples(10);
+PICOBENCH(valmacro<Complex_newmacros>).iterations(sizes).samples(10);

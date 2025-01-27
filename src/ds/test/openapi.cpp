@@ -3,6 +3,7 @@
 #include "ccf/ds/openapi.h"
 
 #include "ccf/ds/json.h"
+#include "ccf/ds/json2.h"
 #include "ccf/ds/logger.h"
 #include "ccf/http_consts.h"
 
@@ -74,9 +75,10 @@ struct Foo
 {
   size_t n;
   std::string s;
+
+  bool operator==(const Foo&) const = default;
 };
-DECLARE_JSON_TYPE(Foo);
-DECLARE_JSON_REQUIRED_FIELDS(Foo, n, s);
+CCF_JSON_TYPE(Foo, CCF_JSON_REQUIRED(n), CCF_JSON_REQUIRED(s));
 
 TEST_CASE("Simple custom types")
 {
@@ -100,9 +102,7 @@ struct Bar
   std::string name;
   double f;
 };
-DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(Bar);
-DECLARE_JSON_REQUIRED_FIELDS(Bar, name);
-DECLARE_JSON_OPTIONAL_FIELDS(Bar, f);
+CCF_JSON_TYPE(Bar, CCF_JSON_REQUIRED(name), CCF_JSON_OPTIONAL(f));
 
 enum class Vehicle
 {
@@ -124,20 +124,24 @@ struct Baz : public Bar
   double y;
   Vehicle v;
 };
-DECLARE_JSON_TYPE_WITH_BASE_AND_OPTIONAL_FIELDS(Baz, Bar);
-DECLARE_JSON_REQUIRED_FIELDS(Baz, n, v);
-DECLARE_JSON_OPTIONAL_FIELDS(Baz, x, y);
+CCF_JSON_TYPE_WITH_BASE(
+  Baz,
+  Bar,
+  CCF_JSON_REQUIRED(n),
+  CCF_JSON_REQUIRED(v),
+  CCF_JSON_OPTIONAL(x),
+  CCF_JSON_OPTIONAL(y));
 
 struct Buzz : public Baz
 {
   Foo required_and_only_in_c;
   uint16_t optional_and_only_in_c;
 };
-DECLARE_JSON_TYPE_WITH_BASE_AND_OPTIONAL_FIELDS(Buzz, Baz);
-DECLARE_JSON_REQUIRED_FIELDS_WITH_RENAMES(
-  Buzz, required_and_only_in_c, "RequiredJsonField");
-DECLARE_JSON_OPTIONAL_FIELDS_WITH_RENAMES(
-  Buzz, optional_and_only_in_c, "OptionalJsonField");
+CCF_JSON_TYPE_WITH_BASE(
+  Buzz,
+  Baz,
+  CCF_JSON_REQUIRED_RENAME(required_and_only_in_c, "RequiredJsonField"),
+  CCF_JSON_OPTIONAL_RENAME(optional_and_only_in_c, "OptionalJsonField"));
 
 TEST_CASE("Complex custom types")
 {
@@ -176,6 +180,7 @@ namespace aaa
     std::string forename;
     std::string nickname;
     std::string surname;
+    bool operator==(const FriendlyName&) const = default;
   };
 
   void to_json(nlohmann::json& j, const FriendlyName& fn)
@@ -200,7 +205,7 @@ namespace aaa
   }
 
   void add_schema_components(
-    ds::openapi::SchemaHelper& doc, nlohmann::json& j, const FriendlyName*)
+    ccf::ds::openapi::SchemaHelper& doc, nlohmann::json& j, const FriendlyName*)
   {
     j["type"] = "string";
     j["pattern"] = "^.* \".*\" .*$";
@@ -214,8 +219,7 @@ namespace bbb
     aaa::FriendlyName name;
     size_t age;
   };
-  DECLARE_JSON_TYPE(Person);
-  DECLARE_JSON_REQUIRED_FIELDS(Person, name, age);
+  CCF_JSON_TYPE(Person, CCF_JSON_REQUIRED(name), CCF_JSON_REQUIRED(age));
 }
 
 TEST_CASE("Manual function definitions")

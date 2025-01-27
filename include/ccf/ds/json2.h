@@ -97,7 +97,7 @@ namespace ccf::json
 #define CCF_ADD_COMPONENTS_FOR_JSON_NEXT(TYPE, FLAGS, C_FIELD, JSON_FIELD) \
   { \
     j["properties"][JSON_FIELD] = \
-      ::ccf::ds::json::schema_element<decltype(TYPE::C_FIELD)>(); \
+      doc.add_schema_component<decltype(TYPE::C_FIELD)>(); \
     if constexpr ( \
       (FLAGS & ::ccf::json::SerdeBehaviour::allow_read_if_missing) == 0) \
     { \
@@ -120,7 +120,7 @@ namespace ccf::json
     { \
       j = nlohmann::json::object(); \
     } \
-    TYPE t_default; \
+    const TYPE t_default{}; \
     _FOR_JSON_COUNT_NN(__VA_ARGS__)(POP3)(CCF_TO_JSON, TYPE, ##__VA_ARGS__) \
   } \
 \
