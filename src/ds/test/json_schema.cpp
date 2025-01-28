@@ -379,7 +379,7 @@ struct EnumStruct
   SampleEnum se;
 };
 
-DECLARE_JSON_ENUM(
+CCF_JSON_ENUM(
   EnumStruct::SampleEnum,
   {{EnumStruct::SampleEnum::One, "one"},
    {EnumStruct::SampleEnum::Two, "two"},

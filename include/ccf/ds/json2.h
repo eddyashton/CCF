@@ -2,10 +2,11 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "ccf/ds/json_parse_error.h"
+#include "ccf/ds/json_schema.h"
 #include "ccf/ds/macro_machinery.h"
-
-// TODO: Eventually remove this include?
-#include "ccf/ds/json.h"
+#include "ccf/ds/openapi.h"
+#include "ccf/ds/std_json.h"
 
 #include <cstdint>
 
@@ -107,6 +108,63 @@ namespace ccf::json
 
 #define CCF_ADD_COMPONENTS_FOR_JSON_FINAL(TYPE, FLAGS, C_FIELD, JSON_FIELD) \
   CCF_ADD_COMPONENTS_FOR_JSON_NEXT(TYPE, FLAGS, C_FIELD, JSON_FIELD)
+////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+// CCF_JSON_ENUM
+// Enum conversion, based on NLOHMANN_JSON_SERIALIZE_ENUM, but less permissive
+// (throws on unknown JSON values)
+#define CCF_JSON_ENUM(TYPE, ...) \
+  inline void to_json(nlohmann::json& j, const TYPE& e) \
+  { \
+    static_assert(std::is_enum<TYPE>::value, #TYPE " must be an enum!"); \
+    static const std::pair<TYPE, nlohmann::json> m[] = __VA_ARGS__; \
+    auto it = std::find_if( \
+      std::begin(m), \
+      std::end(m), \
+      [e](const std::pair<TYPE, nlohmann::json>& ej_pair) -> bool { \
+        return ej_pair.first == e; \
+      }); \
+    if (it == std::end(m)) \
+    { \
+      throw ccf::JsonParseError(fmt::format( \
+        "Value {} in enum " #TYPE " has no specified JSON conversion", \
+        (size_t)e)); \
+    } \
+    j = it->second; \
+  } \
+  inline void from_json(const nlohmann::json& j, TYPE& e) \
+  { \
+    static_assert(std::is_enum<TYPE>::value, #TYPE " must be an enum!"); \
+    static const std::pair<TYPE, nlohmann::json> m[] = __VA_ARGS__; \
+    auto it = std::find_if( \
+      std::begin(m), \
+      std::end(m), \
+      [&j](const std::pair<TYPE, nlohmann::json>& ej_pair) -> bool { \
+        return ej_pair.second == j; \
+      }); \
+    if (it == std::end(m)) \
+    { \
+      throw ccf::JsonParseError( \
+        fmt::format("{} is not convertible to " #TYPE, j.dump())); \
+    } \
+    e = it->first; \
+  } \
+  inline std::string schema_name(const TYPE*) \
+  { \
+    return #TYPE; \
+  } \
+  inline void fill_enum_schema(nlohmann::json& j, const TYPE*) \
+  { \
+    static const std::pair<TYPE, nlohmann::json> m[] = __VA_ARGS__; \
+    auto enums = nlohmann::json::array(); \
+    for (const auto& p : m) \
+    { \
+      enums.push_back(p.second); \
+    } \
+    j["enum"] = enums; \
+    j["type"] = "string"; \
+  }
 ////////////////////////////////////////////////////////////////////////////////
 
 #define CCF_JSON_TYPE_(TYPE, BASE, ...) \
