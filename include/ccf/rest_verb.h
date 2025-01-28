@@ -112,16 +112,4 @@ namespace ccf
   {
     schema["type"] = "string";
   }
-
-  inline std::string schema_name(const RESTVerb&)
-  {
-    return "HTTPMethod";
-  }
-
-  inline void fill_json_schema(
-    nlohmann::json& schema, const RESTVerb&)
-  {
-    schema["type"] = "string";
-    // TODO: enum of actual possible values?
-  }
 }

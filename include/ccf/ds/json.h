@@ -362,7 +362,7 @@ namespace nlohmann
 #define JSON_FIELD_FOR_JSON_FINAL(TYPE, FIELD) \
   ccf::JsonField<decltype(TYPE::FIELD)> \
   { \
-    #FIELD \
+#    FIELD \
   }
 
 /** Defines from_json, to_json, fill_json_schema, schema_name and
@@ -599,7 +599,7 @@ namespace nlohmann
   inline void add_schema_components_required_fields( \
     [[maybe_unused]] ccf::ds::openapi::SchemaHelper& doc, \
     nlohmann::json& j, \
-    [[maybe_unused]] const TYPE& t) \
+    [[maybe_unused]] const TYPE* t) \
   { \
     j["type"] = "object"; \
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
@@ -656,7 +656,7 @@ namespace nlohmann
     (POP1)(FILL_SCHEMA_OPTIONAL, TYPE, ##__VA_ARGS__) \
   } \
   inline void add_schema_components_optional_fields( \
-    ccf::ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE&) \
+    ccf::ds::openapi::SchemaHelper& doc, nlohmann::json& j, const TYPE*) \
   { \
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
     (POP1)(ADD_SCHEMA_COMPONENTS_OPTIONAL, TYPE, ##__VA_ARGS__); \
@@ -683,7 +683,7 @@ namespace nlohmann
   inline void add_schema_components_optional_fields( \
     ccf::ds::openapi::SchemaHelper& doc, \
     nlohmann::json& j, \
-    [[maybe_unused]] const TYPE& t) \
+    [[maybe_unused]] const TYPE* t) \
   { \
     _FOR_JSON_COUNT_NN(__VA_ARGS__) \
     (POP2)(ADD_SCHEMA_COMPONENTS_OPTIONAL_WITH_RENAMES, TYPE, ##__VA_ARGS__); \
