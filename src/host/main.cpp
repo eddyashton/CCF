@@ -9,6 +9,7 @@
 #include "ccf/version.h"
 #include "config_schema.h"
 #include "configuration.h"
+#include "crypto/openssl/hash.h"
 #include "ds/cli_helper.h"
 #include "ds/files.h"
 #include "ds/non_blocking.h"
@@ -21,10 +22,12 @@
 #include "lfs_file_handler.h"
 #include "load_monitor.h"
 #include "node_connections.h"
+#include "pal/quote_generation.h"
 #include "process_launcher.h"
 #include "rpc_connections.h"
 #include "sig_term.h"
-#include "snapshots.h"
+#include "snapshots/fetch.h"
+#include "snapshots/snapshot_manager.h"
 #include "ticker.h"
 #include "time_updater.h"
 
@@ -72,6 +75,9 @@ int main(int argc, char** argv)
 {
   // ignore SIGPIPE
   signal(SIGPIPE, SIG_IGN);
+
+  ccf::crypto::openssl_sha256_init();
+
   CLI::App app{
     "CCF Host launcher. Runs a single CCF node, based on the given "
     "configuration file.\n"
@@ -376,7 +382,7 @@ int main(int argc, char** argv)
       config.ledger.read_only_directories);
     ledger.register_message_handlers(bp.get_dispatcher());
 
-    asynchost::SnapshotManager snapshots(
+    snapshots::SnapshotManager snapshots(
       config.snapshots.directory,
       writer_factory,
       config.snapshots.read_only_directory);
@@ -507,8 +513,6 @@ int main(int argc, char** argv)
 
     ccf::StartupConfig startup_config(config);
 
-    startup_config.snapshot_tx_interval = config.snapshots.tx_count;
-
     if (startup_config.attestation.snp_security_policy_file.has_value())
     {
       auto security_policy_file =
@@ -522,6 +526,11 @@ int main(int argc, char** argv)
 
       startup_config.attestation.environment.security_policy =
         files::try_slurp_string(security_policy_file);
+    }
+
+    if (config.enclave.platform == host::EnclavePlatform::VIRTUAL)
+    {
+      ccf::pal::emit_virtual_measurement(enclave_file_path);
     }
 
     if (startup_config.attestation.snp_uvm_endorsements_file.has_value())
@@ -690,22 +699,62 @@ int main(int argc, char** argv)
       config.command.type == StartType::Join ||
       config.command.type == StartType::Recover)
     {
-      auto latest_committed_snapshot =
-        snapshots.find_latest_committed_snapshot();
-      if (latest_committed_snapshot.has_value())
-      {
-        auto& [snapshot_dir, snapshot_file] = latest_committed_snapshot.value();
-        startup_snapshot = files::slurp(snapshot_dir / snapshot_file);
+      auto latest_local_snapshot = snapshots.find_latest_committed_snapshot();
 
-        LOG_INFO_FMT(
-          "Found latest snapshot file: {} (size: {})",
-          snapshot_dir / snapshot_file,
-          startup_snapshot.size());
-      }
-      else
+      if (
+        config.command.type == StartType::Join &&
+        config.command.join.fetch_recent_snapshot)
       {
-        LOG_INFO_FMT(
-          "No snapshot found: Node will replay all historical transactions");
+        // Try to fetch a recent snapshot from peer
+        const size_t latest_local_idx = latest_local_snapshot.has_value() ?
+          snapshots::get_snapshot_idx_from_file_name(
+            latest_local_snapshot->second) :
+          0;
+        auto latest_peer_snapshot = snapshots::fetch_from_peer(
+          config.command.join.target_rpc_address,
+          config.command.service_certificate_file,
+          latest_local_idx);
+
+        if (latest_peer_snapshot.has_value())
+        {
+          LOG_INFO_FMT(
+            "Received snapshot {} from peer (size: {}) - writing this to disk "
+            "and using for join startup",
+            latest_peer_snapshot->snapshot_name,
+            latest_peer_snapshot->snapshot_data.size());
+
+          const auto dst_path = fs::path(config.snapshots.directory) /
+            fs::path(latest_peer_snapshot->snapshot_name);
+          if (files::exists(dst_path))
+          {
+            LOG_FATAL_FMT(
+              "Unable to write peer snapshot - already have a file at {}. "
+              "Exiting.",
+              dst_path);
+            return static_cast<int>(CLI::ExitCodes::FileError);
+          }
+          files::dump(latest_peer_snapshot->snapshot_data, dst_path);
+          startup_snapshot = latest_peer_snapshot->snapshot_data;
+        }
+      }
+
+      if (startup_snapshot.empty())
+      {
+        if (latest_local_snapshot.has_value())
+        {
+          auto& [snapshot_dir, snapshot_file] = latest_local_snapshot.value();
+          startup_snapshot = files::slurp(snapshot_dir / snapshot_file);
+
+          LOG_INFO_FMT(
+            "Found latest local snapshot file: {} (size: {})",
+            snapshot_dir / snapshot_file,
+            startup_snapshot.size());
+        }
+        else
+        {
+          LOG_INFO_FMT(
+            "No snapshot found: Node will replay all historical transactions");
+        }
       }
     }
 
@@ -824,6 +873,8 @@ int main(int argc, char** argv)
   auto rc = uv_loop_close(uv_default_loop());
   if (rc)
     LOG_FAIL_FMT("Failed to close uv loop cleanly: {}", uv_err_name(rc));
+
+  ccf::crypto::openssl_sha256_shutdown();
 
   return rc;
 }

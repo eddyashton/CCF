@@ -67,7 +67,11 @@ class PrimaryNotFound(Exception):
     pass
 
 
-class CodeIdNotFound(Exception):
+class MeasurementNotFound(Exception):
+    pass
+
+
+class HostDataNotFound(Exception):
     pass
 
 
@@ -227,7 +231,6 @@ class Network:
         version=None,
         service_load=None,
         node_data_json_file=None,
-        nodes_in_container=False,
     ):
         # Map of node id to dict of node arg to override value
         # for example, to set the election timeout to 2s for node 3:
@@ -279,7 +282,6 @@ class Network:
         self.args = None
         self.service_certificate_valid_from = None
         self.service_certificate_validity_days = None
-        self.nodes_in_container = nodes_in_container
 
         # Requires admin privileges
         self.partitioner = (
@@ -324,7 +326,6 @@ class Network:
             library_dir or self.library_dir,
             debug,
             perf,
-            nodes_in_container=self.nodes_in_container,
             **kwargs,
         )
         self.nodes.append(node)
@@ -929,7 +930,9 @@ class Network:
                     # Throw accurate exceptions if known errors found in
                     for error in errors:
                         if "Quote does not contain known enclave measurement" in error:
-                            raise CodeIdNotFound from e
+                            raise MeasurementNotFound from e
+                        if "Quote host data is not authorised" in error:
+                            raise HostDataNotFound from e
                         if "UVM endorsements are not authorised" in error:
                             raise UVMEndorsementsNotAuthorised from e
                         if "StartupSeqnoIsOld" in error:
@@ -1703,7 +1706,6 @@ def network(
     version=None,
     service_load=None,
     node_data_json_file=None,
-    nodes_in_container=False,
 ):
     """
     Context manager for Network class.
@@ -1734,7 +1736,6 @@ def network(
         version=version,
         service_load=service_load,
         node_data_json_file=node_data_json_file,
-        nodes_in_container=nodes_in_container,
     )
     try:
         yield net
