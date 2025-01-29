@@ -197,7 +197,7 @@ TEST_CASE("basic indexing" * doctest::test_suite("indexing"))
     create_actions(seqnos_hello, seqnos_saluton, seqnos_1, seqnos_2)));
 
   auto tick_until_caught_up = [&]() {
-    while (indexer.update_strategies(step_time, kv_store.current_txid()) ||
+    while (indexer.update_strategies(kv_store.current_txid()) ||
            !fetcher->requested.empty())
     {
       // Do the fetch, simulating an asynchronous fetch by the historical query
@@ -369,7 +369,7 @@ TEST_CASE_TEMPLATE(
 
   auto tick_until_caught_up = [&]() {
     size_t loops = 0;
-    while (indexer.update_strategies(step_time, kv_store.current_txid()) ||
+    while (indexer.update_strategies(kv_store.current_txid()) ||
            handled_writes < writes.size())
     {
       cache->tick(ccf::historical::slow_fetch_threshold / 2);
@@ -576,7 +576,7 @@ TEST_CASE(
     while (!work_done)
     {
       size_t post_work_done_loops = 0;
-      while (indexer.update_strategies(step_time, kv_store.current_txid()) ||
+      while (indexer.update_strategies(kv_store.current_txid()) ||
              handled_writes < writes.size())
       {
         cache->tick(ccf::historical::slow_fetch_threshold / 2);
@@ -935,7 +935,7 @@ TEST_CASE(
     ccf::crypto::openssl_sha256_init();
     while (!work_done)
     {
-      while (indexer.update_strategies(step_time, kv_store.current_txid()))
+      while (indexer.update_strategies(kv_store.current_txid()))
       {
         std::this_thread::yield();
       }

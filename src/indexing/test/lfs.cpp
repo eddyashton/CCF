@@ -242,7 +242,7 @@ TEST_CASE("Integrated cache" * doctest::test_suite("lfs"))
   create_transactions(kv_store, actions);
 
   auto tick_until_caught_up = [&]() {
-    while (indexer.update_strategies(step_time, kv_store.current_txid()) ||
+    while (indexer.update_strategies(kv_store.current_txid()) ||
            !fetcher->requested.empty())
     {
       // Do the fetch, simulating an asynchronous fetch by the historical query
@@ -606,7 +606,7 @@ void run_sparse_index_test(size_t bucket_size, size_t num_buckets)
   write_to_map_b(bucket_size, {key_always, key_late});
 
   auto tick_until_caught_up = [&]() {
-    while (indexer.update_strategies(step_time, kv_store.current_txid()) ||
+    while (indexer.update_strategies(kv_store.current_txid()) ||
            !fetcher->requested.empty())
     {
       // Do the fetch, simulating an asynchronous fetch by the historical query

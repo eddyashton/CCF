@@ -1593,7 +1593,7 @@ namespace ccf
       if (sm.check(NodeStartupState::partOfNetwork))
       {
         const auto tx_id = consensus->get_committed_txid();
-        indexer->update_strategies(elapsed, {tx_id.first, tx_id.second});
+        indexer->update_strategies({tx_id.first, tx_id.second});
       }
 
       n2n_channels->tick(elapsed);

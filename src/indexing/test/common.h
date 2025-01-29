@@ -20,8 +20,6 @@ static ValueA value_a("public:value_a");
 using SetA = ccf::kv::Set<std::string>;
 static SetA set_a("public:set_a");
 
-static const std::chrono::milliseconds step_time(10);
-
 class TestTransactionFetcher : public ccf::indexing::TransactionFetcher
 {
 public:

@@ -62,8 +62,7 @@ namespace ccf::indexing
 
     // Returns true if it looks like there's still a gap to fill. Useful for
     // testing
-    bool update_strategies(
-      std::chrono::milliseconds elapsed, const ccf::TxID& newly_committed)
+    bool update_strategies(const ccf::TxID& newly_committed)
     {
       update_commit(newly_committed);
 
