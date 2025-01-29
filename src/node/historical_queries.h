@@ -1284,6 +1284,7 @@ namespace ccf::historical
           serialized::peek<ccf::kv::SerialisedEntryHeader>(data, size);
         const auto whole_size =
           header.size + ccf::kv::serialised_entry_header_size;
+        CCF_ASSERT(whole_size <= size, "Invalid size - misparsed header?");
         all_accepted &= handle_ledger_entry(seqno, data, whole_size);
         data += whole_size;
         size -= whole_size;

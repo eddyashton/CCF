@@ -30,7 +30,7 @@ using IndexB = ccf::indexing::strategies::SeqnosByKey_InMemory<decltype(map_b)>;
 constexpr size_t certificate_validity_period_days = 365;
 using namespace std::literals;
 auto valid_from =
-  ::ds::to_x509_time_string(std::chrono::system_clock::now() - 24h);
+  ccf::ds::to_x509_time_string(std::chrono::system_clock::now() - 24h);
 auto valid_to = ccf::crypto::compute_cert_valid_to_string(
   valid_from, certificate_validity_period_days);
 
@@ -968,6 +968,7 @@ TEST_CASE(
 
 int main(int argc, char** argv)
 {
+  threading::ThreadMessaging::init(1);
   ccf::crypto::openssl_sha256_init();
   doctest::Context context;
   context.applyCommandLine(argc, argv);

@@ -95,11 +95,12 @@ namespace aft
       auto data = get_entry_by_idx(idx);
       if (data.has_value())
       {
-        // Remove the View and Index that were written during put_entry
+        // Remove the globally_committable, View and Index that were written
+        // during put_entry
         data->erase(
           data->begin(),
-          data->begin() + sizeof(size_t) + sizeof(ccf::kv::Term) +
-            sizeof(ccf::kv::Version));
+          data->begin() + sizeof(bool) + sizeof(size_t) +
+            sizeof(ccf::kv::Term) + sizeof(ccf::kv::Version));
       }
 
       return data;
