@@ -51,7 +51,7 @@ def test_verify_quotes(network, args):
             j = r.body.json()
             if j["format"] == "Insecure_Virtual":
                 # A virtual attestation makes 3 claims:
-                # - The measurement (same on many nodes) is the result of calling `uname -a`
+                # - The measurement (same on any virtual node) is a hard-coded string, currently unmodifiable
                 claimed_measurement = j["measurement"]
                 # For consistency with other platforms, this endpoint always returns a hex-string.
                 # But for virtual, it's encoding some ASCII string, not a digest, so decode it for readability
@@ -96,7 +96,9 @@ def test_verify_quotes(network, args):
                 )
 
             # Quick API validation - confirm that all of these /quotes/self entries match the collection returned from /quotes
-            assert j in all_quotes
+            assert (
+                j in all_quotes
+            ), f"Didn't find {node.node_id}'s quote in collection\n{j}\n{json.dumps(all_quotes)}"
 
     return network
 
@@ -648,6 +650,7 @@ def test_update_all_nodes(network, args):
 
 
 @reqs.description("Adding a new measurement invalidates open proposals")
+@reqs.not_snp("Cannot produce alternative measurement on SNP")
 def test_proposal_invalidation(network, args):
     primary, _ = network.find_nodes()
 
@@ -724,7 +727,8 @@ def run(args):
 
         # Measurements
         test_measurements_tables(network, args)
-        test_add_node_with_untrusted_measurement(network, args)
+        if not snp.IS_SNP:
+            test_add_node_with_untrusted_measurement(network, args)
 
         # Host data/security policy
         test_host_data_tables(network, args)
@@ -740,10 +744,10 @@ def run(args):
             test_endorsements_tables(network, args)
             test_add_node_with_no_uvm_endorsements(network, args)
 
-        # NB: Assumes the current nodes are still using args.package, so must run before test_update_all_nodes
-        test_proposal_invalidation(network, args)
-
         if not snp.IS_SNP:
+            # NB: Assumes the current nodes are still using args.package, so must run before test_update_all_nodes
+            test_proposal_invalidation(network, args)
+
             # This is in practice equivalent to either "unknown measurement" or "unknown host data", but is explicitly
             # testing that (without artifically removing/corrupting those values) a replacement package differs
             # in one of these values

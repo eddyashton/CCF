@@ -553,6 +553,7 @@ namespace ccf
           auto node_info = nodes->get(existing_node_info->node_id);
           auto node_status = node_info->status;
           rep.node_status = node_status;
+          rep.node_id = existing_node_info->node_id;
           if (is_taking_part_in_acking(node_status))
           {
             rep.network_info = JoinNetworkNodeToNode::Out::NetworkInfo(
@@ -785,7 +786,7 @@ namespace ccf
             q.raw = node_info.quote_info.quote;
             q.endorsements = node_info.quote_info.endorsements;
             q.format = node_info.quote_info.format;
-            q.uvm_endorsements = node_quote_info.uvm_endorsements;
+            q.uvm_endorsements = node_info.quote_info.uvm_endorsements;
 
             // get_measurement attempts to re-validate the quote to extract
             // mrenclave and the Open Enclave is insufficiently flexible to

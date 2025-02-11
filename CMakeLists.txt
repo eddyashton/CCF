@@ -652,6 +652,11 @@ if(BUILD_TESTS)
     add_unit_test(map_test ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/map_test.cpp)
 
     add_unit_test(
+      env_test ${CMAKE_CURRENT_SOURCE_DIR}/src/host/test/env.cpp
+      ${CCF_DIR}/src/host/env.cpp
+    )
+
+    add_unit_test(
       json_schema ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/json_schema.cpp
     )
 
@@ -1121,7 +1126,7 @@ if(BUILD_TESTS)
         OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/testssl/testssl.sh
         COMMAND
           rm -rf ${CMAKE_CURRENT_BINARY_DIR}/testssl && git clone --depth 1
-          --branch v3.0.7 --single-branch
+          --branch v3.2rc4 --single-branch -c advice.detachedHead=false
           https://github.com/drwetter/testssl.sh
           ${CMAKE_CURRENT_BINARY_DIR}/testssl
       )
