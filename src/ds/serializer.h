@@ -283,7 +283,7 @@ namespace serializer
       std::enable_if_t<
         std::is_integral<T>::value || std::is_enum<T>::value,
         bool> = true>
-    static auto serialize_value(const T& t)
+    static auto serialize_value(T&& t)
     {
       auto rs = std::make_shared<RawSection<T>>(t);
       return std::make_tuple(rs);
@@ -310,9 +310,9 @@ namespace serializer
 
     /// Generic case - fallback to serialize_value
     template <typename T>
-    static auto serialize_value_final(const T& t)
+    static auto serialize_value_final(T&& t)
     {
-      return serialize_value(t);
+      return serialize_value(std::forward<T>(t));
     }
     ///@}
 
