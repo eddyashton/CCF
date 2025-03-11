@@ -972,6 +972,8 @@ namespace ccf
           return;
         }
 
+        GOV_INFO_FMT("Processing a recovery share from {}", member_id);
+
         const auto* cose_auth_id =
           ctx.try_get_caller<ccf::MemberCOSESign1AuthnIdentity>();
         auto params = nlohmann::json::parse(
@@ -1049,7 +1051,7 @@ namespace ccf
           return;
         }
 
-        GOV_DEBUG_FMT(
+        GOV_INFO_FMT(
           "Reached recovery threshold {}",
           InternalTablesAccess::get_recovery_threshold(ctx.tx));
 
@@ -1063,7 +1065,7 @@ namespace ccf
           // start over.
           constexpr auto error_msg = "Failed to initiate private recovery.";
           GOV_FAIL_FMT(error_msg);
-          GOV_DEBUG_FMT("Error: {}", e.what());
+          GOV_FAIL_FMT("Error: {}", e.what());
           ShareManager::clear_submitted_recovery_shares(ctx.tx);
           ctx.rpc_ctx->set_apply_writes(true);
           set_gov_error(
