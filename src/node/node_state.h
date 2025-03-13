@@ -2521,7 +2521,7 @@ namespace ccf
 
     void reset_recovery_hook()
     {
-      network.tables->unset_map_hook(
+      network.tables->unset_global_hook(
         network.encrypted_ledger_secrets.get_name());
     }
 
