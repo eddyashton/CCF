@@ -107,12 +107,10 @@ if(KV_STATE_RB)
 endif()
 
 # This option controls whether to link virtual builds against snmalloc rather
-# than use the system allocator. In builds using Open Enclave, enclave
-# allocation is managed separately and enabling snmalloc is done by linking
-# openenclave::oesnmalloc
-option(USE_SNMALLOC "Link virtual build against snmalloc" ON)
+# than use the system allocator.
+option(USE_SNMALLOC "Link against snmalloc" ON)
 
-# Default inherited from Open Enclave usage
+# Useful for debugging with libc++ hardening options
 option(USE_LIBCXX "Use libc++ instead of libstdc++" OFF)
 
 enable_language(ASM)
@@ -282,8 +280,6 @@ set(CCF_JS_SOURCES
     ${CCF_DIR}/src/js/core/wrapped_value.cpp
     ${CCF_DIR}/src/js/core/runtime.cpp
     ${CCF_DIR}/src/js/core/context.cpp
-    ${CCF_DIR}/src/js/no_plugins.cpp
-    ${CCF_DIR}/src/js/ffi_plugins.cpp
     ${CCF_DIR}/src/js/extensions/console.cpp
     ${CCF_DIR}/src/js/extensions/math/random.cpp
     ${CCF_DIR}/src/js/extensions/snp_attestation.cpp
@@ -649,6 +645,13 @@ if(BUILD_TESTS)
 
   # Unit tests
   if(BUILD_UNIT_TESTS)
+    if(COMPILE_TARGET STREQUAL "snp")
+      add_unit_test(
+        snp_ioctl_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/pal/test/snp_ioctl_test.cpp
+      )
+    endif()
+
     add_unit_test(map_test ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/map_test.cpp)
 
     add_unit_test(
@@ -702,6 +705,7 @@ if(BUILD_TESTS)
       ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/unit_strings.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/dl_list.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/nonstd.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/work_beacon.cpp
     )
     target_link_libraries(ds_test PRIVATE ${CMAKE_THREAD_LIBS_INIT})
 
@@ -1239,14 +1243,9 @@ if(BUILD_TESTS)
       NAME schema_test_cft
       PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/schema.py
       ADDITIONAL_ARGS
-        --schema-dir
-        ${CMAKE_SOURCE_DIR}/doc/schemas
-        --ledger-tutorial
-        ${CMAKE_SOURCE_DIR}/python/ledger_tutorial.py
-        --config-samples-dir
+        --schema-dir ${CMAKE_SOURCE_DIR}/doc/schemas --ledger-tutorial
+        ${CMAKE_SOURCE_DIR}/python/ledger_tutorial.py --config-samples-dir
         ${CMAKE_SOURCE_DIR}/samples/config
-        --config-file-1x
-        ${CMAKE_SOURCE_DIR}/python/config_1_x.ini
     )
 
     list(APPEND LTS_TEST_ARGS --ccf-version ${CCF_VERSION})

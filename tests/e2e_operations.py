@@ -7,6 +7,7 @@ import shutil
 import infra.logging_app as app
 import infra.e2e_args
 import infra.network
+import infra.snp
 import ccf.ledger
 from ccf.tx_id import TxID
 import base64
@@ -22,6 +23,7 @@ import subprocess
 import time
 import http
 import copy
+import struct
 import infra.snp as snp
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -308,6 +310,40 @@ def test_snapshot_access(network, args):
             assert err_msg in r.body.json()["error"]["message"], r
 
 
+def test_empty_snapshot(network, args):
+
+    LOG.info("Check that empty snapshot is ignored")
+
+    with tempfile.TemporaryDirectory() as snapshots_dir:
+        LOG.debug(f"Using {snapshots_dir} as snapshots directory")
+
+        snapshot_name = "snapshot_1000_1500.committed"
+
+        with open(
+            os.path.join(snapshots_dir, snapshot_name), "wb+"
+        ) as temp_empty_snapshot:
+
+            LOG.debug(f"Created empty snapshot {temp_empty_snapshot.name}")
+
+            # Check the file is indeed empty
+            assert (
+                os.stat(temp_empty_snapshot.name).st_size == 0
+            ), temp_empty_snapshot.name
+
+            # Create new node and join network
+            new_node = network.create_node("local://localhost")
+            network.join_node(new_node, args.package, args, snapshots_dir=snapshots_dir)
+            new_node.stop()
+
+            # Check that the empty snapshot is correctly skipped
+            if not new_node.check_log_for_error_message(
+                f"Ignoring empty snapshot file {snapshot_name}"
+            ):
+                raise AssertionError(
+                    f"Expected empty snapshot file {snapshot_name} to be skipped in node logs"
+                )
+
+
 def split_all_ledger_files_in_dir(input_dir, output_dir):
     # A ledger file can only be split at a seqno that contains a signature
     # (so that all files end on a signature that verifies their integrity).
@@ -396,6 +432,7 @@ def run_file_operations(args):
                 test_forced_snapshot(network, args)
                 test_large_snapshot(network, args)
                 test_snapshot_access(network, args)
+                test_empty_snapshot(network, args)
 
                 primary, _ = network.find_primary()
                 # Scoped transactions are not handled by historical range queries
@@ -750,6 +787,259 @@ def run_cose_signatures_config_check(args):
                     ), f"Failed to get receipt for txid {txid} after {max_retries} retries"
 
 
+def run_late_mounted_ledger_check(args):
+    nargs = copy.deepcopy(args)
+    nargs.nodes = infra.e2e_args.min_nodes(nargs, f=0)
+
+    with infra.network.network(
+        nargs.nodes,
+        nargs.binary_dir,
+        nargs.debug_nodes,
+        nargs.perf_nodes,
+        pdb=nargs.pdb,
+    ) as network:
+        network.start_and_open(
+            nargs,
+        )
+
+        primary, _ = network.find_primary()
+
+        msg_id = 42
+        msg = str(random.random())
+
+        # Write a new entry
+        with primary.client("user0") as c:
+            r = c.post(
+                "/app/log/private",
+                body={"id": msg_id, "msg": msg},
+            )
+            assert r.status_code == http.HTTPStatus.OK.value, r
+            c.wait_for_commit(r)
+
+            msg_seqno = r.seqno
+            msg_tx_id = f"{r.view}.{r.seqno}"
+
+        def try_historical_fetch(node, timeout=1):
+            with node.client("user0") as c:
+                start_time = time.time()
+                while time.time() < (start_time + timeout):
+                    r = c.get(
+                        f"/app/log/private/historical?id={msg_id}",
+                        headers={infra.clients.CCF_TX_ID_HEADER: msg_tx_id},
+                    )
+                    if r.status_code == http.HTTPStatus.OK:
+                        assert r.body.json()["msg"] == msg
+                        return True
+                    assert r.status_code == http.HTTPStatus.ACCEPTED
+                    time.sleep(0.2)
+            return False
+
+        # Confirm this can be retrieved with a historical query
+        assert try_historical_fetch(primary)
+
+        expected_errors = []
+
+        # Create a temporary directory to manually construct a ledger in
+        with tempfile.TemporaryDirectory() as temp_dir:
+            new_node = network.create_node("local://localhost")
+            network.join_node(
+                new_node,
+                nargs.package,
+                nargs,
+                from_snapshot=True,
+                copy_ledger=False,
+                common_read_only_ledger_dir=temp_dir,  # New node will try to read from temp directory
+            )
+            network.trust_node(new_node, args)
+
+            # Due to copy_ledger=False, this new node cannot access this historical entry
+            assert not try_historical_fetch(new_node)
+            expected_errors.append(f"Cannot find ledger file for seqno {msg_seqno}")
+
+            # Gather the source files that the operator should backfill
+            src_ledger_dir = primary.remote.ledger_paths()[0]
+            dst_files = {
+                os.path.join(temp_dir, filename): os.path.join(src_ledger_dir, filename)
+                for filename in os.listdir(src_ledger_dir)
+            }
+
+            # Create empy files in the new node's directory, with the correct names
+            for dst_path in dst_files.keys():
+                with open(dst_path, "wb") as f:
+                    pass
+
+            # Historical query still fails, but node survives
+            assert not try_historical_fetch(new_node)
+            expected_errors.append("Failed to read positions offset from ledger file")
+
+            # Create files of the correct size, but filled with zeros
+            for dst_path, src_path in dst_files.items():
+                with open(dst_path, "wb") as f:
+                    f.write(bytes(os.path.getsize(src_path)))
+
+            # Historical query still fails, but node survives
+            assert not try_historical_fetch(new_node)
+            expected_errors.append("cannot be read: invalid table offset (0)")
+
+            # Write an invalid table offset at the start of each file
+            for dst_path, src_path in dst_files.items():
+                with open(dst_path, "r+b") as f:
+                    f.seek(0)
+                    size = os.path.getsize(src_path)
+                    f.write(struct.pack("<Q", size + 1))
+
+            # Historical query still fails, but node survives
+            assert not try_historical_fetch(new_node)
+            expected_errors.append("greater than total file size")
+
+            # Copy correct files
+            for dst_path, src_path in dst_files.items():
+                with open(dst_path, "wb") as f:
+                    f.write(open(src_path, "rb").read())
+
+            # Historical query now passes
+            assert try_historical_fetch(new_node)
+
+            # Remove node
+            network.retire_node(primary, new_node)
+            new_node.stop()
+
+            # Check node output for expected errors
+            out_path, _ = new_node.get_logs()
+            for line in open(out_path, "r", encoding="utf-8").readlines():
+                expected_errors = [
+                    error for error in expected_errors if error not in line
+                ]
+                if len(expected_errors) == 0:
+                    break
+            else:
+                LOG.error("Expected to find following error messages in node output:")
+                for error in expected_errors:
+                    LOG.error(f"  {error}")
+                raise AssertionError(expected_errors)
+
+
+def run_empty_ledger_dir_check(args):
+    with infra.network.network(
+        args.nodes,
+        args.binary_dir,
+        args.debug_nodes,
+        args.perf_nodes,
+        pdb=args.pdb,
+    ) as network:
+        LOG.info("Check that empty ledger directory is handled correctly")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            LOG.debug(f"Using {tmp_dir} as ledger directory")
+
+            dir_name = os.path.basename(tmp_dir)
+
+            # Check tmp_dir is indeed empty
+            assert len(os.listdir(tmp_dir)) == 0, tmp_dir
+
+            # Start network, this should not fail
+            network.start_and_open(args, ledger_dir=tmp_dir)
+            primary, _ = network.find_primary()
+            network.stop_all_nodes()
+
+            # Now write a file in the directory
+            with open(os.path.join(tmp_dir, "ledger_1000_1500.committed"), "wb") as f:
+                f.write(b"bar")
+
+            # Start new network, this should fail
+            try:
+                network.start(args, ledger_dir=tmp_dir)
+            except Exception:
+                pass
+
+            # Check that the node has failed with the expected error message
+            if not primary.check_log_for_error_message(
+                f"On start, ledger directory should not exist or be empty ({dir_name})"
+            ):
+                raise AssertionError(
+                    f"Expected node error message with non-empty ledger directory {dir_name}"
+                )
+
+
+def run_initial_uvm_descriptor_checks(args):
+    with infra.network.network(
+        args.nodes,
+        args.binary_dir,
+        args.debug_nodes,
+        args.perf_nodes,
+        pdb=args.pdb,
+    ) as network:
+        LOG.info("Start a network and stop it")
+        network.start_and_open(args)
+        primary, _ = network.find_primary()
+        old_common = infra.network.get_common_folder_name(args.workspace, args.label)
+        snapshots_dir = network.get_committed_snapshots(primary)
+        network.stop_all_nodes()
+        LOG.info("Check that the a UVM descriptor is present")
+
+        ledger_dirs = primary.remote.ledger_paths()
+        ledger = ccf.ledger.Ledger(ledger_dirs)
+        first_chunk = next(iter(ledger))
+        first_tx = next(first_chunk)
+        tables = first_tx.get_public_domain().get_tables()
+        endorsements = tables["public:ccf.gov.nodes.snp.uvm_endorsements"]
+        assert len(endorsements) == 1, endorsements
+        (key,) = endorsements.keys()
+        assert key.startswith(b"did:x509:"), key
+        LOG.info(f"Initial UVM endorsement found in ledger: {endorsements[key]}")
+
+        LOG.info("Start a recovery network and stop it")
+        current_ledger_dir, committed_ledger_dirs = primary.get_ledger()
+        recovered_network = infra.network.Network(
+            args.nodes,
+            args.binary_dir,
+            args.debug_nodes,
+            args.perf_nodes,
+            existing_network=network,
+        )
+
+        args.previous_service_identity_file = os.path.join(
+            old_common, "service_cert.pem"
+        )
+        recovered_network.start_in_recovery(
+            args,
+            ledger_dir=current_ledger_dir,
+            committed_ledger_dirs=committed_ledger_dirs,
+            snapshots_dir=snapshots_dir,
+        )
+        recovered_primary, _ = recovered_network.find_primary()
+        LOG.info("Check that the UVM descriptor is present in the recovery tx")
+        recovery_seqno = None
+        with recovered_primary.client() as c:
+            r = c.get("/node/network").body.json()
+            recovery_seqno = int(r["current_service_create_txid"].split(".")[1])
+        network.stop_all_nodes()
+        ledger = ccf.ledger.Ledger(
+            recovered_primary.remote.ledger_paths(),
+            committed_only=False,
+            read_recovery_files=True,
+        )
+        for chunk in ledger:
+            _, chunk_end_seqno = chunk.get_seqnos()
+            if chunk_end_seqno < recovery_seqno:
+                continue
+            for tx in chunk:
+                tables = tx.get_public_domain().get_tables()
+                seqno = tx.get_public_domain().get_seqno()
+                if seqno < recovery_seqno:
+                    continue
+                else:
+                    tables = tx.get_public_domain().get_tables()
+                    endorsements = tables["public:ccf.gov.nodes.snp.uvm_endorsements"]
+                    assert len(endorsements) == 1, endorsements
+                    (key,) = endorsements.keys()
+                    assert key.startswith(b"did:x509:"), key
+                    LOG.info(
+                        f"Recovery UVM endorsement found in ledger: {endorsements[key]}"
+                    )
+                    return
+        assert False, "No UVM endorsement found in recovery ledger"
+
+
 def run(args):
     run_max_uncommitted_tx_count(args)
     run_file_operations(args)
@@ -761,3 +1051,7 @@ def run(args):
     run_sighup_check(args)
     run_service_subject_name_check(args)
     run_cose_signatures_config_check(args)
+    run_late_mounted_ledger_check(args)
+    run_empty_ledger_dir_check(args)
+    if infra.snp.is_snp():
+        run_initial_uvm_descriptor_checks(args)

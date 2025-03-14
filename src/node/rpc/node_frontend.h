@@ -47,6 +47,11 @@ namespace ccf
   DECLARE_JSON_REQUIRED_FIELDS(Quote, node_id, raw, endorsements, format);
   DECLARE_JSON_OPTIONAL_FIELDS(Quote, measurement, uvm_endorsements);
 
+  struct Attestation : public Quote
+  {};
+  DECLARE_JSON_TYPE_WITH_BASE(Attestation, Quote);
+  DECLARE_JSON_REQUIRED_FIELDS(Attestation);
+
   struct GetQuotes
   {
     using In = void;
@@ -59,6 +64,19 @@ namespace ccf
 
   DECLARE_JSON_TYPE(GetQuotes::Out);
   DECLARE_JSON_REQUIRED_FIELDS(GetQuotes::Out, quotes);
+
+  struct GetAttestations
+  {
+    using In = void;
+
+    struct Out
+    {
+      std::vector<Attestation> attestations;
+    };
+  };
+
+  DECLARE_JSON_TYPE(GetAttestations::Out);
+  DECLARE_JSON_REQUIRED_FIELDS(GetAttestations::Out, attestations);
 
   struct NodeMetrics
   {
@@ -406,7 +424,7 @@ namespace ccf
       openapi_info.description =
         "This API provides public, uncredentialed access to service and node "
         "state.";
-      openapi_info.document_version = "4.12.0";
+      openapi_info.document_version = "4.13.0";
     }
 
     void init_handlers() override
@@ -718,12 +736,6 @@ namespace ccf
           q.format = node_quote_info.format;
           q.uvm_endorsements = node_quote_info.uvm_endorsements;
 
-          // get_measurement attempts to re-validate the quote to extract
-          // mrenclave and the Open Enclave is insufficiently flexible to allow
-          // quotes with expired collateral to be parsed at all. Recent nodes
-          // therefore cache their code digest on startup, and this code
-          // attempts to fetch that value when possible and only call the
-          // unreliable get_measurement otherwise.
           auto nodes = args.tx.ro(network.nodes);
           auto node_info = nodes->get(context.get_node_id());
           if (node_info.has_value() && node_info->code_digest.has_value())
@@ -772,6 +784,14 @@ namespace ccf
         .set_auto_schema<void, Quote>()
         .set_forwarding_required(endpoints::ForwardingRequired::Never)
         .install();
+      make_read_only_endpoint(
+        "/attestations/self",
+        HTTP_GET,
+        json_read_only_adapter(get_quote),
+        no_auth_required)
+        .set_auto_schema<void, Attestation>()
+        .set_forwarding_required(endpoints::ForwardingRequired::Never)
+        .install();
 
       auto get_quotes = [this](auto& args, nlohmann::json&&) {
         GetQuotes::Out result;
@@ -788,12 +808,6 @@ namespace ccf
             q.format = node_info.quote_info.format;
             q.uvm_endorsements = node_info.quote_info.uvm_endorsements;
 
-            // get_measurement attempts to re-validate the quote to extract
-            // mrenclave and the Open Enclave is insufficiently flexible to
-            // allow quotes with expired collateral to be parsed at all. Recent
-            // nodes therefore cache their code digest on startup, and this code
-            // attempts to fetch that value when possible and only call the
-            // unreliable get_measurement otherwise.
             if (node_info.code_digest.has_value())
             {
               q.measurement = node_info.code_digest.value();
@@ -820,6 +834,27 @@ namespace ccf
         json_read_only_adapter(get_quotes),
         no_auth_required)
         .set_auto_schema<GetQuotes>()
+        .install();
+
+      auto get_attestations =
+        [this, get_quotes](auto& args, nlohmann::json&& params) {
+          const auto res = get_quotes(args, std::move(params));
+          const auto body = std::get_if<nlohmann::json>(&res);
+          if (body != nullptr)
+          {
+            auto result = nlohmann::json::object();
+            result["attestations"] = (*body)["quotes"];
+            return make_success(result);
+          }
+
+          return res;
+        };
+      make_read_only_endpoint(
+        "/attestations",
+        HTTP_GET,
+        json_read_only_adapter(get_attestations),
+        no_auth_required)
+        .set_auto_schema<GetAttestations>()
         .install();
 
       auto network_status = [this](auto& args, nlohmann::json&&) {

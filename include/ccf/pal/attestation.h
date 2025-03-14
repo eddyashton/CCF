@@ -38,8 +38,7 @@ namespace ccf::pal
       j["report_data"].get<std::vector<uint8_t>>());
   }
 
-  // Verifying SNP attestation report is available on all platforms as unlike
-  // SGX, this does not require external dependencies (Open Enclave for SGX).
+  // Verifying SNP attestation report is available on all platforms.
   static void verify_snp_attestation_report(
     const QuoteInfo& quote_info,
     PlatformAttestationMeasurement& measurement,
@@ -63,12 +62,12 @@ namespace ccf::pal
     auto quote =
       *reinterpret_cast<const snp::Attestation*>(quote_info.quote.data());
 
-    if (quote.version != snp::attestation_version)
+    if (quote.version < snp::minimum_attestation_version)
     {
       throw std::logic_error(fmt::format(
-        "SEV-SNP: Attestation version is {} not expected {}",
+        "SEV-SNP: Attestation version is {} not >= expected minimum {}",
         quote.version,
-        snp::attestation_version));
+        snp::minimum_attestation_version));
     }
 
     if (quote.flags.signing_key != snp::attestation_flags_signing_key_vcek)
