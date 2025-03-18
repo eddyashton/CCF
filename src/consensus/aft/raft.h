@@ -2,7 +2,6 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/ccf_exception.h"
 #include "ccf/ds/logger.h"
 #include "ccf/pal/locking.h"
 #include "ccf/service/reconfiguration_type.h"
@@ -815,7 +814,7 @@ namespace aft
       }
       catch (const std::exception& e)
       {
-        LOG_FAIL_EXC(e.what());
+        LOG_FAIL_FMT("Exception in {}: {}", __PRETTY_FUNCTION__, e.what());
         return;
       }
     }

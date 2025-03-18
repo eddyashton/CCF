@@ -2,7 +2,6 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "ccf/ds/ccf_exception.h"
 #include "enclave/forwarder_types.h"
 #include "enclave/rpc_map.h"
 #include "http/http_rpc_context.h"
@@ -537,7 +536,7 @@ namespace ccf
       }
       catch (const std::exception& e)
       {
-        LOG_FAIL_EXC(e.what());
+        LOG_FAIL_FMT("Exception in {}: {}", __PRETTY_FUNCTION__, e.what());
         return;
       }
     }
