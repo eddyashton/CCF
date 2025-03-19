@@ -36,6 +36,8 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   )
 endif()
 
+option(CCF_RPM_PACKAGE_DEVEL OFF)
+
 include(${CCF_DIR}/cmake/cpack_settings.cmake)
 
 message(STATUS "CMAKE_INSTALL_PREFIX is '${CMAKE_INSTALL_PREFIX}'")
@@ -107,13 +109,13 @@ if(KV_STATE_RB)
 endif()
 
 # This option controls whether to link virtual builds against snmalloc rather
-# than use the system allocator. In builds using Open Enclave, enclave
-# allocation is managed separately and enabling snmalloc is done by linking
-# openenclave::oesnmalloc
-option(USE_SNMALLOC "Link virtual build against snmalloc" ON)
+# than use the system allocator.
+option(USE_SNMALLOC "Link against snmalloc" ON)
 
-# Default inherited from Open Enclave usage
+# Useful for debugging with libc++ hardening options
 option(USE_LIBCXX "Use libc++ instead of libstdc++" OFF)
+
+option(CLANG_TIDY "Run clang-tidy on the codebase" OFF)
 
 enable_language(ASM)
 
@@ -254,6 +256,18 @@ target_link_libraries(
 )
 
 install(TARGETS cchost DESTINATION bin)
+
+if(CLANG_TIDY)
+  find_program(
+    CLANG_TIDY_EXE NAMES "clang-tidy" "clang-tidy-18" "clang-tidy-15"
+  )
+  message(STATUS "Using clang-tidy from: ${CLANG_TIDY_EXE}")
+  # Start with cchost
+  set_target_properties(
+    cchost PROPERTIES C_CLANG_TIDY "${CLANG_TIDY_EXE}" CXX_CLANG_TIDY
+                                                       "${CLANG_TIDY_EXE}"
+  )
+endif()
 
 # HTTP parser
 if(COMPILE_TARGET STREQUAL "snp")
