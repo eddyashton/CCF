@@ -17,6 +17,8 @@ option(CCF_DEVEL "CCF Devel Mode" ON)
 message(STATUS "CCF Devel Mode: ${CCF_DEVEL}")
 
 set(CCF_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+
+include(FetchContent)
 include(${CCF_DIR}/cmake/preproject.cmake)
 include(${CCF_DIR}/cmake/version.cmake)
 
@@ -119,7 +121,8 @@ endif()
 option(USE_SNMALLOC "Link against snmalloc" ON)
 
 # Useful for debugging with libc++ hardening options
-option(USE_LIBCXX "Use libc++ instead of libstdc++" OFF)
+# TODO: Necessary for glaze support
+option(USE_LIBCXX "Use libc++ instead of libstdc++" ON)
 
 option(CLANG_TIDY "Run clang-tidy on the codebase" OFF)
 
@@ -136,6 +139,15 @@ include_directories(SYSTEM ${CCF_3RD_PARTY_EXPORTED_DIR})
 include_directories(SYSTEM ${CCF_3RD_PARTY_INTERNAL_DIR})
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/tools.cmake)
+
+FetchContent_Declare(
+  glaze
+  GIT_REPOSITORY https://github.com/stephenberry/glaze.git
+  GIT_TAG v5.1.0
+  GIT_SHALLOW TRUE
+)
+
+FetchContent_MakeAvailable(glaze)
 
 if(CCF_DEVEL)
   install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/tools.cmake DESTINATION cmake)
@@ -720,6 +732,11 @@ if(BUILD_TESTS)
     add_unit_test(
       json_schema ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/json_schema.cpp
     )
+
+    add_unit_test(
+      glaze_json_schema ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/glaze_json_schema.cpp
+    )
+    target_link_libraries(glaze_json_schema PRIVATE glaze::glaze)
 
     add_unit_test(
       logger_test ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/logger.cpp
