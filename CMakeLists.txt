@@ -770,21 +770,21 @@ if(BUILD_TESTS)
     target_link_libraries(ds_test PRIVATE ${CMAKE_THREAD_LIBS_INIT})
 
     add_library(
-      ccf_tasks
+      ccf_task_system
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/task_system.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/types/itask.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/types/job_board.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/types/ordered_tasks.cpp
     )
-    set_property(TARGET ccf_tasks PROPERTY POSITION_INDEPENDENT_CODE ON)
-    target_compile_definitions(ccf_tasks PRIVATE CCF_LOGGER_NO_DEPRECATE)
+    set_property(TARGET ccf_task_system PROPERTY POSITION_INDEPENDENT_CODE ON)
+    target_compile_definitions(ccf_task_system PRIVATE CCF_LOGGER_NO_DEPRECATE)
 
     add_unit_test(
       task_system_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/main.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/demo/main.cpp
     )
-    target_link_libraries(task_system_test PRIVATE ccf_tasks)
+    target_link_libraries(task_system_test PRIVATE ccf_task_system)
 
     add_unit_test(
       ledger_test ${CMAKE_CURRENT_SOURCE_DIR}/src/host/test/ledger.cpp

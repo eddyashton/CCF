@@ -14,14 +14,14 @@ namespace ccf::tasks
   template <typename T>
   class SubTaskQueue
   {
-  protected:
+  private:
     std::mutex mutex;
     std::deque<T> pending;
     std::atomic<bool> active;
     std::atomic<bool> paused;
 
   public:
-    bool push(T&& t)
+    bool push(T t)
     {
       std::lock_guard<std::mutex> lock(mutex);
       const bool ret = pending.empty() && !active.load();
@@ -30,7 +30,7 @@ namespace ccf::tasks
     }
 
     using Visitor = std::function<void(T&&)>;
-    bool pop_and_visit(Visitor&& visitor)
+    bool pop_and_visit(Visitor visitor)
     {
       decltype(pending) local;
       {
@@ -81,11 +81,13 @@ namespace ccf::tasks
     SubTaskQueue<TaskAction> actions;
   };
 
-  struct OrderedTasks::ResumeOrderedTasks : public ccf::tasks::IResumable
+  class OrderedTasks::ResumeOrderedTasks : public ccf::tasks::IResumable
   {
+  private:
     std::shared_ptr<OrderedTasks> tasks;
 
-    ResumeOrderedTasks(std::shared_ptr<OrderedTasks> t) : tasks(t) {}
+  public:
+    ResumeOrderedTasks(std::shared_ptr<OrderedTasks> t) : tasks(std::move(t)) {}
 
     void resume() override
     {
@@ -113,7 +115,7 @@ namespace ccf::tasks
   {
     size_t n = 0;
     if (impl->actions.pop_and_visit(
-          [this, &n](TaskAction&& action) { n += action->do_action(); }))
+          [this, &n](const TaskAction& action) { n += action->do_action(); }))
     {
       enqueue_self();
     }

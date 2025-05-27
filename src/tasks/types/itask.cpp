@@ -28,6 +28,9 @@ namespace ccf::tasks
   void resume_task(Resumable&& resumable)
   {
     resumable->resume();
+
+    // Consume the argument, so it can't be reused
+    auto _ = std::move(resumable);
   }
 
   size_t ITask::do_task()
@@ -56,7 +59,7 @@ namespace ccf::tasks
     cancelled.store(true);
   }
 
-  bool ITask::is_cancelled()
+  bool ITask::is_cancelled() const
   {
     return cancelled.load();
   }

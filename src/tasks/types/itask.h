@@ -26,6 +26,6 @@ namespace ccf::tasks
     virtual std::string get_name() const = 0;
 
     void cancel_task();
-    bool is_cancelled();
+    bool is_cancelled() const;
   };
 }
