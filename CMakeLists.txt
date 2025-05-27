@@ -780,15 +780,10 @@ if(BUILD_TESTS)
 
     add_unit_test(
       task_system_test
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/queues.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/demo.cpp
-    )
-
-    add_unit_test(
-      task_system_demo
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/main.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/demo/main.cpp
     )
-    target_link_libraries(task_system_demo PRIVATE ccf_tasks)
+    target_link_libraries(task_system_test PRIVATE ccf_tasks)
 
     add_unit_test(
       ledger_test ${CMAKE_CURRENT_SOURCE_DIR}/src/host/test/ledger.cpp

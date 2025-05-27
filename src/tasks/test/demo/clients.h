@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "../looping_thread.h"
 #include "./actions.h"
-#include "./looping_thread.h"
 #include "./session.h"
 
 #include <atomic>

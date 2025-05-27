@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "../looping_thread.h"
 #include "./actions.h"
-#include "./looping_thread.h"
 #include "tasks/types/job_board.h"
 #include "tasks/types/ordered_tasks.h"
 

@@ -5,6 +5,7 @@
 #include "ccf/threading/thread_ids.h"
 
 #include <atomic>
+#include <doctest/doctest.h>
 #include <string>
 #include <thread>
 

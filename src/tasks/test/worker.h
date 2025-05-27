@@ -3,6 +3,7 @@
 #pragma once
 
 #include "./looping_thread.h"
+#include "tasks/types/job_board.h"
 
 struct WorkerState
 {

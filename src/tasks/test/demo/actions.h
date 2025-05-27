@@ -8,7 +8,6 @@
 
 #include <atomic>
 #include <charconv>
-#define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>

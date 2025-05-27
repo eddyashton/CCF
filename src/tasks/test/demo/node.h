@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "../worker.h"
 #include "./actions.h"
 #include "./dispatcher.h"
 #include "./session.h"
-#include "./worker.h"
 #include "tasks/types/job_board.h"
 #include "tasks/types/ordered_tasks.h"
 
