@@ -771,7 +771,7 @@ if(BUILD_TESTS)
 
     add_library(
       ccf_tasks
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/tasks.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/task_system.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/types/itask.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/types/job_board.cpp
     )

@@ -2,11 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "tasks/types/itask.h"
-
 #include <memory>
 
 namespace ccf::tasks
 {
+  struct ITask;
   using Task = std::shared_ptr<ITask>;
 }

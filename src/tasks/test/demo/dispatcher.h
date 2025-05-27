@@ -4,7 +4,6 @@
 
 #include "../looping_thread.h"
 #include "./actions.h"
-#include "tasks/types/job_board.h"
 #include "tasks/types/ordered_tasks.h"
 
 #include <future>
@@ -107,7 +106,6 @@ struct Action_ProcessClientAction : public ITaskAction
 
 struct DispatcherState
 {
-  ccf::tasks::JobBoard& job_board;
   SessionManager& session_manager;
 
   std::unordered_map<Session*, std::shared_ptr<ccf::tasks::OrderedTasks>>
@@ -118,8 +116,8 @@ struct DispatcherState
 
 struct Dispatcher : public LoopingThread<DispatcherState>
 {
-  Dispatcher(ccf::tasks::JobBoard& jb, SessionManager& sm) :
-    LoopingThread<DispatcherState>(fmt::format("dsp"), jb, sm)
+  Dispatcher(SessionManager& sm) :
+    LoopingThread<DispatcherState>(fmt::format("dsp"), sm)
   {}
 
   ~Dispatcher() override
@@ -148,7 +146,7 @@ struct Dispatcher : public LoopingThread<DispatcherState>
           it,
           session.get(),
           std::make_shared<ccf::tasks::OrderedTasks>(
-            state.job_board, fmt::format("Tasks for {}", session->name)));
+            fmt::format("Tasks for {}", session->name)));
       }
 
       auto& tasks = *it->second;

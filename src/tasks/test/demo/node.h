@@ -6,7 +6,7 @@
 #include "./actions.h"
 #include "./dispatcher.h"
 #include "./session.h"
-#include "tasks/types/job_board.h"
+#include "tasks/task_system.h"
 #include "tasks/types/ordered_tasks.h"
 
 #include <atomic>
@@ -19,18 +19,14 @@ struct Node
 {
   SessionManager session_manager;
 
-  ccf::tasks::JobBoard& job_board;
-
   Dispatcher dispatcher;
   std::vector<std::unique_ptr<Worker>> workers;
 
-  Node(size_t num_workers, ccf::tasks::JobBoard& jb) :
-    job_board(jb),
-    dispatcher(jb, session_manager)
+  Node(size_t num_workers) : dispatcher(session_manager)
   {
     for (size_t i = 0; i < num_workers; ++i)
     {
-      workers.push_back(std::make_unique<Worker>(job_board, i));
+      workers.push_back(std::make_unique<Worker>(i));
     }
   }
 

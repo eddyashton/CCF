@@ -3,9 +3,10 @@
 #pragma once
 
 #include "ccf/ds/logger.h"
+#include "tasks/task_system.h"
 #include "tasks/types/itask.h"
-#include "tasks/types/job_board.h"
 
+#include <deque>
 #include <mutex>
 
 namespace
@@ -131,19 +132,15 @@ namespace ccf::tasks
   protected:
   public: // TODO: Bit weird
     std::string name;
-    JobBoard& job_board;
     SubTaskQueue<TaskAction> actions;
 
     void enqueue_on_board()
     {
-      job_board.add_task(shared_from_this());
+      ccf::tasks::add_task(shared_from_this());
     }
 
   public:
-    OrderedTasks(JobBoard& jb, const std::string& s = "[Ordered]") :
-      job_board(jb),
-      name(s)
-    {}
+    OrderedTasks(const std::string& s = "[Ordered]") : name(s) {}
 
     size_t do_task_implementation() override
     {

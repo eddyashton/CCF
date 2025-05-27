@@ -2,6 +2,7 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "tasks/types/itask.h"
 #include "tasks/types/task.h"
 
 #include <functional>

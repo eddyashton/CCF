@@ -3,12 +3,11 @@
 #pragma once
 
 #include "./looping_thread.h"
-#include "tasks/types/job_board.h"
+#include "tasks/task_system.h"
+#include "tasks/types/itask.h"
 
 struct WorkerState
 {
-  ccf::tasks::JobBoard& job_board;
-
   size_t work_completed;
 
   std::atomic<bool> consider_termination = false;
@@ -16,9 +15,7 @@ struct WorkerState
 
 struct Worker : public LoopingThread<WorkerState>
 {
-  Worker(ccf::tasks::JobBoard& jb, size_t idx) :
-    LoopingThread<WorkerState>(fmt::format("w{}", idx), jb)
-  {}
+  Worker(size_t idx) : LoopingThread<WorkerState>(fmt::format("w{}", idx)) {}
 
   ~Worker() override
   {
@@ -31,7 +28,7 @@ struct Worker : public LoopingThread<WorkerState>
   Stage loop_behaviour() override
   {
     // Wait (with timeout) for a task
-    auto task = state.job_board.wait_for_task(std::chrono::milliseconds(10));
+    auto task = ccf::tasks::wait_for_task(std::chrono::milliseconds(10));
     if (task != nullptr)
     {
       state.work_completed += task->do_task();

@@ -4,12 +4,8 @@
 #include "./actions.h"
 #include "./clients.h"
 #include "./node.h"
-#include "tasks/types/basic_task.h"
 
 #include <doctest/doctest.h>
-
-// TODO: Be explicit
-using namespace ccf::tasks;
 
 void describe_session_manager(SessionManager& sm)
 {
@@ -25,20 +21,21 @@ void describe_session_manager(SessionManager& sm)
   }
 }
 
-void describe_job_board(JobBoard& jb)
-{
-  std::lock_guard<std::mutex> lock(jb.mutex);
-  fmt::print("JobBoard contains {} tasks\n", jb.queue.size());
-  // for (auto& task : jb.queue)
-  // {
-  //   fmt::print("  {}\n", task->get_name());
-  // }
-}
+// TODO: Add stat tracking/logging in the task system?
+// void describe_job_board(JobBoard& jb)
+// {
+//   std::lock_guard<std::mutex> lock(jb.mutex);
+//   fmt::print("JobBoard contains {} tasks\n", jb.queue.size());
+//   // for (auto& task : jb.queue)
+//   // {
+//   //   fmt::print("  {}\n", task->get_name());
+//   // }
+// }
 
 void describe_dispatcher(Dispatcher& d)
 {
   describe_session_manager(d.state.session_manager);
-  describe_job_board((JobBoard&)d.state.job_board);
+  // describe_job_board((JobBoard&)d.state.job_board);
 
   fmt::print(
     "Dispatcher is tracking {} sessions\n",
@@ -79,8 +76,7 @@ TEST_CASE("Demo" * doctest::test_suite("demo"))
 
   {
     // Create a node
-    JobBoard job_board;
-    Node node(4, job_board);
+    Node node(4);
     node.start();
 
     {
