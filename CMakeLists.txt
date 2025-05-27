@@ -772,8 +772,8 @@ if(BUILD_TESTS)
     add_library(
       ccf_task_system
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/task_system.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/types/itask.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/types/job_board.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/types/pause_resume.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/types/ordered_tasks.cpp
     )
     set_property(TARGET ccf_task_system PROPERTY POSITION_INDEPENDENT_CODE ON)

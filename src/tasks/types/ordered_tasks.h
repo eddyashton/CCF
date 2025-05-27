@@ -4,7 +4,7 @@
 
 #include "ccf/ds/logger.h"
 #include "tasks/task_system.h"
-#include "tasks/types/itask.h"
+#include "tasks/types/pause_resume.h"
 
 #include <deque>
 #include <mutex>
@@ -55,24 +55,22 @@ namespace ccf::tasks
   // order they are added. To self-schedule, this instance will ensure that it
   // is scheduled for further execution whenever more sub-tasks are available
   // for execution.
-  class OrderedTasks : public ITask,
-                       public std::enable_shared_from_this<OrderedTasks>
+  class OrderedTasks : public PausableTask
   {
   protected:
     struct Impl;
     std::unique_ptr<Impl> impl = nullptr;
 
-    struct ResumeOrderedTasks;
-
     void enqueue_self();
+
+    void on_pause() override;
+    void on_resume() override;
 
   public:
     OrderedTasks(const std::string& s = "[Ordered]");
     ~OrderedTasks();
 
     size_t do_task_implementation() override;
-
-    ccf::tasks::Resumable pause() override;
 
     std::string get_name() const override;
 

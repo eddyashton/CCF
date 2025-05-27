@@ -8,16 +8,13 @@
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 
-// TODO: Be explicit
-using namespace ccf::tasks;
-
 TEST_CASE("Tasks")
 {
   size_t x = 0;
 
   // Basic tasks
   const std::string name_1 = "Set x to 1";
-  auto set_1 = make_basic_task([&x]() { x = 1; }, name_1);
+  auto set_1 = ccf::tasks::make_basic_task([&x]() { x = 1; }, name_1);
   REQUIRE(set_1->get_name() == name_1);
   REQUIRE(x == 0);
   set_1->do_task();
@@ -25,7 +22,7 @@ TEST_CASE("Tasks")
 
   // Cancelling pre-execution
   const std::string name_2 = "Set x to 2";
-  auto set_2 = make_basic_task([&x]() { x = 2; }, name_2);
+  auto set_2 = ccf::tasks::make_basic_task([&x]() { x = 2; }, name_2);
   REQUIRE(set_2->get_name() == name_2);
   REQUIRE(x == 1);
   REQUIRE_FALSE(set_2->is_cancelled());
@@ -37,7 +34,7 @@ TEST_CASE("Tasks")
 
   // Cancelling post-execution
   const std::string name_3 = "Set x to 3";
-  auto set_3 = make_basic_task([&x]() { x = 3; }, name_3);
+  auto set_3 = ccf::tasks::make_basic_task([&x]() { x = 3; }, name_3);
   REQUIRE(set_3->get_name() == name_3);
   REQUIRE(x == 1);
   REQUIRE_FALSE(set_3->is_cancelled());
@@ -62,16 +59,17 @@ TEST_CASE("OrderedTasks")
 
   {
     // Record next x to send for each session
-    std::vector<std::pair<std::shared_ptr<OrderedTasks>, size_t>> all_tasks;
+    std::vector<std::pair<std::shared_ptr<ccf::tasks::OrderedTasks>, size_t>>
+      all_tasks;
     for (auto i = 0; i < num_sessions; ++i)
     {
       all_tasks.emplace_back(
-        std::make_shared<OrderedTasks>(std::to_string(i)), 0);
+        std::make_shared<ccf::tasks::OrderedTasks>(std::to_string(i)), 0);
     }
 
     auto sleep_then_increment = [&](size_t idx, size_t sleep_time_ms) {
       auto& [tasks, n] = all_tasks[idx];
-      tasks->add_action(make_basic_action([=, &n, &results]() {
+      tasks->add_action(ccf::tasks::make_basic_action([=, &n, &results]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(sleep_time_ms));
         const auto x = ++n;
         LOG_TRACE_FMT("{} {}", tasks->get_name(), x);
@@ -126,10 +124,14 @@ TEST_CASE("PauseAndResume")
   size_t x = 0;
   size_t y = 0;
 
-  auto increment = [](size_t& n) { return make_basic_action([&n]() { ++n; }); };
+  auto increment = [](size_t& n) {
+    return ccf::tasks::make_basic_action([&n]() { ++n; });
+  };
 
-  std::shared_ptr<OrderedTasks> x_tasks = std::make_shared<OrderedTasks>("x");
-  std::shared_ptr<OrderedTasks> y_tasks = std::make_shared<OrderedTasks>("y");
+  std::shared_ptr<ccf::tasks::OrderedTasks> x_tasks =
+    std::make_shared<ccf::tasks::OrderedTasks>("x");
+  std::shared_ptr<ccf::tasks::OrderedTasks> y_tasks =
+    std::make_shared<ccf::tasks::OrderedTasks>("y");
 
   x_tasks->add_action(increment(x));
   y_tasks->add_action(increment(y));
@@ -173,14 +175,14 @@ TEST_CASE("PauseAndResume")
     // If we need to block, we can ask for a task to be paused. Note that the
     // current action will still complete
     bool happened = false;
-    ccf::tasks::Resumable resumable;
+    ccf::tasks::PauseResumeHandle pr_handle;
 
     x_tasks->add_action(increment(x));
-    x_tasks->add_action(make_basic_action([&]() {
+    x_tasks->add_action(ccf::tasks::make_basic_action([&]() {
       // NB: This doesn't need to _know_ the current task, just that it is
       // executed _as part of a task_. This means it could occur deep within a
       // call-stack.
-      resumable = ccf::tasks::pause_current_task();
+      pr_handle = ccf::tasks::pause_current_task();
       // NB: The current _action_ will still complete execution!
       happened = true;
     }));
@@ -190,7 +192,7 @@ TEST_CASE("PauseAndResume")
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     REQUIRE(x == 102); // One increment action happened
     REQUIRE(happened == true); // Then the pause action ran to completion
-    REQUIRE(resumable != nullptr); // We got a handle to later resume this task
+    REQUIRE(pr_handle != nullptr); // We got a handle to later resume this task
 
     // Other actions can be scheduled, including on the paused task.
     // Unpaused tasks will complete as normal.
@@ -205,28 +207,28 @@ TEST_CASE("PauseAndResume")
     REQUIRE(y == 202);
 
     // After resume, all queued actions will (be able to) execute, in-order
-    ccf::tasks::resume_task(std::move(resumable));
+    ccf::tasks::resume_task(std::move(pr_handle));
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     REQUIRE(x == 203);
     REQUIRE(y == 202);
 
     // A task might be paused multiple times during its life
-    resumable = nullptr;
+    pr_handle = nullptr;
     x_tasks->add_action(increment(x));
-    x_tasks->add_action(make_basic_action(
-      [&]() { resumable = ccf::tasks::pause_current_task(); }));
+    x_tasks->add_action(ccf::tasks::make_basic_action(
+      [&]() { pr_handle = ccf::tasks::pause_current_task(); }));
     x_tasks->add_action(increment(x));
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     REQUIRE(x == 204);
-    REQUIRE(resumable != nullptr);
+    REQUIRE(pr_handle != nullptr);
 
     // A paused task can be cancelled
     x_tasks->cancel_task();
 
     // Cancellation supercedes resumption - nothing more happens on this task
-    ccf::tasks::resume_task(std::move(resumable));
+    ccf::tasks::resume_task(std::move(pr_handle));
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     REQUIRE(x == 204);

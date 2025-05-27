@@ -81,23 +81,6 @@ namespace ccf::tasks
     SubTaskQueue<TaskAction> actions;
   };
 
-  class OrderedTasks::ResumeOrderedTasks : public ccf::tasks::IResumable
-  {
-  private:
-    std::shared_ptr<OrderedTasks> tasks;
-
-  public:
-    ResumeOrderedTasks(std::shared_ptr<OrderedTasks> t) : tasks(std::move(t)) {}
-
-    void resume() override
-    {
-      if (tasks->impl->actions.unpause())
-      {
-        tasks->enqueue_self();
-      }
-    }
-  };
-
   OrderedTasks::OrderedTasks(const std::string& s)
   {
     impl = std::make_unique<Impl>();
@@ -111,6 +94,19 @@ namespace ccf::tasks
     ccf::tasks::add_task(shared_from_this());
   }
 
+  void OrderedTasks::on_pause()
+  {
+    impl->actions.pause();
+  }
+
+  void OrderedTasks::on_resume()
+  {
+    if (impl->actions.unpause())
+    {
+      enqueue_self();
+    }
+  }
+
   size_t OrderedTasks::do_task_implementation()
   {
     size_t n = 0;
@@ -120,13 +116,6 @@ namespace ccf::tasks
       enqueue_self();
     }
     return n;
-  }
-
-  ccf::tasks::Resumable OrderedTasks::pause()
-  {
-    impl->actions.pause();
-
-    return std::make_unique<ResumeOrderedTasks>(shared_from_this());
   }
 
   std::string OrderedTasks::get_name() const
