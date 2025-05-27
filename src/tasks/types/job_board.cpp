@@ -11,8 +11,12 @@ namespace ccf::tasks
 {
   void JobBoard::add_task(Task&& t)
   {
-    std::lock_guard<std::mutex> lock(mutex);
-    queue.emplace(std::move(t));
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      queue.emplace(std::move(t));
+    }
+
+    work_beacon.notify_work_available();
   }
 
   Task JobBoard::get_task()
@@ -36,21 +40,8 @@ namespace ccf::tasks
 
   Task JobBoard::wait_for_task(const std::chrono::milliseconds& timeout)
   {
-    // TODO: Add a condition_variable to remove spinloop
-    using TClock = std::chrono::system_clock;
+    work_beacon.wait_for_work_with_timeout(timeout);
 
-    const auto start = TClock::now();
-    const auto until = start + timeout;
-
-    while (true)
-    {
-      auto task = get_task();
-      if (task != nullptr || TClock::now() >= until)
-      {
-        return task;
-      }
-
-      std::this_thread::yield();
-    }
+    return get_task();
   }
 }

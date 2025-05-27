@@ -2,6 +2,7 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
+#include "ds/work_beacon.h"
 #include "tasks/types/task.h"
 
 #include <mutex>
@@ -14,6 +15,8 @@ namespace ccf::tasks
   {
     std::mutex mutex;
     std::queue<Task> queue;
+
+    ccf::ds::WorkBeacon work_beacon;
 
     void add_task(Task&& t);
 
