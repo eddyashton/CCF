@@ -2,8 +2,9 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 
-#include "./job_board.h"
 #include "ccf/ds/logger.h"
+#include "tasks/types/itask.h"
+#include "tasks/types/job_board.h"
 
 #include <mutex>
 
@@ -118,73 +119,76 @@ namespace
   }
 }
 
-// Self-scheduling collection of in-order tasks. Tasks will be executed in the
-// order they are added. To self-schedule, this instance will ensure that it is
-// posted to the given JobBoard whenever more sub-tasks are available for
-// execution.
-class OrderedTasks : public ITask,
-                     public std::enable_shared_from_this<OrderedTasks>
+namespace ccf::tasks
 {
-protected:
-public: // TODO: Bit weird
-  std::string name;
-  IJobBoard& job_board;
-  SubTaskQueue<TaskAction> actions;
-
-  void enqueue_on_board()
+  // Self-scheduling collection of in-order tasks. Tasks will be executed in the
+  // order they are added. To self-schedule, this instance will ensure that it
+  // is posted to the given JobBoard whenever more sub-tasks are available for
+  // execution.
+  class OrderedTasks : public ITask,
+                       public std::enable_shared_from_this<OrderedTasks>
   {
-    job_board.add_task(shared_from_this());
-  }
+  protected:
+  public: // TODO: Bit weird
+    std::string name;
+    JobBoard& job_board;
+    SubTaskQueue<TaskAction> actions;
 
-public:
-  OrderedTasks(IJobBoard& jb, const std::string& s = "[Ordered]") :
-    job_board(jb),
-    name(s)
-  {}
-
-  size_t do_task_implementation() override
-  {
-    size_t n = 0;
-    if (actions.pop_and_visit(
-          [this, &n](TaskAction&& action) { n += action->do_action(); }))
+    void enqueue_on_board()
     {
-      enqueue_on_board();
+      job_board.add_task(shared_from_this());
     }
-    return n;
-  }
 
-  struct ResumeOrderedTasks : public ccf::tasks::IResumable
-  {
-    std::shared_ptr<OrderedTasks> tasks;
+  public:
+    OrderedTasks(JobBoard& jb, const std::string& s = "[Ordered]") :
+      job_board(jb),
+      name(s)
+    {}
 
-    ResumeOrderedTasks(std::shared_ptr<OrderedTasks> t) : tasks(t) {}
-
-    void resume() override
+    size_t do_task_implementation() override
     {
-      if (tasks->actions.unpause())
+      size_t n = 0;
+      if (actions.pop_and_visit(
+            [this, &n](TaskAction&& action) { n += action->do_action(); }))
       {
-        tasks->enqueue_on_board();
+        enqueue_on_board();
+      }
+      return n;
+    }
+
+    struct ResumeOrderedTasks : public ccf::tasks::IResumable
+    {
+      std::shared_ptr<OrderedTasks> tasks;
+
+      ResumeOrderedTasks(std::shared_ptr<OrderedTasks> t) : tasks(t) {}
+
+      void resume() override
+      {
+        if (tasks->actions.unpause())
+        {
+          tasks->enqueue_on_board();
+        }
+      }
+    };
+
+    ccf::tasks::Resumable pause() override
+    {
+      actions.pause();
+
+      return std::make_unique<ResumeOrderedTasks>(shared_from_this());
+    }
+
+    std::string get_name() const override
+    {
+      return name;
+    }
+
+    void add_action(TaskAction&& action)
+    {
+      if (actions.push(std::move(action)))
+      {
+        enqueue_on_board();
       }
     }
   };
-
-  ccf::tasks::Resumable pause() override
-  {
-    actions.pause();
-
-    return std::make_unique<ResumeOrderedTasks>(shared_from_this());
-  }
-
-  std::string get_name() const override
-  {
-    return name;
-  }
-
-  void add_action(TaskAction&& action)
-  {
-    if (actions.push(std::move(action)))
-    {
-      enqueue_on_board();
-    }
-  }
-};
+}

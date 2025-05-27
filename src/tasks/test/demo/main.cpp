@@ -4,25 +4,13 @@
 #include "./actions.h"
 #include "./clients.h"
 #include "./node.h"
+#include "tasks/types/basic_task.h"
 
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 
-// Writing a bunch of code here, so run a few simple sanity checks that the
-// basic operations do what we expect
-TEST_CASE("SignAction")
-{
-  for (size_t i = 0; i < 100; ++i)
-  {
-    auto orig = std::make_unique<SignAction>();
-    auto ser = orig->serialise();
-
-    auto received = deserialise_action(ser);
-    auto result = received->do_action();
-
-    orig->verify_serialised_response(result);
-  }
-}
+// TODO: Be explicit
+using namespace ccf::tasks;
 
 TEST_CASE("Tasks")
 {
@@ -299,6 +287,22 @@ void describe_dispatcher(Dispatcher& d)
       tasks->get_name(),
       tasks->actions.active,
       tasks->actions.pending.size());
+  }
+}
+
+// Writing a bunch of code here, so run a few simple sanity checks that the
+// basic operations do what we expect
+TEST_CASE("SignAction")
+{
+  for (size_t i = 0; i < 100; ++i)
+  {
+    auto orig = std::make_unique<SignAction>();
+    auto ser = orig->serialise();
+
+    auto received = deserialise_action(ser);
+    auto result = received->do_action();
+
+    orig->verify_serialised_response(result);
   }
 }
 

@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "./demo/job_board.h"
-#include "./demo/ordered_tasks.h"
+#include "tasks/types/job_board.h"
+#include "tasks/types/ordered_tasks.h"
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
@@ -16,7 +16,7 @@
 #include <set>
 #include <thread>
 
-void worker(IJobBoard& job_board, std::atomic<bool>& stop)
+void worker(JobBoard& job_board, std::atomic<bool>& stop)
 {
   while (!stop.load())
   {
@@ -30,7 +30,7 @@ void worker(IJobBoard& job_board, std::atomic<bool>& stop)
 }
 
 void flush_board(
-  IJobBoard& job_board,
+  JobBoard& job_board,
   size_t max_workers = 8,
   std::chrono::seconds stop_after = std::chrono::seconds(5),
   std::chrono::seconds at_least = std::chrono::seconds(1))

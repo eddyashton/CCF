@@ -4,10 +4,10 @@
 
 #include "./actions.h"
 #include "./dispatcher.h"
-#include "./job_board.h"
-#include "./ordered_tasks.h"
 #include "./session.h"
 #include "./worker.h"
+#include "tasks/types/job_board.h"
+#include "tasks/types/ordered_tasks.h"
 
 #include <atomic>
 #include <string>
@@ -19,12 +19,12 @@ struct Node
 {
   SessionManager session_manager;
 
-  IJobBoard& job_board;
+  ccf::tasks::JobBoard& job_board;
 
   Dispatcher dispatcher;
   std::vector<std::unique_ptr<Worker>> workers;
 
-  Node(size_t num_workers, IJobBoard& jb) :
+  Node(size_t num_workers, ccf::tasks::JobBoard& jb) :
     job_board(jb),
     dispatcher(jb, session_manager)
   {

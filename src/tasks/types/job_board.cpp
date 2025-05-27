@@ -1,34 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
-#pragma once
 
-#include "./task.h"
+#include "tasks/types/job_board.h"
 
 #include <mutex>
 #include <queue>
 #include <thread>
 
-struct IJobBoard
+namespace ccf::tasks
 {
-  virtual void add_task(Task&& t) = 0;
-  virtual Task get_task() = 0;
-  virtual bool empty() = 0;
-
-  virtual Task wait_for_task(const std::chrono::milliseconds& timeout) = 0;
-};
-
-struct JobBoard : public IJobBoard
-{
-  std::mutex mutex;
-  std::queue<Task> queue;
-
-  void add_task(Task&& t) override
+  void JobBoard::add_task(Task&& t)
   {
     std::lock_guard<std::mutex> lock(mutex);
     queue.emplace(std::move(t));
   }
 
-  Task get_task() override
+  Task JobBoard::get_task()
   {
     std::lock_guard<std::mutex> lock(mutex);
     if (queue.empty())
@@ -41,13 +28,13 @@ struct JobBoard : public IJobBoard
     return t;
   }
 
-  bool empty() override
+  bool JobBoard::empty()
   {
     std::lock_guard<std::mutex> lock(mutex);
     return queue.empty();
   }
 
-  Task wait_for_task(const std::chrono::milliseconds& timeout) override
+  Task JobBoard::wait_for_task(const std::chrono::milliseconds& timeout)
   {
     // TODO: Add a condition_variable to remove spinloop
     using TClock = std::chrono::system_clock;
@@ -66,4 +53,4 @@ struct JobBoard : public IJobBoard
       std::this_thread::yield();
     }
   }
-};
+}
