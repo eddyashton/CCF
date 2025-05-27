@@ -8,7 +8,7 @@
 
 #include <future>
 
-struct Action_ProcessClientAction : public ITaskAction
+struct Action_ProcessClientAction : public ccf::tasks::ITaskAction
 {
   const SerialisedAction input_action;
   Session& client_session;

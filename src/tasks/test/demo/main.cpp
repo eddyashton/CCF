@@ -47,8 +47,8 @@ void describe_dispatcher(Dispatcher& d)
       "  {}: {} (active: {}, queue.size: {})\n",
       session->name,
       tasks->get_name(),
-      tasks->actions.active,
-      tasks->actions.pending.size());
+      "TODO", // tasks->actions.active,
+      "TODO"); // tasks->actions.pending.size());
   }
 }
 

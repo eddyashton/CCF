@@ -69,7 +69,7 @@ TEST_CASE("OrderedTasks")
         std::make_shared<OrderedTasks>(std::to_string(i)), 0);
     }
 
-    auto add_action = [&](size_t idx, size_t sleep_time_ms) {
+    auto sleep_then_increment = [&](size_t idx, size_t sleep_time_ms) {
       auto& [tasks, n] = all_tasks[idx];
       tasks->add_action(make_basic_action([=, &n, &results]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(sleep_time_ms));
@@ -84,9 +84,9 @@ TEST_CASE("OrderedTasks")
     const auto period = spacing * num_sessions + 1;
     for (auto i = 0; i < num_sessions; ++i)
     {
-      add_action(i, spacing * i);
-      add_action(i, period);
-      add_action(i, period);
+      sleep_then_increment(i, spacing * i);
+      sleep_then_increment(i, period);
+      sleep_then_increment(i, period);
     }
 
     {
@@ -105,7 +105,7 @@ TEST_CASE("OrderedTasks")
       // Continually add tasks, while the workers are running
       for (auto i = 0; i < num_workers * num_sessions * 10; ++i)
       {
-        add_action(i % all_tasks.size(), period);
+        sleep_then_increment(i % all_tasks.size(), period);
         // Try to produce an interesting interleaving of tasks across sessions
         if (i % ((num_workers * num_sessions) - 1) == 0)
         {
