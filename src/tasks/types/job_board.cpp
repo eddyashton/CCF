@@ -19,19 +19,6 @@ namespace ccf::tasks
     work_beacon.notify_work_available();
   }
 
-  Task JobBoard::get_task()
-  {
-    std::lock_guard<std::mutex> lock(mutex);
-    if (queue.empty())
-    {
-      return nullptr;
-    }
-
-    Task t = queue.front();
-    queue.pop();
-    return t;
-  }
-
   bool JobBoard::empty()
   {
     std::lock_guard<std::mutex> lock(mutex);
@@ -42,6 +29,14 @@ namespace ccf::tasks
   {
     work_beacon.wait_for_work_with_timeout(timeout);
 
-    return get_task();
+    std::lock_guard<std::mutex> lock(mutex);
+    if (queue.empty())
+    {
+      return nullptr;
+    }
+
+    Task t = queue.front();
+    queue.pop();
+    return t;
   }
 }

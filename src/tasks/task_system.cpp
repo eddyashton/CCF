@@ -16,11 +16,6 @@ namespace ccf::tasks
     job_board.add_task(std::move(t));
   }
 
-  Task get_task()
-  {
-    return job_board.get_task();
-  }
-
   bool empty()
   {
     return job_board.empty();

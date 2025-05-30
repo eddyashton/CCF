@@ -20,8 +20,6 @@ namespace ccf::tasks
 
     void add_task(Task&& t);
 
-    Task get_task();
-
     bool empty();
 
     Task wait_for_task(const std::chrono::milliseconds& timeout);

@@ -128,6 +128,10 @@ TEST_CASE("PauseAndResume")
     return ccf::tasks::make_basic_action([&n]() { ++n; });
   };
 
+  auto wait = []() {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  };
+
   std::shared_ptr<ccf::tasks::OrderedTasks> x_tasks =
     std::make_shared<ccf::tasks::OrderedTasks>("x");
   std::shared_ptr<ccf::tasks::OrderedTasks> y_tasks =
@@ -137,6 +141,8 @@ TEST_CASE("PauseAndResume")
   y_tasks->add_action(increment(y));
   y_tasks->add_action(increment(y));
 
+  // NB: We deliberately the lifetime scope of workers in the following blocks,
+  // to convince TSAN that we're not unsafely reading shared state
   {
     Worker worker(0);
 
@@ -145,16 +151,20 @@ TEST_CASE("PauseAndResume")
     REQUIRE(y == 0);
 
     // Even if we wait
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    wait();
     REQUIRE(x == 0);
     REQUIRE(y == 0);
 
     // If we start the worker (and wait), it will execute the pending tasks
     worker.start();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    REQUIRE(x == 1);
-    REQUIRE(y == 2);
+    wait();
+  }
+  REQUIRE(x == 1);
+  REQUIRE(y == 2);
 
+  {
+    Worker worker(1);
+    worker.start();
     // We can concurrently queue many more tasks, which will be executed
     // immediately
     for (auto i = 0; i < 100; ++i)
@@ -163,19 +173,18 @@ TEST_CASE("PauseAndResume")
       y_tasks->add_action(increment(y));
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    REQUIRE(x == 101);
-    REQUIRE(y == 102);
+    wait();
   }
+  REQUIRE(x == 101);
+  REQUIRE(y == 102);
+
+  // If we need to block, we can ask for a task to be paused. Note that the
+  // current action will still complete
+  bool happened = false;
+  ccf::tasks::PauseResumeHandle pr_handle;
 
   {
-    // Terminating previous worker, creating a new one (not yet running)
-    Worker worker(1);
-
-    // If we need to block, we can ask for a task to be paused. Note that the
-    // current action will still complete
-    bool happened = false;
-    ccf::tasks::PauseResumeHandle pr_handle;
+    Worker worker(2);
 
     x_tasks->add_action(increment(x));
     x_tasks->add_action(ccf::tasks::make_basic_action([&]() {
@@ -189,11 +198,15 @@ TEST_CASE("PauseAndResume")
     x_tasks->add_action(increment(x));
 
     worker.start();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    REQUIRE(x == 102); // One increment action happened
-    REQUIRE(happened == true); // Then the pause action ran to completion
-    REQUIRE(pr_handle != nullptr); // We got a handle to later resume this task
+    wait();
+  }
+  REQUIRE(x == 102); // One increment action happened
+  REQUIRE(happened == true); // Then the pause action ran to completion
+  REQUIRE(pr_handle != nullptr); // We got a handle to later resume this task
 
+  {
+    Worker worker(3);
+    worker.start();
     // Other actions can be scheduled, including on the paused task.
     // Unpaused tasks will complete as normal.
     for (auto i = 0; i < 100; ++i)
@@ -202,16 +215,25 @@ TEST_CASE("PauseAndResume")
       y_tasks->add_action(increment(y));
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    REQUIRE(x == 102);
-    REQUIRE(y == 202);
+    wait();
+  }
+  REQUIRE(x == 102);
+  REQUIRE(y == 202);
 
+  {
+    Worker worker(4);
+    worker.start();
     // After resume, all queued actions will (be able to) execute, in-order
     ccf::tasks::resume_task(std::move(pr_handle));
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    REQUIRE(x == 203);
-    REQUIRE(y == 202);
+    wait();
+  }
+  REQUIRE(x == 203);
+  REQUIRE(y == 202);
+
+  {
+    Worker worker(5);
+    worker.start();
 
     // A task might be paused multiple times during its life
     pr_handle = nullptr;
@@ -220,19 +242,23 @@ TEST_CASE("PauseAndResume")
       [&]() { pr_handle = ccf::tasks::pause_current_task(); }));
     x_tasks->add_action(increment(x));
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    REQUIRE(x == 204);
-    REQUIRE(pr_handle != nullptr);
+    wait();
+  }
+  REQUIRE(x == 204);
+  REQUIRE(pr_handle != nullptr);
 
+  {
+    Worker worker(6);
+    worker.start();
     // A paused task can be cancelled
     x_tasks->cancel_task();
 
     // Cancellation supercedes resumption - nothing more happens on this task
     ccf::tasks::resume_task(std::move(pr_handle));
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    REQUIRE(x == 204);
+    wait();
   }
+  REQUIRE(x == 204);
 
   // Trying to pause outside of a task will throw an error
   REQUIRE_THROWS(ccf::tasks::pause_current_task());
