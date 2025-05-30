@@ -128,17 +128,13 @@ struct Dispatcher : public LoopingThread<DispatcherState>
   Stage loop_behaviour() override
   {
     // Handle incoming IO, producing tasks to process each item
-    // TODO: Ideally some kind of "session_manager.foreach", to avoid directly
-    // taking their mutex?
 
     // Produce a return value of Terminated if consider_termination has been
     // set, and we pop nothing off incoming in this iteration
     Stage ret_val =
       state.consider_termination.load() ? Stage::Terminated : Stage::Running;
 
-    std::lock_guard<std::mutex> lock(state.session_manager.sessions_mutex);
-    for (auto& session : state.session_manager.all_sessions)
-    {
+    state.session_manager.foreach([&](const auto& session) {
       auto it = state.ordered_tasks_per_client.find(session.get());
       if (it == state.ordered_tasks_per_client.end())
       {
@@ -174,7 +170,7 @@ struct Dispatcher : public LoopingThread<DispatcherState>
           incoming = session->to_node.try_pop();
         }
       }
-    }
+    });
 
     return ret_val;
   }

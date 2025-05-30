@@ -14,13 +14,12 @@ namespace ccf::tasks
   template <typename T>
   class SubTaskQueue
   {
-  private:
+  public:
     std::mutex mutex;
     std::deque<T> pending;
     std::atomic<bool> active;
     std::atomic<bool> paused;
 
-  public:
     bool push(T t)
     {
       std::lock_guard<std::mutex> lock(mutex);
@@ -130,4 +129,16 @@ namespace ccf::tasks
       enqueue_self();
     }
   }
+
+  bool OrderedTasks::currently_active()
+  {
+    return impl->actions.active.load();
+  }
+
+  size_t OrderedTasks::pending_tasks()
+  {
+    std::lock_guard<std::mutex> lock(impl->actions.mutex);
+    return impl->actions.pending.size();
+  }
+
 }

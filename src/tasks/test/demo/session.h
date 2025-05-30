@@ -36,4 +36,13 @@ struct SessionManager
     std::lock_guard<std::mutex> lock(sessions_mutex);
     return *all_sessions.emplace_back(std::make_unique<Session>(s));
   }
+
+  void foreach(std::function<void(const SessionPtr&)> fn)
+  {
+    std::lock_guard<std::mutex> lock(sessions_mutex);
+    for (const auto& session : all_sessions)
+    {
+      fn(session);
+    }
+  }
 };

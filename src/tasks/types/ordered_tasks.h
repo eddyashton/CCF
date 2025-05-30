@@ -75,5 +75,8 @@ namespace ccf::tasks
     std::string get_name() const override;
 
     void add_action(TaskAction&& action);
+
+    bool currently_active();
+    size_t pending_tasks();
   };
 }
