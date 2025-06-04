@@ -9,7 +9,7 @@ namespace ccf::tasks
   // Producer side - add a piece of work to be executed by the task system
   void add_task(Task&& t);
 
-  // Consumer side - pop the next item to-be-executed
+  // Consumer side - pop the next piece of work to be executed
   Task wait_for_task(const std::chrono::milliseconds& timeout);
 
   // TODO: Should this be here?

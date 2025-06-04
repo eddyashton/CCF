@@ -103,6 +103,17 @@ struct LoopingThread
     std::this_thread::yield();
     return lifetime_stage.load();
   }
+
+  // TODO: This is an ugly hack, doesn't fill the given space
+  void _write_status_string_number(
+    size_t value, size_t ending_at, std::atomic<char>* output)
+  {
+    const auto s = std::to_string(value);
+    for (auto it = s.rbegin(); it != s.rend(); ++it)
+    {
+      output[ending_at--] = *it;
+    }
+  }
 };
 
 template <typename T>

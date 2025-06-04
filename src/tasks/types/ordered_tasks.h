@@ -13,8 +13,7 @@ namespace ccf::tasks
 {
   struct ITaskAction
   {
-    // Return some value indicating how much work was done.
-    virtual size_t do_action() = 0;
+    virtual void do_action() = 0;
 
     virtual std::string get_name() const = 0;
   };
@@ -33,10 +32,9 @@ namespace ccf::tasks
       fn(_fn)
     {}
 
-    size_t do_action() override
+    void do_action() override
     {
       fn();
-      return 1;
     }
 
     std::string get_name() const override

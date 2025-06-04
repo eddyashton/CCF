@@ -109,8 +109,10 @@ namespace ccf::tasks
   size_t OrderedTasks::do_task_implementation()
   {
     size_t n = 0;
-    if (impl->actions.pop_and_visit(
-          [this, &n](const TaskAction& action) { n += action->do_action(); }))
+    if (impl->actions.pop_and_visit([this, &n](const TaskAction& action) {
+          action->do_action();
+          ++n;
+        }))
     {
       enqueue_self();
     }

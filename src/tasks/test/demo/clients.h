@@ -16,10 +16,10 @@
 struct ClientParams
 {
   std::chrono::milliseconds submission_duration =
-    std::chrono::milliseconds(1000);
+    std::chrono::milliseconds(4000);
 
   std::function<void()> submission_delay = []() {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
   };
 
   std::function<ActionPtr()> generate_next_action = []() {
@@ -37,27 +37,39 @@ struct ClientState
   using TClock = std::chrono::system_clock;
   TClock::time_point submission_end;
 
-  size_t requests_sent;
-  size_t responses_seen;
+  std::atomic<size_t> requests_sent;
+  std::atomic<size_t> responses_seen;
 
   bool terminated_early = false;
+
+  static constexpr auto STATUS_STRING_LENGTH = 13;
+  std::atomic<char> status_string[STATUS_STRING_LENGTH];
+
+  size_t spinner_idx = 0;
 };
 
 struct Client : public LoopingThread<ClientState>
 {
   Client(Session& _session, const ClientParams& _params, size_t idx) :
     LoopingThread<ClientState>(fmt::format("c{}", idx), _session, _params)
-  {}
+  {
+    // eg: "T[ 234/4567] "
+    for (auto i = 0; i < ClientState::STATUS_STRING_LENGTH; ++i)
+    {
+      const char c = i == 1 ? '[' : (i == 6 ? '/' : (i == 11 ? ']' : ' '));
+      state.status_string[i] = c;
+    }
+  }
 
   ~Client() override
   {
     shutdown();
 
-    LOG_INFO_FMT(
-      "Shutting down {}, sent {} requests and saw {} responses",
-      name,
-      state.requests_sent,
-      state.responses_seen);
+    // LOG_INFO_FMT(
+    //   "Shutting down {}, sent {} requests and saw {} responses",
+    //   name,
+    //   state.requests_sent,
+    //   state.responses_seen);
 
     if (!state.terminated_early)
     {
@@ -73,10 +85,11 @@ struct Client : public LoopingThread<ClientState>
 
   Stage loop_behaviour() override
   {
-    if (rand() % 4000 == 0)
+    if (rand() % 5000 == 0)
     {
       state.terminated_early = true;
       state.session.abandoned.store(true);
+      state.status_string[0] = 'X';
       return Stage::Terminated;
     }
 
@@ -88,6 +101,9 @@ struct Client : public LoopingThread<ClientState>
       state.session.to_node.emplace_back(action->serialise());
       state.pending_actions.push(std::move(action));
       ++state.requests_sent;
+
+      _write_status_string_number(state.requests_sent, 10, state.status_string);
+
       LOG_DEBUG_FMT("Pushed a pending action");
     }
 
@@ -98,8 +114,8 @@ struct Client : public LoopingThread<ClientState>
       // Verification is expensive, so we end up spending a long tail time in
       // this test verifying every response (longer than we spent doing real
       // work). Mitigate this by only checking some responses, randomly
-      // determined, estimating how far 'behind' we are (and thus how likely we
-      // should be to skip verification) by the length of pending messages.
+      // determined, estimating how far 'behind' we are (and thus how likely
+      // we should be to skip verification) by the length of pending messages.
       const auto n = rand() % 100;
       if (n >= state.pending_actions.size() || n == 0)
       {
@@ -113,6 +129,8 @@ struct Client : public LoopingThread<ClientState>
       state.pending_actions.pop();
       ++state.responses_seen;
 
+      _write_status_string_number(state.responses_seen, 5, state.status_string);
+
       // ...and check for further responses
       response = state.session.from_node.try_pop();
     }
@@ -120,16 +138,22 @@ struct Client : public LoopingThread<ClientState>
     // End loop if this client has submitted and verified everything
     if (still_submitting)
     {
+      static constexpr auto spinner = "|/-\\";
+      static constexpr auto spinner_len = 4;
+      state.spinner_idx = (state.spinner_idx + 1) % spinner_len;
+      state.status_string[0] = spinner[state.spinner_idx];
       return Stage::Running;
     }
     else
     {
       if (state.pending_actions.empty())
       {
+        state.status_string[0] = 'T';
         return Stage::Terminated;
       }
       else
       {
+        state.status_string[0] = 'S';
         return Stage::ShuttingDown;
       }
     }
