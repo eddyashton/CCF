@@ -1028,6 +1028,12 @@ if(BUILD_TESTS)
     )
     add_picobench(merkle_bench SRCS src/node/test/merkle_bench.cpp)
     add_picobench(hash_bench SRCS src/ds/test/hash_bench.cpp)
+    add_picobench(frontend_dispatch_bench SRCS src/node/rpc/test/frontend_dispatch_bench.cpp)
+    target_link_libraries(
+      frontend_dispatch_bench
+      PRIVATE ccf_endpoints.host ccfcrypto.host ccf_kv.host
+    )
+
 
     if(LONG_TESTS)
       set(ADDITIONAL_RECOVERY_ARGS --with-load --with-election
