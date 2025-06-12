@@ -1,0 +1,3 @@
+#define HAVE_STRDUP 1
+#define HAVE_STRNDUP 1
+#define HAVE_STDBOOL_H 1

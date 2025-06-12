@@ -135,6 +135,15 @@
           "commitHash": "09577475e75fd3c8bbcc8c1f1addbc9a3f9546c9"
         }
       }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/c9s/r3",
+          "commitHash": "967e74a4a22f7fffadc57105a6c43601c4813612"
+        }
+      }
     }
   ],
   "Version": 1
