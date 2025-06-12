@@ -39,11 +39,7 @@ bool next_choice(
 std::set<std::string> all_paths_of_length(size_t target_length)
 {
   static Elements elements = {
-    // "foo", "bar", "baz", "qux", "quux", "corge", "grault", "garply"};
-    "foo",
-    "bar",
-    "baz",
-    "qux"};
+    "foo", "fooo", "foooo", "fooooo", "foooooo", "fooooooo", "bar", "baz"};
   std::sort(elements.begin(), elements.end());
 
   using Result = std::set<std::string>;
@@ -74,55 +70,78 @@ std::set<std::string> all_paths_of_length(size_t target_length)
   return it->second;
 }
 
+std::set<std::string> all_paths_up_to_length(size_t target_length)
+{
+  std::set<std::string> paths;
+  for (size_t i = 0; i < target_length + 1; ++i)
+  {
+    const auto more_paths = all_paths_of_length(i);
+    paths.insert(more_paths.begin(), more_paths.end());
+  }
+  return paths;
+}
+
+std::set<std::string> first_n_paths(size_t n)
+{
+  std::set<std::string> paths;
+
+  size_t path_length = 1;
+  while (paths.size() < n)
+  {
+    const auto next_paths = all_paths_of_length(path_length);
+    auto it = next_paths.begin();
+    while (it != next_paths.end() && paths.size() < n)
+    {
+      paths.insert(*it++);
+    }
+    ++path_length;
+  }
+
+  return paths;
+}
+
+template <typename It>
+void debug_print_paths(It begin, It end)
+{
+  auto it = begin;
+  if (std::distance(begin, end) <= 20)
+  {
+    while (it != end)
+    {
+      std::cout << fmt::format("  {}", *it++) << std::endl;
+    }
+  }
+  else
+  {
+    for (auto i = 0; i < 10; ++i)
+    {
+      std::cout << fmt::format("  {}", *it++) << std::endl;
+    }
+    std::cout << "  ..." << std::endl;
+    it = end;
+    std::advance(it, -10);
+    while (it != end)
+    {
+      std::cout << fmt::format("  {}", *it++) << std::endl;
+    }
+  }
+}
+
 template <typename RegistryType>
 static void dispatch(picobench::state& s)
 {
   RegistryType registry("ignored_prefix");
 
-  registry.run_test();
-  return;
+  auto paths_set = first_n_paths(s.iterations());
 
-  auto paths_set = all_paths_of_length(s.iterations());
-  std::cout << fmt::format(
-                 "Found {} paths of length {}",
-                 paths_set.size(),
-                 s.iterations())
-            << std::endl;
+  // std::cout << fmt::format("First {} paths", s.iterations()) << std::endl;
+  // debug_print_paths(paths_set.begin(), paths_set.end());
 
   std::vector<std::string> paths(paths_set.begin(), paths_set.end());
-  // Debug printing:
-  // if (paths.size() <= 20)
-  // {
-  //   for (const auto& path : paths)
-  //   {
-  //     std::cout << fmt::format("  {}", path) << std::endl;
-  //   }
-  // }
-  // else
-  // {
-  //   auto it = paths.begin();
-  //   for (auto i = 0; i < 10; ++i)
-  //   {
-  //     std::cout << fmt::format("  {}", *it++) << std::endl;
-  //   }
-  //   std::cout << "  ..." << std::endl;
-  //   it = paths.end();
-  //   std::advance(it, -10);
-  //   while (it != paths.end())
-  //   {
-  //     std::cout << fmt::format("  {}", *it++) << std::endl;
-  //   }
-  // }
 
-  const std::string template_id = "{name}";
   for (auto& path : paths)
   {
     registry.make_endpoint(path, HTTP_POST, [](auto& ctx) {}, {}).install();
-    const auto start = path.find(template_id);
-    if (start != std::string::npos)
-    {
-      path.replace(start, template_id.size(), "bob");
-    }
   }
 
   ccf::kv::Store store;
@@ -145,25 +164,15 @@ static void dispatch(picobench::state& s)
       rpc_ctx.request_path = path;
 
       auto endpoint = registry.find_endpoint(tx, rpc_ctx);
-      if (endpoint == nullptr)
-      {
-        fmt::print("{} FAILED\n", rpc_ctx.request_path);
-      }
-      else
-      {
-        fmt::print(
-          "{} => {}\n", rpc_ctx.request_path, endpoint->dispatch.uri_path);
-      }
     }
   }
   s.stop_timer();
 }
 
-// const std::vector<int> dispatch_sizes = {1, 2, 3, 4, 5};
-const std::vector<int> dispatch_sizes = {1};
+const std::vector<int> dispatch_sizes = {10, 100, 1'000, 10'000};
 
 PICOBENCH_SUITE("dispatch");
-// auto dispatch_old = dispatch<ccf::endpoints::EndpointRegistry>;
-// PICOBENCH(dispatch_old).iterations(dispatch_sizes).baseline();
-auto dispatch_new = dispatch<R3Registry>;
-PICOBENCH(dispatch_new).iterations(dispatch_sizes);
+auto dispatch_old = dispatch<ccf::endpoints::EndpointRegistry>;
+PICOBENCH(dispatch_old).iterations(dispatch_sizes).baseline();
+// auto dispatch_new = dispatch<R3Registry>;
+// PICOBENCH(dispatch_new).iterations(dispatch_sizes);
