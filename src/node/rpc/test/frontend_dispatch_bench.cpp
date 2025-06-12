@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
+#include "./r3_registry.h"
 #include "./stub_rpc_context.h"
 #include "node/rpc/frontend.h"
 
@@ -38,7 +39,11 @@ bool next_choice(
 std::set<std::string> all_paths_of_length(size_t target_length)
 {
   static Elements elements = {
-    "foo", "bar", "baz", "qux", "quux", "corge", "grault", "garply"};
+    // "foo", "bar", "baz", "qux", "quux", "corge", "grault", "garply"};
+    "foo",
+    "bar",
+    "baz",
+    "qux"};
   std::sort(elements.begin(), elements.end());
 
   using Result = std::set<std::string>;
@@ -74,10 +79,14 @@ static void dispatch(picobench::state& s)
 {
   RegistryType registry("ignored_prefix");
 
-  const auto paths = all_paths_of_length(s.iterations());
+  auto paths_set = all_paths_of_length(s.iterations());
   std::cout << fmt::format(
-                 "Found {} paths of length {}", paths.size(), s.iterations())
+                 "Found {} paths of length {}",
+                 paths_set.size(),
+                 s.iterations())
             << std::endl;
+
+  std::vector<std::string> paths(paths_set.begin(), paths_set.end());
   // Debug printing:
   // if (paths.size() <= 20)
   // {
@@ -102,9 +111,15 @@ static void dispatch(picobench::state& s)
   //   }
   // }
 
-  for (const auto& path : paths)
+  const std::string template_id = "{name}";
+  for (auto& path : paths)
   {
     registry.make_endpoint(path, HTTP_POST, [](auto& ctx) {}, {}).install();
+    const auto start = path.find(template_id);
+    if (start != std::string::npos)
+    {
+      path.replace(start, template_id.size(), "bob");
+    }
   }
 
   ccf::kv::Store store;
@@ -113,20 +128,39 @@ static void dispatch(picobench::state& s)
 
   rpc_ctx.verb = HTTP_POST;
 
+  std::random_shuffle(paths.begin(), paths.end());
+
   s.start_timer();
-  for (size_t i = 0; i < 1000; ++i)
+  for (size_t i = 0; i < 1; ++i)
   {
-    // Choose a random path
-    auto it = paths.begin();
-    std::advance(it, rand() % paths.size());
-    rpc_ctx.request_path = *it;
-    auto _ = registry.find_endpoint(tx, rpc_ctx);
+    // // Choose a random path
+    // auto it = paths.begin();
+    // std::advance(it, rand() % paths.size());
+    // rpc_ctx.request_path = *it;
+    for (const auto& path : paths)
+    {
+      rpc_ctx.request_path = path;
+
+      auto endpoint = registry.find_endpoint(tx, rpc_ctx);
+      if (endpoint == nullptr)
+      {
+        fmt::print("{} FAILED\n", rpc_ctx.request_path);
+      }
+      else
+      {
+        fmt::print(
+          "{} => {}\n", rpc_ctx.request_path, endpoint->dispatch.uri_path);
+      }
+    }
   }
   s.stop_timer();
 }
 
-const std::vector<int> dispatch_sizes = {1, 2, 3, 4, 5};
+// const std::vector<int> dispatch_sizes = {1, 2, 3, 4, 5};
+const std::vector<int> dispatch_sizes = {1};
 
 PICOBENCH_SUITE("dispatch");
-auto dispatch_old = dispatch<ccf::endpoints::EndpointRegistry>;
-PICOBENCH(dispatch_old).iterations(dispatch_sizes).baseline();
+// auto dispatch_old = dispatch<ccf::endpoints::EndpointRegistry>;
+// PICOBENCH(dispatch_old).iterations(dispatch_sizes).baseline();
+auto dispatch_new = dispatch<R3Registry>;
+PICOBENCH(dispatch_new).iterations(dispatch_sizes);

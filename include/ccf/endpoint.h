@@ -195,6 +195,7 @@ namespace ccf::endpoints
     redirection_strategy);
 
   struct EndpointDefinition
+    : public std::enable_shared_from_this<EndpointDefinition>
   {
     virtual ~EndpointDefinition() = default;
 
