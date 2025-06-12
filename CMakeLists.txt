@@ -232,6 +232,7 @@ include(${CCF_DIR}/cmake/crypto.cmake)
 include(${CCF_DIR}/cmake/quickjs.cmake)
 include(${CCF_DIR}/cmake/qcbor.cmake)
 include(${CCF_DIR}/cmake/t_cose.cmake)
+include(${CCF_DIR}/cmake/r3.cmake)
 
 # Host Executable
 if(SAN
@@ -1031,7 +1032,7 @@ if(BUILD_TESTS)
     add_picobench(frontend_dispatch_bench SRCS src/node/rpc/test/frontend_dispatch_bench.cpp)
     target_link_libraries(
       frontend_dispatch_bench
-      PRIVATE ccf_endpoints.host ccfcrypto.host ccf_kv.host
+      PRIVATE ccf_endpoints.host ccfcrypto.host ccf_kv.host r3
     )
 
 
