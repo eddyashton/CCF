@@ -79,6 +79,9 @@ static void dispatch(picobench::state& s)
 {
   RegistryType registry("ignored_prefix");
 
+  registry.run_test();
+  return;
+
   auto paths_set = all_paths_of_length(s.iterations());
   std::cout << fmt::format(
                  "Found {} paths of length {}",

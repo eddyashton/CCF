@@ -30,6 +30,60 @@ public:
     r3_tree_free(root);
   }
 
+  void run_test()
+  {
+    // create a router tree with 10 children capacity (this capacity can grow
+    // dynamically)
+    R3Node* n = r3_tree_create(100);
+
+    int route_data = 3;
+    int real = 42;
+
+    // insert the R3Route path into the router tree
+    // r3_tree_insert_path(n, "/bar", &route_data);
+    // r3_tree_insert_path(n, "/foo", &route_data);
+    // r3_tree_insert_path(n, "/foo/baz", &route_data);
+    // r3_tree_insert_path(n, "/foo/barr", &route_data);
+    // r3_tree_insert_path(n, "/foo/bar/baz", &route_data);
+    // r3_tree_insert_path(n, "/zoo", &route_data);
+    // r3_tree_insert_path(n, "/foo/bar", &real);
+
+    r3_tree_insert_path(n, "/foo", &route_data);
+    r3_tree_insert_path(n, "/foo/barr", &route_data);
+    r3_tree_insert_path(n, "/foo/bar/baz", &route_data);
+    r3_tree_insert_path(n, "/foo/bar", &real);
+
+    // let's compile the tree!
+    char* errstr = NULL;
+    int err = r3_tree_compile(n, &errstr);
+    if (err != 0)
+    {
+      // fail
+      printf("error: %s\n", errstr);
+      free(errstr); // errstr is created from `asprintf`, so you have to free it
+                    // manually.
+    }
+
+    // dump the compiled tree
+    r3_tree_dump(n, 0);
+
+    // match a route
+    R3Node* matched_node =
+      r3_tree_matchl(n, "/foo/bar", strlen("/foo/bar"), NULL);
+    if (matched_node)
+    {
+      int ret = *((int*)matched_node->data);
+      fmt::print("!!!! Successfully matched: {}\n", ret);
+    }
+    else
+    {
+      fmt::print("!!!! FAILED TO MATCH\n");
+    }
+
+    // release the tree
+    r3_tree_free(n);
+  }
+
   void install(ccf::endpoints::Endpoint& endpoint) override
   {
     auto ptr = std::make_shared<Endpoint>(endpoint);
