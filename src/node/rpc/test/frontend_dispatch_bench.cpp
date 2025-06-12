@@ -35,44 +35,48 @@ bool next_choice(
   return false;
 }
 
-std::set<std::string> all_paths_of_length(
-  size_t target_length, const Elements& elements)
+std::set<std::string> all_paths_of_length(size_t target_length)
 {
-  std::set<std::string> paths;
-
-  std::vector<Elements::const_iterator> current;
-  for (size_t i = 0; i < target_length; ++i)
-  {
-    current.push_back(elements.begin());
-  }
-
-  do
-  {
-    do
-    {
-      std::string path;
-      for (const auto& it : current)
-      {
-        path += fmt::format("/{}", *it);
-      }
-      paths.insert(path);
-    } while (std::next_permutation(current.begin(), current.end()));
-  } while (next_choice(elements, current));
-
-  return paths;
-}
-
-static void dispatch(picobench::state& s)
-{
-  ccf::endpoints::EndpointRegistry registry("ignored_prefix");
-
-  Elements elements = {
+  static Elements elements = {
     "foo", "bar", "baz", "qux", "quux", "corge", "grault", "garply"};
   std::sort(elements.begin(), elements.end());
 
-  const auto paths = all_paths_of_length(s.iterations(), elements);
+  using Result = std::set<std::string>;
+  static std::map<size_t, Result> memo_results;
+
+  auto it = memo_results.find(target_length);
+  if (it == memo_results.end())
+  {
+    Result paths;
+    if (target_length == 0)
+    {
+      paths.insert("");
+    }
+    else
+    {
+      Result shorter_paths = all_paths_of_length(target_length - 1);
+      for (const auto& prefix : shorter_paths)
+      {
+        for (const auto& e : elements)
+        {
+          paths.insert(fmt::format("{}/{}", prefix, e));
+        }
+      }
+    }
+    it = memo_results.emplace_hint(it, target_length, paths);
+  }
+
+  return it->second;
+}
+
+template <typename RegistryType>
+static void dispatch(picobench::state& s)
+{
+  RegistryType registry("ignored_prefix");
+
+  const auto paths = all_paths_of_length(s.iterations());
   std::cout << fmt::format(
-                 "Produced {} paths of length {}", paths.size(), s.iterations())
+                 "Found {} paths of length {}", paths.size(), s.iterations())
             << std::endl;
   // Debug printing:
   // if (paths.size() <= 20)
@@ -124,4 +128,5 @@ static void dispatch(picobench::state& s)
 const std::vector<int> dispatch_sizes = {1, 2, 3, 4, 5};
 
 PICOBENCH_SUITE("dispatch");
-PICOBENCH(dispatch).iterations(dispatch_sizes).baseline();
+auto dispatch_old = dispatch<ccf::endpoints::EndpointRegistry>;
+PICOBENCH(dispatch_old).iterations(dispatch_sizes).baseline();
