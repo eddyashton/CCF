@@ -1,13 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "ccf/rpc_context.h"
+#include "node/rpc_context_impl.h"
 
 // Extremely stub implementation for dispatch-benchmarking
-struct StubRpcContext : public ccf::RpcContext
+struct StubRpcContext : public ccf::RpcContextImpl
 {
   std::string request_path;
   ccf::RESTVerb verb;
+
+  using ccf::RpcContextImpl::RpcContextImpl;
 
   virtual std::string get_method() const
   {
@@ -132,6 +134,26 @@ struct StubRpcContext : public ccf::RpcContext
     throw std::logic_error(__func__);
   }
   virtual void set_claims_digest(ccf::ClaimsDigest::Digest&& digest)
+  {
+    throw std::logic_error(__func__);
+  }
+  virtual void set_tx_id(const ccf::TxID& tx_id)
+  {
+    throw std::logic_error(__func__);
+  }
+  virtual bool should_apply_writes() const
+  {
+    throw std::logic_error(__func__);
+  }
+  virtual void reset_response()
+  {
+    throw std::logic_error(__func__);
+  }
+  virtual std::vector<uint8_t> serialise_response() const
+  {
+    throw std::logic_error(__func__);
+  }
+  virtual const std::vector<uint8_t>& get_serialised_request()
   {
     throw std::logic_error(__func__);
   }

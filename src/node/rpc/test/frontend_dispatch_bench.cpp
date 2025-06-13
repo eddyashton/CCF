@@ -39,6 +39,23 @@ bool next_choice(
 static Elements elements = {
   "foo", "fooo", "foooo", "fooooo", "foooooo", "fooooooo", "bar", "baz"};
 
+std::string replaced_with_template(
+  std::string path, const std::string_view& target)
+{
+  size_t found = 0;
+  const size_t len = target.size();
+
+  auto match_start = path.find(target);
+  while (match_start != std::string::npos)
+  {
+    const auto slug = std::string("{") + fmt::format("name_{}", found++) + "}";
+    path.replace(match_start, len, slug);
+    match_start = path.find(target, match_start);
+  }
+
+  return path;
+}
+
 std::set<std::string> all_paths_of_length(size_t target_length)
 {
   std::sort(elements.begin(), elements.end());
@@ -140,14 +157,17 @@ static void dispatch(picobench::state& s)
 
   std::vector<std::string> paths(paths_set.begin(), paths_set.end());
 
-  for (auto& path : paths)
+  for (const auto& path : paths)
   {
-    registry.make_endpoint(path, HTTP_POST, [](auto& ctx) {}, {}).install();
+    registry
+      .make_endpoint(
+        replaced_with_template(path, "bar"), HTTP_POST, [](auto& ctx) {}, {})
+      .install();
   }
 
   ccf::kv::Store store;
   ccf::kv::CommittableTx tx = store.create_tx();
-  StubRpcContext rpc_ctx;
+  StubRpcContext rpc_ctx(nullptr);
 
   rpc_ctx.verb = HTTP_POST;
 
@@ -158,35 +178,18 @@ static void dispatch(picobench::state& s)
   s.start_timer();
   for (size_t i = 0; i < 1; ++i)
   {
-    // // Choose a random path
-    // auto it = paths.begin();
-    // std::advance(it, rand() % paths.size());
-    // rpc_ctx.request_path = *it;
     for (const auto& path : paths)
     {
       rpc_ctx.request_path = path;
 
       auto endpoint = registry.find_endpoint(tx, rpc_ctx);
+      if (endpoint == nullptr)
+      {
+        throw std::logic_error(fmt::format("Failed dispatch for: {}", path));
+      }
     }
   }
   s.stop_timer();
-}
-
-std::string replaced_with_template(
-  std::string path, const std::string_view& target)
-{
-  size_t found = 0;
-  const size_t len = target.size();
-
-  auto match_start = path.find(target);
-  while (match_start != std::string::npos)
-  {
-    const auto slug = std::string("{") + fmt::format("name_{}", found++) + "}";
-    path.replace(match_start, len, slug);
-    match_start = path.find(target, match_start);
-  }
-
-  return path;
 }
 
 struct AllRegexCollection
@@ -316,7 +319,7 @@ static void regex_lookup(picobench::state& s)
   std::vector<std::string> paths(paths_set.begin(), paths_set.end());
 
   CollectionType collection;
-  for (auto& path : paths)
+  for (const auto& path : paths)
   {
     collection.insert(replaced_with_template(path, "bar"));
   }
@@ -351,8 +354,8 @@ auto dispatch_old = dispatch<ccf::endpoints::EndpointRegistry>;
 PICOBENCH(dispatch_old).iterations(dispatch_sizes).baseline();
 // auto dispatch_new = dispatch<R3Registry>;
 // PICOBENCH(dispatch_new).iterations(dispatch_sizes);
-auto dispatch_new = dispatch<NewRegistry>;
-PICOBENCH(dispatch_new).iterations(dispatch_sizes);
+// auto dispatch_new = dispatch<NewRegistry>;
+// PICOBENCH(dispatch_new).iterations(dispatch_sizes);
 
 const std::vector<int> regex_sizes = {10, 100, 1'000, 10'000};
 
