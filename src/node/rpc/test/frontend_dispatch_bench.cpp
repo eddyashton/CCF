@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "./r3_registry.h"
+#include "./path_dispatch_registry.h"
 #include "./stub_rpc_context.h"
 #include "node/rpc/frontend.h"
 
@@ -176,3 +176,5 @@ auto dispatch_old = dispatch<ccf::endpoints::EndpointRegistry>;
 PICOBENCH(dispatch_old).iterations(dispatch_sizes).baseline();
 // auto dispatch_new = dispatch<R3Registry>;
 // PICOBENCH(dispatch_new).iterations(dispatch_sizes);
+auto dispatch_new = dispatch<NewRegistry>;
+PICOBENCH(dispatch_new).iterations(dispatch_sizes);

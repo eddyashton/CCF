@@ -154,7 +154,7 @@ namespace ccf::endpoints
 
   protected:
     EndpointPtr default_endpoint;
-    std::map<std::string, std::map<RESTVerb, EndpointPtr>>
+    std::unordered_map<std::string, std::map<RESTVerb, EndpointPtr>>
       fully_qualified_endpoints;
     std::map<
       std::string,
