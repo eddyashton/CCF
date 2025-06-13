@@ -36,10 +36,11 @@ bool next_choice(
   return false;
 }
 
+static Elements elements = {
+  "foo", "fooo", "foooo", "fooooo", "foooooo", "fooooooo", "bar", "baz"};
+
 std::set<std::string> all_paths_of_length(size_t target_length)
 {
-  static Elements elements = {
-    "foo", "fooo", "foooo", "fooooo", "foooooo", "fooooooo", "bar", "baz"};
   std::sort(elements.begin(), elements.end());
 
   using Result = std::set<std::string>;
@@ -150,7 +151,9 @@ static void dispatch(picobench::state& s)
 
   rpc_ctx.verb = HTTP_POST;
 
-  std::random_shuffle(paths.begin(), paths.end());
+  std::random_device rd;
+  std::mt19937 g(rd());
+  std::shuffle(paths.begin(), paths.end(), g);
 
   s.start_timer();
   for (size_t i = 0; i < 1; ++i)
@@ -169,6 +172,178 @@ static void dispatch(picobench::state& s)
   s.stop_timer();
 }
 
+std::string replaced_with_template(
+  std::string path, const std::string_view& target)
+{
+  size_t found = 0;
+  const size_t len = target.size();
+
+  auto match_start = path.find(target);
+  while (match_start != std::string::npos)
+  {
+    const auto slug = std::string("{") + fmt::format("name_{}", found++) + "}";
+    path.replace(match_start, len, slug);
+    match_start = path.find(target, match_start);
+  }
+
+  return path;
+}
+
+struct AllRegexCollection
+{
+  std::unordered_map<std::string, std::regex> paths;
+
+  void _insert(
+    const std::string& s,
+    std::optional<ccf::endpoints::PathTemplateSpec> spec_opt)
+  {
+    auto regex =
+      spec_opt.has_value() ? spec_opt->template_regex : std::regex(s);
+
+    paths[s] = regex;
+  }
+
+  void insert(const std::string& s)
+  {
+    _insert(s, ccf::endpoints::PathTemplateSpec::parse(s));
+  }
+
+  std::optional<std::string> lookup(const std::string& s)
+  {
+    std::smatch match;
+    for (const auto& [key, regex] : paths)
+    {
+      if (std::regex_match(s, match, regex))
+      {
+        return key;
+      }
+    }
+
+    return std::nullopt;
+  }
+};
+
+struct PrefixedRegexCollection
+{
+  struct Entry
+  {
+    std::string source_key;
+    std::regex regex;
+  };
+
+  using PrefixMap = std::unordered_map<std::string, std::vector<Entry>>;
+
+  std::map<size_t, PrefixMap> prefix_sizes;
+
+  void _insert(
+    const std::string& s, std::optional<ccf::endpoints::PathTemplateSpec> _)
+  {
+    const auto prefix_len = s.find_first_of("{");
+    const auto prefix = s.substr(0, prefix_len);
+    const auto remainder = s.substr(prefix_len);
+
+    auto remainder_spec = ccf::endpoints::PathTemplateSpec::parse(remainder);
+
+    auto regex = remainder_spec.has_value() ? remainder_spec->template_regex :
+                                              std::regex();
+
+    prefix_sizes[prefix_len][prefix].push_back(Entry{s, regex});
+  }
+
+  std::optional<std::string> lookup(const std::string& s)
+  {
+    auto size_it =
+      std::make_reverse_iterator(prefix_sizes.lower_bound(s.size()));
+    std::smatch match;
+    while (size_it != prefix_sizes.rend())
+    {
+      const auto& [size, entries] = *size_it;
+      const auto prefix = s.substr(0, size);
+      const auto remainder = s.substr(size);
+
+      const auto entry_it = entries.find(prefix);
+      if (entry_it != entries.end())
+      {
+        for (const auto& entry : entry_it->second)
+        {
+          if (std::regex_match(remainder, match, entry.regex))
+          {
+            return entry.source_key;
+          }
+        }
+      }
+      ++size_it;
+    }
+
+    return std::nullopt;
+  }
+};
+
+template <typename BaseCollection>
+struct PureShortcut : public BaseCollection
+{
+  std::set<std::string> pure_paths;
+
+  void insert(const std::string& s)
+  {
+    auto spec_opt = ccf::endpoints::PathTemplateSpec::parse(s);
+    if (!spec_opt.has_value())
+    {
+      pure_paths.insert(s);
+    }
+    else
+    {
+      BaseCollection::_insert(s, spec_opt);
+    }
+  }
+
+  std::optional<std::string> lookup(const std::string& s)
+  {
+    const auto it = pure_paths.find(s);
+    if (it != pure_paths.end())
+    {
+      return s;
+    }
+
+    return BaseCollection::lookup(s);
+  }
+};
+
+template <typename CollectionType>
+static void regex_lookup(picobench::state& s)
+{
+  auto paths_set = first_n_paths(s.iterations());
+  std::vector<std::string> paths(paths_set.begin(), paths_set.end());
+
+  CollectionType collection;
+  for (auto& path : paths)
+  {
+    collection.insert(replaced_with_template(path, "bar"));
+  }
+
+  // std::cout << fmt::format("Produced {} templated paths", s.iterations())
+  //           << std::endl;
+  // debug_print_paths(paths.begin(), paths.end());
+
+  std::random_device rd;
+  std::mt19937 g(rd());
+  std::shuffle(paths.begin(), paths.end(), g);
+
+  s.start_timer();
+  for (size_t i = 0; i < 1; ++i)
+  {
+    for (const auto& path : paths)
+    {
+      const auto res = collection.lookup(path);
+      if (!res.has_value())
+      {
+        throw std::logic_error(fmt::format("Failed lookup for: {}", path));
+      }
+    }
+  }
+  s.stop_timer();
+}
+
 const std::vector<int> dispatch_sizes = {10, 100, 1'000, 10'000};
 
 PICOBENCH_SUITE("dispatch");
@@ -178,3 +353,13 @@ PICOBENCH(dispatch_old).iterations(dispatch_sizes).baseline();
 // PICOBENCH(dispatch_new).iterations(dispatch_sizes);
 auto dispatch_new = dispatch<NewRegistry>;
 PICOBENCH(dispatch_new).iterations(dispatch_sizes);
+
+const std::vector<int> regex_sizes = {10, 100, 1'000, 10'000};
+
+PICOBENCH_SUITE("regex_lookup");
+auto current = regex_lookup<PureShortcut<AllRegexCollection>>;
+PICOBENCH(current).iterations(regex_sizes).baseline();
+auto all_regex = regex_lookup<AllRegexCollection>;
+PICOBENCH(all_regex).iterations(regex_sizes);
+auto prefixed_regex = regex_lookup<PureShortcut<PrefixedRegexCollection>>;
+PICOBENCH(prefixed_regex).iterations(regex_sizes);
