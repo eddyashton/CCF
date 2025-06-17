@@ -95,22 +95,14 @@ TEST_CASE("Demo" * doctest::test_suite("demo"))
     Node node(n_workers);
     node.start();
 
-    static constexpr auto workers_status_string_length =
-      n_workers * WorkerState::STATUS_STRING_LENGTH;
-    char workers_status_string[workers_status_string_length + 1];
-    workers_status_string[workers_status_string_length] = '\0';
-
-    auto print_workers = [&node, &workers_status_string]() {
+    auto print_workers = [&node]() {
+      std::string s;
       for (size_t i = 0; i < n_workers; ++i)
       {
-        for (auto j = 0; j < WorkerState::STATUS_STRING_LENGTH; ++j)
-        {
-          workers_status_string[i * WorkerState::STATUS_STRING_LENGTH + j] =
-            node.workers[i]->state.status_string[j];
-        }
+        s += node.workers[i]->get_status_string() + " ";
       }
       printf("\e[2A"); // Move back to start of workers line
-      fmt::print("\r  Workers: {}\n", workers_status_string);
+      fmt::print("\r  Workers: {}\n", s);
       printf("\n"); // Place-holder for clients line
     };
 

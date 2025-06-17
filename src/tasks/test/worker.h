@@ -8,34 +8,37 @@
 
 struct WorkerState
 {
-  size_t work_completed;
+  std::atomic<size_t> work_completed = 0;
 
   std::atomic<bool> consider_termination = false;
-
-  static constexpr auto STATUS_STRING_LENGTH = 8;
-  std::atomic<char> status_string[STATUS_STRING_LENGTH];
 
   size_t spinner_idx = 0;
 };
 
 struct Worker : public LoopingThread<WorkerState>
 {
-  Worker(size_t idx) : LoopingThread<WorkerState>(fmt::format("w{}", idx))
-  {
-    // eg: "T[1234] "
-    for (auto i = 0; i < WorkerState::STATUS_STRING_LENGTH; ++i)
-    {
-      const char c = i == 1 ? '[' : (i == 6 ? ']' : ' ');
-      state.status_string[i] = c;
-    }
-  }
+  Worker(size_t idx) : LoopingThread<WorkerState>(fmt::format("w{}", idx)) {}
 
   ~Worker() override
   {
     shutdown();
+  }
 
-    // LOG_INFO_FMT(
-    //   "Shutting down {}, processed {} tasks", name, state.work_completed);
+  std::string get_status_string()
+  {
+    char prefix;
+    if (state.consider_termination.load())
+    {
+      prefix = 'T';
+    }
+    else
+    {
+      static constexpr auto spinner = "|/-\\";
+      static constexpr auto spinner_len = 4;
+      state.spinner_idx = (state.spinner_idx + 1) % spinner_len;
+      prefix = spinner[state.spinner_idx];
+    }
+    return fmt::format("{}[{:4}] ", prefix, state.work_completed);
   }
 
   Stage loop_behaviour() override
@@ -45,18 +48,12 @@ struct Worker : public LoopingThread<WorkerState>
     if (task != nullptr)
     {
       state.work_completed += task->do_task();
-      _write_status_string_number(state.work_completed, 5, state.status_string);
     }
     else if (state.consider_termination.load())
     {
-      state.status_string[0] = 'T';
       return Stage::Terminated;
     }
 
-    static constexpr auto spinner = "|/-\\";
-    static constexpr auto spinner_len = 4;
-    state.spinner_idx = (state.spinner_idx + 1) % spinner_len;
-    state.status_string[0] = spinner[state.spinner_idx];
     return Stage::Running;
   }
 };

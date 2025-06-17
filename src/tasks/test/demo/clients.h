@@ -37,10 +37,10 @@ struct ClientState
   using TClock = std::chrono::system_clock;
   TClock::time_point submission_end;
 
-  std::atomic<size_t> requests_sent;
-  std::atomic<size_t> responses_seen;
+  std::atomic<size_t> requests_sent = 0;
+  std::atomic<size_t> responses_seen = 0;
 
-  bool terminated_early = false;
+  std::atomic<bool> terminated_early = false;
 
   static constexpr auto STATUS_STRING_LENGTH = 13;
   std::atomic<char> status_string[STATUS_STRING_LENGTH];
