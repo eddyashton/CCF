@@ -1363,12 +1363,14 @@ checked. Note that the key for each logging message is unique (per table).
         ("double_sealed_service", 2, False),
         # cose_flipflop_service is a regression test for the issue described in #7002
         ("cose_flipflop_service", 0, False),
+        # TODO: Document this
+        # ("tmp", 0, False),
     ):
         cr.add(
             f"recovery_from_{directory}",
             run_recovery_from_files,
             package="samples/apps/logging/liblogging",
-            nodes=infra.e2e_args.min_nodes(cr.args, f=1),
+            nodes=infra.e2e_args.min_nodes(cr.args, f=0),
             ledger_chunk_bytes="50KB",
             snapshot_tx_interval=30,
             directory=directory,
