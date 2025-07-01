@@ -92,12 +92,10 @@ namespace ccf
     void set_response_json(
       const nlohmann::json& body, ccf::http_status status) override
     {
-      // Set indent to 2 to produce pretty-printed output.
       // Set error_handler to replace, to avoid throwing if the error message
-      // contains non-UTF8 characters.
-      // Other args are default values
+      // contains non-UTF8 characters. Other args are default values
       auto s =
-        body.dump(2, ' ', false, nlohmann::json::error_handler_t::replace);
+        body.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
       s += '\n';
       set_response_body(std::vector<uint8_t>(s.begin(), s.end()));
       set_response_status(status);
