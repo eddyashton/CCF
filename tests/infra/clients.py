@@ -131,7 +131,7 @@ def truncate(string: str, max_len: int = 256):
     if len(string) > max_len:
         return f"{string[: max_len]} + {len(string) - max_len} chars"
     else:
-        return string
+        return string.strip()
 
 
 CCF_TX_ID_HEADER = "x-ms-ccf-transaction-id"
