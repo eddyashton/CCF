@@ -4,6 +4,7 @@
 #include <charconv>
 #include <regex>
 #include <string>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -12,7 +13,7 @@
 
 namespace ccf::nonstd::numsort
 {
-  using Element = std::variant<size_t, std::string_view>;
+  using Element = std::variant<size_t, std::string>;
   using Elements = std::vector<Element>;
 
   inline Elements to_elements(std::string_view s)
@@ -32,7 +33,7 @@ namespace ccf::nonstd::numsort
       const auto position = match.position();
       if (position != cursor)
       {
-        ret.emplace_back(s.substr(cursor, position - cursor));
+        ret.emplace_back(std::string(s.substr(cursor, position - cursor)));
       }
 
       size_t n;
@@ -54,9 +55,26 @@ namespace ccf::nonstd::numsort
 
     if (cursor != s.size())
     {
-      ret.emplace_back(s.substr(cursor));
+      ret.emplace_back(std::string(s.substr(cursor)));
     }
 
     return ret;
+  }
+
+  template <class RandomIt>
+  void numsort(RandomIt first, RandomIt last)
+  {
+    std::unordered_map<std::string, Elements> cache;
+
+    for (auto it = first; it != last; ++it)
+    {
+      cache[*it] = to_elements(*it);
+    }
+
+    auto comparator = [&cache](const auto& l, const auto& r) {
+      return cache[l] < cache[r];
+    };
+
+    std::sort(first, last, comparator);
   }
 }
