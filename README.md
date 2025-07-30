@@ -32,3 +32,4 @@ We rely on several open source third-party components, attributed under [THIRD_P
 ## Contributing
 
 This project welcomes contributions and suggestions. Please see the [Contribution guidelines](.github/CONTRIBUTING.md).
+\n
