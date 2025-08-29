@@ -5,9 +5,11 @@ import ccf.ledger
 import sys
 import json
 import re
+import base64
 import argparse
 from datetime import datetime
 from enum import Enum, auto
+import cbor2
 
 from loguru import logger as LOG
 
@@ -51,6 +53,16 @@ def fmt_cose_recent_timestamp(data):
     return f"[{dt.isoformat()}] {s}"
 
 
+def fmt_cose_signature(data):
+    signature = json.loads(data.decode())
+    cose_sign1 = base64.b64decode(signature)
+    msg = cbor2.loads(cose_sign1)
+    phdr = cbor2.loads(msg.value[0])
+    time = phdr[15][6]
+    dt = datetime.fromtimestamp(time)
+    return f"[{dt.isoformat()}] {signature}"
+
+
 # List of table name regex to key and value format functions (first match is used)
 # Callers can specify additional rules (e.g. for application-specific
 # public tables) which get looked up first.
@@ -61,6 +73,13 @@ default_tables_format_rules = [
         {
             "key": fmt_cose_recent_timestamp,
             "value": fmt_json,
+        },
+    ),
+    (
+        "^public:ccf\\.internal\\.cose_signatures$",
+        {
+            "key": fmt_uint_le,
+            "value": fmt_cose_signature,
         },
     ),
     (
