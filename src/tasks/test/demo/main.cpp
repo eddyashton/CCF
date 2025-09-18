@@ -241,8 +241,8 @@ void describe_session_manager(SessionManager& sm)
 
 void describe_job_board(ccf::tasks::JobBoard& jb)
 {
-  std::lock_guard<std::mutex> lock(jb.mutex);
-  fmt::print("JobBoard contains {} tasks\n", jb.queue.size());
+  std::lock_guard<std::mutex> lock(jb.queue.mutex);
+  fmt::print("JobBoard contains {} tasks\n", jb.queue.queue.size());
   // for (auto& task : jb.queue)
   // {
   //   fmt::print("  {}\n", task->get_name());

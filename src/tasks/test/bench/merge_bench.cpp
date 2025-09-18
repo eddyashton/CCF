@@ -36,6 +36,14 @@ void do_merge_sort(picobench::state& s, size_t worker_count, size_t data_size)
     throw std::logic_error("Initial data already sorted");
   }
 
+  // std::cout << "Initial:" << std::endl;
+  // std::cout << "data_size=" << data_size << ", worker_count=" << worker_count
+  //           << std::endl;
+  // for (auto n : ns)
+  // {
+  //   std::cout << n << std::endl;
+  // }
+
   std::atomic<bool> stop_signal{false};
 
   ccf::tasks::add_task(
@@ -47,6 +55,12 @@ void do_merge_sort(picobench::state& s, size_t worker_count, size_t data_size)
 
   if (!std::is_sorted(ns.begin(), ns.end()))
   {
+    std::cout << "data_size=" << data_size << ", worker_count=" << worker_count
+              << std::endl;
+    for (auto n : ns)
+    {
+      std::cout << n << std::endl;
+    }
     throw std::logic_error("Final data not sorted");
   }
 }
@@ -59,7 +73,7 @@ static void benchmark_mergesort(picobench::state& s)
 
 namespace
 {
-  const std::vector<int> data_sizes{1'000, 1'000'000};
+  const std::vector<int> data_sizes{20};//1'000, 1'000'000};
 
   auto threads_1 = benchmark_mergesort<1>;
   auto threads_2 = benchmark_mergesort<2>;
@@ -72,11 +86,11 @@ namespace
 
   PICOBENCH_SUITE("merge sort");
   PICOBENCH(threads_1).iterations(data_sizes).baseline();
-  PICOBENCH(threads_2).iterations(data_sizes);
-  PICOBENCH(threads_3).iterations(data_sizes);
-  PICOBENCH(threads_4).iterations(data_sizes);
-  PICOBENCH(threads_5).iterations(data_sizes);
-  PICOBENCH(threads_6).iterations(data_sizes);
-  PICOBENCH(threads_7).iterations(data_sizes);
-  PICOBENCH(threads_8).iterations(data_sizes);
+  // PICOBENCH(threads_2).iterations(data_sizes);
+  // PICOBENCH(threads_3).iterations(data_sizes);
+  // PICOBENCH(threads_4).iterations(data_sizes);
+  // PICOBENCH(threads_5).iterations(data_sizes);
+  // PICOBENCH(threads_6).iterations(data_sizes);
+  // PICOBENCH(threads_7).iterations(data_sizes);
+  // PICOBENCH(threads_8).iterations(data_sizes);
 }

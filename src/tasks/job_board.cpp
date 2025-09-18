@@ -6,29 +6,17 @@ namespace ccf::tasks
 {
   void JobBoard::add_task(Task&& t)
   {
-    {
-      std::lock_guard<std::mutex> lock(mutex);
-      queue.emplace(std::move(t));
-    }
+    queue.add_item(std::move(t));
     work_beacon.notify_work_available();
   }
 
   Task JobBoard::get_task()
   {
-    std::lock_guard<std::mutex> lock(mutex);
-    if (queue.empty())
-    {
-      return nullptr;
-    }
-
-    Task t = queue.front();
-    queue.pop();
-    return t;
+    return queue.get_item();
   }
 
   bool JobBoard::empty()
   {
-    std::lock_guard<std::mutex> lock(mutex);
     return queue.empty();
   }
 
