@@ -102,13 +102,17 @@ namespace ccf
       std::unique_ptr<ccf::kv::AbstractStore::AbstractSnapshot> snapshot;
       uint32_t generation_count;
 
+      const std::string name;
+
       SnapshotTask(
         std::shared_ptr<Snapshotter> _self,
         std::unique_ptr<ccf::kv::AbstractStore::AbstractSnapshot>&& _snapshot,
         uint32_t _generation_count) :
         self(_self),
         snapshot(std::move(_snapshot)),
-        generation_count(_generation_count)
+        generation_count(_generation_count),
+        name(fmt::format(
+          "snapshot@{}[{}]", snapshot->get_version(), generation_count))
       {}
 
       void do_task_implementation() override
@@ -116,10 +120,9 @@ namespace ccf
         self->snapshot_(std::move(snapshot), generation_count);
       }
 
-      std::string get_name() const override
+      std::string_view get_name() const override
       {
-        return fmt::format(
-          "snapshot@{}[{}]", snapshot->get_version(), generation_count);
+        return name;
       }
     };
 

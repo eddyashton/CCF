@@ -55,7 +55,7 @@ namespace quic
       session_id(session_id_),
       status(handshake)
     {
-      task_scheduler = ccf::tasks::make_ordered_tasks(
+      task_scheduler = ccf::tasks::OrderedTasks::create(
         ccf::tasks::get_main_job_board(),
         fmt::format("Session {}", session_id));
     }

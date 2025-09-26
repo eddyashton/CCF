@@ -61,7 +61,7 @@ namespace ccf
   public:
     ThreadedSession(int64_t session_id)
     {
-      task_scheduler = ccf::tasks::make_ordered_tasks(
+      task_scheduler = ccf::tasks::OrderedTasks::create(
         ccf::tasks::get_main_job_board(),
         fmt::format("Session {}", session_id));
     }

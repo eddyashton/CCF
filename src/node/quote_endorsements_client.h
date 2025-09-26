@@ -294,8 +294,7 @@ namespace ccf
 
           auto self = shared_from_this();
           ccf::tasks::add_delayed_task(
-            ccf::tasks::make_basic_task(
-              [self, server]() { self->fetch(server); }),
+            ccf::tasks::make_basic_task([self]() { self->fetch(); }),
             retry_after);
         }
       });
