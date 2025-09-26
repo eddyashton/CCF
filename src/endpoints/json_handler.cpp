@@ -2,13 +2,13 @@
 // Licensed under the Apache 2.0 License.
 #include "ccf/json_handler.h"
 
-#include "ccf/ds/logger.h"
 #include "ccf/http_accept.h"
 #include "ccf/http_consts.h"
 #include "ccf/odata_error.h"
 #include "ccf/redirect.h"
 #include "ccf/rpc_context.h"
 #include "ccf/rpc_exception.h"
+#include "ds/internal_logger.h"
 
 #include <llhttp/llhttp.h>
 
@@ -35,9 +35,7 @@ namespace ccf
     }
 
     void set_response(
-      JsonAdapterResponse&&
-        res, // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
-      std::shared_ptr<ccf::RpcContext>& ctx)
+      JsonAdapterResponse&& res, std::shared_ptr<ccf::RpcContext>& ctx)
     {
       auto* error = std::get_if<ErrorDetails>(&res);
       if (error != nullptr)

@@ -9,8 +9,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 
-// Writing a bunch of code here, so run a few simple sanity checks that the
-// basic operations do what we expect
+// A few simple sanity checks that the basic operations do what we expect
 TEST_CASE("SignAction")
 {
   for (size_t i = 0; i < 100; ++i)
@@ -25,45 +24,7 @@ TEST_CASE("SignAction")
   }
 }
 
-TEST_CASE("Tasks")
-{
-  size_t x = 0;
-
-  // Basic tasks
-  const std::string name_1 = "Set x to 1";
-  auto set_1 = ccf::tasks::make_basic_task([&x]() { x = 1; }, name_1);
-  REQUIRE(set_1->get_name() == name_1);
-  REQUIRE(x == 0);
-  set_1->do_task();
-  REQUIRE(x == 1);
-
-  // Cancelling pre-execution
-  const std::string name_2 = "Set x to 2";
-  auto set_2 = ccf::tasks::make_basic_task([&x]() { x = 2; }, name_2);
-  REQUIRE(set_2->get_name() == name_2);
-  REQUIRE(x == 1);
-  REQUIRE_FALSE(set_2->is_cancelled());
-  set_2->cancel_task();
-  REQUIRE(set_2->is_cancelled());
-  set_2->do_task();
-  REQUIRE(set_2->is_cancelled());
-  REQUIRE(x == 1);
-
-  // Cancelling post-execution
-  const std::string name_3 = "Set x to 3";
-  auto set_3 = ccf::tasks::make_basic_task([&x]() { x = 3; }, name_3);
-  REQUIRE(set_3->get_name() == name_3);
-  REQUIRE(x == 1);
-  REQUIRE_FALSE(set_3->is_cancelled());
-  set_3->do_task();
-  REQUIRE(x == 3);
-  REQUIRE_FALSE(set_3->is_cancelled());
-  set_3->cancel_task();
-  REQUIRE(set_3->is_cancelled());
-  REQUIRE(x == 3);
-}
-
-TEST_CASE("OrderedTasks")
+TEST_CASE("SessionOrdering")
 {
   // With more sessions than workers, and tasks concurrently added to these
   // sessions, each task is still executed in-order for that session
@@ -82,7 +43,7 @@ TEST_CASE("OrderedTasks")
     for (auto i = 0; i < num_sessions; ++i)
     {
       all_tasks.emplace_back(
-        ccf::tasks::make_ordered_tasks(job_board, std::to_string(i)), 0);
+        ccf::tasks::OrderedTasks::create(job_board, std::to_string(i)), 0);
     }
 
     auto add_action = [&](size_t idx, size_t sleep_time_ms) {
@@ -149,9 +110,9 @@ TEST_CASE("PauseAndResume")
     };
 
     std::shared_ptr<ccf::tasks::OrderedTasks> x_tasks =
-      ccf::tasks::make_ordered_tasks(job_board, "x");
+      ccf::tasks::OrderedTasks::create(job_board, "x");
     std::shared_ptr<ccf::tasks::OrderedTasks> y_tasks =
-      ccf::tasks::make_ordered_tasks(job_board, "y");
+      ccf::tasks::OrderedTasks::create(job_board, "y");
 
     x_tasks->add_action(increment(x));
     y_tasks->add_action(increment(y));
@@ -161,19 +122,19 @@ TEST_CASE("PauseAndResume")
       Worker worker(job_board, 0);
 
       // Worker exists but hasn't started yet - no increments have occurred
-      REQUIRE(x == 0);
-      REQUIRE(y == 0);
+      REQUIRE(x.load() == 0);
+      REQUIRE(y.load() == 0);
 
       // Even if we wait
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      REQUIRE(x == 0);
-      REQUIRE(y == 0);
+      REQUIRE(x.load() == 0);
+      REQUIRE(y.load() == 0);
 
       // If we start the worker (and wait), it will execute the pending tasks
       worker.start();
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      REQUIRE(x == 1);
-      REQUIRE(y == 2);
+      REQUIRE(x.load() == 1);
+      REQUIRE(y.load() == 2);
 
       // We can concurrently queue many more tasks, which will be executed
       // immediately
@@ -184,8 +145,8 @@ TEST_CASE("PauseAndResume")
       }
 
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      REQUIRE(x == 101);
-      REQUIRE(y == 102);
+      REQUIRE(x.load() == 101);
+      REQUIRE(y.load() == 102);
     }
 
     {
@@ -212,7 +173,7 @@ TEST_CASE("PauseAndResume")
 
       worker.start();
       beacon.wait_for_work_with_timeout(std::chrono::milliseconds(100));
-      REQUIRE(x == 102); // One increment action happened
+      REQUIRE(x.load() == 102); // One increment action happened
       REQUIRE(happened == true); // Then the pause action ran to completion
       REQUIRE(
         resumable != nullptr); // We got a handle to later resume this task
@@ -226,15 +187,15 @@ TEST_CASE("PauseAndResume")
       }
 
       beacon.wait_for_work_with_timeout(std::chrono::milliseconds(100));
-      REQUIRE(x == 102);
-      REQUIRE(y == 202);
+      REQUIRE(x.load() == 102);
+      REQUIRE(y.load() == 202);
 
       // After resume, all queued actions will (be able to) execute, in-order
       ccf::tasks::resume_task(std::move(resumable));
 
       beacon.wait_for_work_with_timeout(std::chrono::milliseconds(100));
-      REQUIRE(x == 203);
-      REQUIRE(y == 202);
+      REQUIRE(x.load() == 203);
+      REQUIRE(y.load() == 202);
 
       // A task might be paused multiple times during its life
       resumable = nullptr;
@@ -246,7 +207,7 @@ TEST_CASE("PauseAndResume")
       x_tasks->add_action(increment(x));
 
       beacon.wait_for_work_with_timeout(std::chrono::milliseconds(100));
-      REQUIRE(x == 204);
+      REQUIRE(x.load() == 204);
       REQUIRE(resumable != nullptr);
 
       // A paused task can be cancelled
@@ -256,7 +217,7 @@ TEST_CASE("PauseAndResume")
       ccf::tasks::resume_task(std::move(resumable));
 
       beacon.wait_for_work_with_timeout(std::chrono::milliseconds(100));
-      REQUIRE(x == 204);
+      REQUIRE(x.load() == 204);
     }
   }
 

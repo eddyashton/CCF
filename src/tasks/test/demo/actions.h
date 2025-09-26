@@ -5,6 +5,7 @@
 #include "ccf/crypto/key_pair.h"
 #include "ccf/ds/hex.h"
 #include "ccf/ds/nonstd.h"
+#include "ds/internal_logger.h"
 
 #include <atomic>
 #include <charconv>

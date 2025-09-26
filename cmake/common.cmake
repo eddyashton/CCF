@@ -45,8 +45,6 @@ function(add_unit_test name)
   )
 
   add_san_test_properties(${name})
-
-  target_compile_definitions(${name} PRIVATE CCF_LOGGER_NO_DEPRECATE)
 endfunction()
 
 # Test binary wrapper
@@ -234,6 +232,4 @@ function(add_picobench name)
   )
 
   add_san_test_properties(${name})
-
-  target_compile_definitions(${name} PRIVATE CCF_LOGGER_NO_DEPRECATE)
 endfunction()

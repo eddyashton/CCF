@@ -4,11 +4,11 @@
 #include "ccf/js/core/context.h"
 
 #include "ccf/ds/hex.h"
-#include "ccf/ds/logger.h"
 #include "ccf/js/core/runtime.h"
 #include "ccf/js/core/wrapped_value.h"
 #include "ccf/js/extensions/console.h"
 #include "ccf/js/tx_access.h"
+#include "ds/internal_logger.h"
 #include "js/global_class_ids.h"
 
 #include <chrono>
@@ -122,6 +122,8 @@ namespace ccf::js::core
   JSWrappedValue Context::wrap(JSValue&& val) const
   {
     // NOLINTBEGIN(performance-move-const-arg)
+    // Retained to call distinct overload of JSWrappedValue constructor, which
+    // avoids DupValue
     return {ctx, std::move(val)};
     // NOLINTEND(performance-move-const-arg)
   };
@@ -219,7 +221,7 @@ namespace ccf::js::core
   }
 
   JSWrappedValue Context::get_or_create_global_property(
-    const char* s, JSWrappedValue default_value) const
+    const char* s, JSWrappedValue&& default_value) const
   {
     auto g = Context::get_global_obj();
     auto val = wrap(JS_GetPropertyStr(ctx, g.val, s));

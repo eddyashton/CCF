@@ -11,6 +11,7 @@
 #include "ccf/service/tables/tcb_verification.h"
 #include "ccf/service/tables/uvm_endorsements.h"
 #include "ccf/service/tables/virtual_measurements.h"
+#include "ds/internal_logger.h"
 #include "node/uvm_endorsements.h"
 
 namespace ccf
@@ -271,12 +272,6 @@ namespace ccf
     pal::verify_quote(quote_info, d, r);
     auto attestation =
       *reinterpret_cast<const pal::snp::Attestation*>(quote_info.quote.data());
-
-    if (attestation.version < pal::snp::MIN_TCB_VERIF_VERSION)
-    {
-      // Necessary until all C-ACI servers are updated
-      return QuoteVerificationResult::Verified;
-    }
 
     std::optional<pal::snp::TcbVersionPolicy> min_tcb_opt = std::nullopt;
     auto* h = tx.ro<SnpTcbVersionMap>(Tables::SNP_TCB_VERSIONS);

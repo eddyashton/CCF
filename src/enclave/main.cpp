@@ -2,10 +2,10 @@
 // Licensed under the Apache 2.0 License.
 #include "ccf/ds/ccf_exception.h"
 #include "ccf/ds/json.h"
-#include "ccf/ds/logger.h"
 #include "ccf/pal/locking.h"
 #include "ccf/version.h"
 #include "common/enclave_interface_types.h"
+#include "ds/internal_logger.h"
 #include "enclave.h"
 
 #include <chrono>
@@ -110,13 +110,13 @@ extern "C"
         work_beacon);
       // NOLINTEND(cppcoreguidelines-owning-memory)
     }
-    catch (const ccf::ccf_openssl_rdrand_init_error& e)
+    catch (const ccf::ccf_openssl_rdrand_init_error& exc)
     {
       LOG_FAIL_FMT(
-        "ccf_openssl_rdrand_init_error during enclave init: {}", e.what());
+        "ccf_openssl_rdrand_init_error during enclave init: {}", exc.what());
       return CreateNodeStatus::OpenSSLRDRANDInitFailed;
     }
-    catch (const std::exception& e)
+    catch (const std::exception& exc)
     {
       // In most places, logging exception messages directly is unsafe
       // because they may contain confidential information. In this
@@ -127,7 +127,7 @@ extern "C"
       // node terminates. The debugging benefit is substantial, while the
       // risk is low, so in this case we promote the generic exception
       // message to FAIL.
-      LOG_FAIL_FMT("exception during enclave init: {}", e.what());
+      LOG_FAIL_FMT("exception during enclave init: {}", exc.what());
       return CreateNodeStatus::EnclaveInitFailed;
     }
 
@@ -151,8 +151,7 @@ extern "C"
     }
 
     if (status != CreateNodeStatus::OK)
-    {
-      // NOLINTBEGIN(cppcoreguidelines-owning-memory)
+    { // NOLINTBEGIN(cppcoreguidelines-owning-memory)
       delete enclave;
       // NOLINTEND(cppcoreguidelines-owning-memory)
       return status;

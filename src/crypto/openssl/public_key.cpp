@@ -4,8 +4,8 @@
 #include "crypto/openssl/public_key.h"
 
 #include "ccf/crypto/openssl/openssl_wrappers.h"
-#include "ccf/ds/logger.h"
 #include "crypto/openssl/hash.h"
+#include "ds/internal_logger.h"
 
 #include <climits>
 #include <openssl/core_names.h>
@@ -240,19 +240,19 @@ namespace ccf::crypto
 
   std::vector<uint8_t> PublicKey_OpenSSL::public_key_raw() const
   {
-    Unique_BIO buf;
+    const size_t size_needed = i2d_PublicKey(key, nullptr);
 
-    unsigned char* p = nullptr;
-    // NOLINTBEGIN(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory)
-    size_t n = i2d_PublicKey(key, &p);
+    std::vector<uint8_t> r(size_needed);
 
-    std::vector<uint8_t> r;
-    if (p != nullptr)
+    auto* p = r.data();
+    const size_t size_written = i2d_PublicKey(key, &p);
+
+    if (size_written != size_needed)
     {
-      r = {p, p + n};
+      throw std::runtime_error(
+        "Different sizes returned from i2d_PublicKey on repeat calls");
     }
-    free(p);
-    // NOLINTEND(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory)
+
     return r;
   }
 

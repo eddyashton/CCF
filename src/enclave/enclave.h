@@ -2,13 +2,12 @@
 // Licensed under the Apache 2.0 License.
 #pragma once
 #include "ccf/app_interface.h"
-#include "ccf/crypto/openssl_init.h"
-#include "ccf/ds/logger.h"
 #include "ccf/js/core/context.h"
 #include "ccf/node_context.h"
 #include "ccf/node_subsystem_interface.h"
 #include "ccf/pal/mem.h"
 #include "crypto/openssl/hash.h"
+#include "ds/internal_logger.h"
 #include "ds/oversized.h"
 #include "ds/work_beacon.h"
 #include "indexing/enclave_lfs_access.h"
@@ -95,8 +94,6 @@ namespace ccf
       rpc_map(std::make_shared<RPCMap>()),
       rpcsessions(std::make_shared<RPCSessions>(*writer_factory, rpc_map))
     {
-      ccf::crypto::openssl_sha256_init();
-
       to_host = writer_factory->create_writer_to_outside();
 
       LOG_TRACE_FMT("Creating ledger secrets");
@@ -184,7 +181,6 @@ namespace ccf
     ~Enclave()
     {
       LOG_TRACE_FMT("Shutting down enclave");
-      ccf::crypto::openssl_sha256_shutdown();
     }
 
     CreateNodeStatus create_new_node(
@@ -238,7 +234,6 @@ namespace ccf
 
     bool run_main()
     {
-      ccf::crypto::openssl_sha256_init();
       LOG_DEBUG_FMT("Running main thread");
 
       {
@@ -429,15 +424,12 @@ namespace ccf
         LOG_INFO_FMT("Enclave stopped successfully. Stopping host...");
         RINGBUFFER_WRITE_MESSAGE(AdminMessage::stopped, to_host);
 
-        ccf::crypto::openssl_sha256_shutdown();
-
         return true;
       }
     }
 
     bool run_worker()
     {
-      ccf::crypto::openssl_sha256_init();
       LOG_DEBUG_FMT("Running worker thread");
 
       {
@@ -453,8 +445,6 @@ namespace ccf
           }
         }
       }
-
-      ccf::crypto::openssl_sha256_shutdown();
 
       return true;
     }

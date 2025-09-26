@@ -15,7 +15,7 @@ namespace ccf::tasks
 
     virtual void do_action() = 0;
 
-    virtual std::string get_name() const
+    virtual std::string_view get_name() const
     {
       return "[Anon]";
     }
@@ -30,9 +30,9 @@ namespace ccf::tasks
     Fn fn;
     const std::string name;
 
-    BasicTaskAction(const Fn& _fn, const std::string& s = "[Anon]") :
-      fn(_fn),
-      name(s)
+    BasicTaskAction(const Fn& fn_, const std::string& name_ = "[Anon]") :
+      fn(fn_),
+      name(name_)
     {}
 
     void do_action() override
@@ -40,7 +40,7 @@ namespace ccf::tasks
       fn();
     }
 
-    std::string get_name() const override
+    std::string_view get_name() const override
     {
       return name;
     }
@@ -66,24 +66,27 @@ namespace ccf::tasks
     struct ResumeOrderedTasks;
 
     void enqueue_on_board();
+    void do_task_implementation() override;
 
-    // Constructor is protected, to ensure this is only created via the
-    // make_ordered_tasks factory function (ensuring this is always owned by a
-    // shared_ptr)
-    OrderedTasks(IJobBoard& jb, const std::string& s);
+    // Non-public constructor argument type, so this can only be constructed by
+    // this class (ensuring shared ptr ownership)
+    struct Private
+    {
+      explicit Private() = default;
+    };
 
   public:
+    OrderedTasks(Private, IJobBoard& job_board, const std::string& name);
     ~OrderedTasks();
 
-    void do_task_implementation() override;
+    static std::shared_ptr<OrderedTasks> create(
+      IJobBoard& job_board_, const std::string& name_ = "[Ordered]");
+
     ccf::tasks::Resumable pause() override;
-    std::string get_name() const override;
+    std::string_view get_name() const override;
 
     void add_action(TaskAction&& action);
 
     void get_queue_summary(size_t& num_pending, bool& is_active);
   };
-
-  std::shared_ptr<OrderedTasks> make_ordered_tasks(
-    IJobBoard& jb, const std::string& s = "[Ordered]");
 }

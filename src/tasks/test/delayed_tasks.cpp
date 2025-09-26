@@ -1,63 +1,109 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the Apache 2.0 License.
 
-#include "ccf/ds/logger.h"
+#include "ds/internal_logger.h"
 #include "tasks/basic_task.h"
 #include "tasks/task_system.h"
-#include "tasks/test/task_system_thread.h"
 
 #include <doctest/doctest.h>
 
+namespace
+{
+  struct FakeTime
+  {
+    const std::chrono::milliseconds polling_period{1};
+
+    void sleep_for(size_t workers, std::chrono::milliseconds duration)
+    {
+      std::chrono::milliseconds elapsed{0};
+
+      auto& job_board = ccf::tasks::get_main_job_board();
+
+      while (elapsed < duration)
+      {
+        ccf::tasks::tick(polling_period);
+
+        size_t worker_idx = 0;
+        while (worker_idx < workers)
+        {
+          auto task = job_board.get_task();
+          if (task != nullptr)
+          {
+            task->do_task();
+            ++worker_idx;
+          }
+          else
+          {
+            break;
+          }
+        }
+
+        elapsed += polling_period;
+      }
+    }
+  };
+}
+
 TEST_CASE("DelayedTasks" * doctest::test_suite("delayed_tasks"))
 {
+  FakeTime fake_time;
+
   std::atomic<size_t> n = 0;
-  ccf::tasks::Task incrementer = ccf::tasks::make_basic_task([&n]() { ++n; });
+  ccf::tasks::Task incrementer =
+    ccf::tasks::make_basic_task([&n]() { ++n; }, "incrementer");
 
   ccf::tasks::add_task(incrementer);
-  REQUIRE(n == 0);
+  // Task is not done when no workers are present
+  REQUIRE(n.load() == 0);
 
   {
-    ccf::tasks::test::TaskSystemThread t;
-    std::this_thread::sleep_for(t.polling_period * 2);
-    REQUIRE(n == 1);
+    fake_time.sleep_for(1, fake_time.polling_period * 2);
+    REQUIRE(n.load() == 1);
   }
 
   std::chrono::milliseconds delay = std::chrono::milliseconds(50);
   ccf::tasks::add_delayed_task(incrementer, delay);
-  REQUIRE(n == 1);
-  std::this_thread::sleep_for(delay * 2);
-  REQUIRE(n == 1);
+  // Delayed task is not done when no workers are present
+  REQUIRE(n.load() == 1);
+  // Even after waiting for delay
+  fake_time.sleep_for(0, delay * 2);
+  REQUIRE(n.load() == 1);
 
   {
-    ccf::tasks::test::TaskSystemThread t;
-    std::this_thread::sleep_for(delay * 2);
-    REQUIRE(n == 2);
-    std::this_thread::sleep_for(delay * 2);
-    REQUIRE(n == 2);
+    // Delayed task is executed when worker thread arrives
+    fake_time.sleep_for(1, delay * 2);
+    REQUIRE(n.load() == 2);
+    // Task is only executed once
+    fake_time.sleep_for(1, delay * 2);
+    REQUIRE(n.load() == 2);
   }
 
   ccf::tasks::add_periodic_task(incrementer, delay, delay);
-  REQUIRE(n == 2);
-  std::this_thread::sleep_for(delay * 2);
+  // Periodic task is not done when no workers are present
+  REQUIRE(n.load() == 2);
+  // Even after waiting for delay
+  fake_time.sleep_for(0, delay * 2);
+  REQUIRE(n.load() == 2);
 
   {
-    ccf::tasks::test::TaskSystemThread t;
-
-    std::this_thread::sleep_for(delay * 2);
+    // Periodic task is executed when worker thread arrives
+    fake_time.sleep_for(1, delay * 2);
     const auto a = n.load();
     REQUIRE(a > 2);
 
-    std::this_thread::sleep_for(delay * 2);
+    // Periodic task is executed multiple times
+    fake_time.sleep_for(1, delay * 2);
     const auto b = n.load();
     REQUIRE(b > a);
 
+    // Periodic task is cancellable
     incrementer->cancel_task();
 
-    std::this_thread::sleep_for(delay * 2);
+    fake_time.sleep_for(1, delay * 2);
     const auto c = n.load();
     REQUIRE(c >= b);
 
-    std::this_thread::sleep_for(delay * 2);
+    fake_time.sleep_for(1, delay * 2);
     const auto d = n.load();
     REQUIRE(d == c);
   }
@@ -159,6 +205,10 @@ TEST_CASE("ExplicitTicks" * doctest::test_suite("delayed_tasks"))
 
   ccf::tasks::tick(3ms);
   do_all_check_and_reset("34ms", false, true, false);
+
+  set_a->cancel_task();
+  set_b->cancel_task();
+  set_c->cancel_task();
 }
 
 TEST_CASE("TickEnqueue" * doctest::test_suite("delayed_tasks"))
@@ -174,10 +224,12 @@ TEST_CASE("TickEnqueue" * doctest::test_suite("delayed_tasks"))
   using namespace std::chrono_literals;
   ccf::tasks::add_periodic_task(incrementer, 1ms, 1ms);
 
-  REQUIRE(n == 0);
+  REQUIRE(n.load() == 0);
   ccf::tasks::tick(100ms);
   do_all_tasks();
-  REQUIRE(n == 1);
+  REQUIRE(n.load() == 1);
   do_all_tasks();
-  REQUIRE(n == 1);
+  REQUIRE(n.load() == 1);
+
+  incrementer->cancel_task();
 }

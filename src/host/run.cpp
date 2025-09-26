@@ -3,10 +3,8 @@
 
 #include "ccf/run.h"
 
-#include "ccf/crypto/openssl_init.h"
 #include "ccf/crypto/pem.h"
 #include "ccf/crypto/symmetric_key.h"
-#include "ccf/ds/logger.h"
 #include "ccf/ds/logger_level.h"
 #include "ccf/ds/nonstd.h"
 #include "ccf/ds/unit_strings.h"
@@ -25,6 +23,7 @@
 #include "crypto/openssl/hash.h"
 #include "ds/cli_helper.h"
 #include "ds/files.h"
+#include "ds/internal_logger.h"
 #include "ds/non_blocking.h"
 #include "ds/notifying.h"
 #include "ds/oversized.h"
@@ -111,8 +110,6 @@ namespace ccf
       LOG_FAIL_FMT("Failed to ignore SIGPIPE");
       return 1;
     }
-
-    ccf::crypto::openssl_sha256_init();
 
     CLI::App app{
       "Run a single CCF node, based on the given configuration file.\n"
@@ -596,79 +593,105 @@ namespace ccf
 
       ccf::StartupConfig startup_config(config);
 
-      if (startup_config.attestation.snp_security_policy_file.has_value())
+      if (ccf::pal::platform == ccf::pal::Platform::SNP)
       {
-        auto security_policy_file =
-          startup_config.attestation.snp_security_policy_file.value();
-        LOG_DEBUG_FMT(
-          "Resolving snp_security_policy_file: {}", security_policy_file);
-        security_policy_file =
-          ccf::env::expand_envvars_in_path(security_policy_file);
-        LOG_DEBUG_FMT(
-          "Resolved snp_security_policy_file: {}", security_policy_file);
-
-        startup_config.attestation.environment.security_policy =
-          files::try_slurp_string(security_policy_file);
-      }
-
-      if (startup_config.attestation.snp_uvm_endorsements_file.has_value())
-      {
-        auto snp_uvm_endorsements_file =
-          startup_config.attestation.snp_uvm_endorsements_file.value();
-        LOG_DEBUG_FMT(
-          "Resolving snp_uvm_endorsements_file: {}", snp_uvm_endorsements_file);
-        snp_uvm_endorsements_file =
-          ccf::env::expand_envvars_in_path(snp_uvm_endorsements_file);
-        LOG_DEBUG_FMT(
-          "Resolved snp_uvm_endorsements_file: {}", snp_uvm_endorsements_file);
-
-        startup_config.attestation.environment.uvm_endorsements =
-          files::try_slurp_string(snp_uvm_endorsements_file);
-      }
-
-      for (auto endorsement_servers_it =
-             startup_config.attestation.snp_endorsements_servers.begin();
-           endorsement_servers_it !=
-           startup_config.attestation.snp_endorsements_servers.end();
-           ++endorsement_servers_it)
-      {
-        LOG_DEBUG_FMT(
-          "Resolving snp_endorsements_server url: {}",
-          endorsement_servers_it->url.value());
-        if (endorsement_servers_it->url.has_value())
+        if (startup_config.attestation.snp_security_policy_file.has_value())
         {
-          auto& url = endorsement_servers_it->url.value();
-          auto pos = url.find(':');
-          if (pos == std::string::npos)
-          {
-            endorsement_servers_it->url = ccf::env::expand_envvar(url);
-          }
-          else
-          {
-            endorsement_servers_it->url = fmt::format(
-              "{}:{}",
-              ccf::env::expand_envvar(url.substr(0, pos)),
-              ccf::env::expand_envvar(url.substr(pos + 1)));
-          }
+          auto security_policy_file =
+            startup_config.attestation.snp_security_policy_file.value();
           LOG_DEBUG_FMT(
-            "Resolved snp_endorsements_server url: {}",
-            endorsement_servers_it->url);
+            "Resolving snp_security_policy_file: {}", security_policy_file);
+          security_policy_file =
+            ccf::env::expand_envvars_in_path(security_policy_file);
+          LOG_DEBUG_FMT(
+            "Resolved snp_security_policy_file: {}", security_policy_file);
+
+          startup_config.attestation.environment.security_policy =
+            files::try_slurp_string(security_policy_file);
+          if (!startup_config.attestation.environment.security_policy
+                 .has_value())
+          {
+            LOG_FAIL_FMT(
+              "Could not read snp_security_policy from {}",
+              security_policy_file);
+          }
         }
-      }
 
-      if (startup_config.attestation.snp_endorsements_file.has_value())
-      {
-        auto snp_endorsements_file =
-          startup_config.attestation.snp_endorsements_file.value();
-        LOG_DEBUG_FMT(
-          "Resolving snp_endorsements_file: {}", snp_endorsements_file);
-        snp_endorsements_file =
-          ccf::env::expand_envvars_in_path(snp_endorsements_file);
-        LOG_DEBUG_FMT(
-          "Resolved snp_endorsements_file: {}", snp_endorsements_file);
+        if (startup_config.attestation.snp_uvm_endorsements_file.has_value())
+        {
+          auto snp_uvm_endorsements_file =
+            startup_config.attestation.snp_uvm_endorsements_file.value();
+          LOG_DEBUG_FMT(
+            "Resolving snp_uvm_endorsements_file: {}",
+            snp_uvm_endorsements_file);
+          snp_uvm_endorsements_file =
+            ccf::env::expand_envvars_in_path(snp_uvm_endorsements_file);
+          LOG_DEBUG_FMT(
+            "Resolved snp_uvm_endorsements_file: {}",
+            snp_uvm_endorsements_file);
 
-        startup_config.attestation.environment.snp_endorsements =
-          files::try_slurp_string(snp_endorsements_file);
+          startup_config.attestation.environment.uvm_endorsements =
+            files::try_slurp_string(snp_uvm_endorsements_file);
+          if (!startup_config.attestation.environment.uvm_endorsements
+                 .has_value())
+          {
+            LOG_FAIL_FMT(
+              "Could not read snp_uvm_endorsements from {}",
+              snp_uvm_endorsements_file);
+          }
+        }
+
+        for (auto endorsement_servers_it =
+               startup_config.attestation.snp_endorsements_servers.begin();
+             endorsement_servers_it !=
+             startup_config.attestation.snp_endorsements_servers.end();
+             ++endorsement_servers_it)
+        {
+          LOG_DEBUG_FMT(
+            "Resolving snp_endorsements_server url: {}",
+            endorsement_servers_it->url.value());
+          if (endorsement_servers_it->url.has_value())
+          {
+            auto& url = endorsement_servers_it->url.value();
+            auto pos = url.find(':');
+            if (pos == std::string::npos)
+            {
+              endorsement_servers_it->url = ccf::env::expand_envvar(url);
+            }
+            else
+            {
+              endorsement_servers_it->url = fmt::format(
+                "{}:{}",
+                ccf::env::expand_envvar(url.substr(0, pos)),
+                ccf::env::expand_envvar(url.substr(pos + 1)));
+            }
+            LOG_DEBUG_FMT(
+              "Resolved snp_endorsements_server url: {}",
+              endorsement_servers_it->url);
+          }
+        }
+
+        if (startup_config.attestation.snp_endorsements_file.has_value())
+        {
+          auto snp_endorsements_file =
+            startup_config.attestation.snp_endorsements_file.value();
+          LOG_DEBUG_FMT(
+            "Resolving snp_endorsements_file: {}", snp_endorsements_file);
+          snp_endorsements_file =
+            ccf::env::expand_envvars_in_path(snp_endorsements_file);
+          LOG_DEBUG_FMT(
+            "Resolved snp_endorsements_file: {}", snp_endorsements_file);
+
+          startup_config.attestation.environment.snp_endorsements =
+            files::try_slurp_string(snp_endorsements_file);
+
+          if (!startup_config.attestation.environment.snp_endorsements
+                 .has_value())
+          {
+            LOG_FAIL_FMT(
+              "Could not read snp_endorsements from {}", snp_endorsements_file);
+          }
+        }
       }
 
       if (ccf::pal::platform == ccf::pal::Platform::Virtual)
@@ -1032,7 +1055,6 @@ namespace ccf
       uv_walk(uv_default_loop(), cb, nullptr);
     }
     curl_global_cleanup();
-    ccf::crypto::openssl_sha256_shutdown();
 
     return loop_close_rc;
   }

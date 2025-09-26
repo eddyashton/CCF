@@ -18,7 +18,9 @@ namespace ccf::tasks
   {
     std::shared_ptr<OrderedTasks> tasks;
 
-    ResumeOrderedTasks(std::shared_ptr<OrderedTasks> t) : tasks(std::move(t)) {}
+    ResumeOrderedTasks(std::shared_ptr<OrderedTasks> tasks_) :
+      tasks(std::move(tasks_))
+    {}
 
     void resume() override
     {
@@ -36,8 +38,11 @@ namespace ccf::tasks
 
   OrderedTasks::~OrderedTasks() = default;
 
-  OrderedTasks::OrderedTasks(IJobBoard& jb, const std::string& s) :
-    pimpl(std::make_unique<OrderedTasks::PImpl>(s, jb))
+  OrderedTasks::OrderedTasks(
+    [[maybe_unused]] OrderedTasks::Private force_private_constructor,
+    IJobBoard& job_board_,
+    const std::string& name_) :
+    pimpl(std::make_unique<OrderedTasks::PImpl>(name_, job_board_))
   {}
 
   void OrderedTasks::do_task_implementation()
@@ -56,7 +61,7 @@ namespace ccf::tasks
     return std::make_unique<ResumeOrderedTasks>(shared_from_this());
   }
 
-  std::string OrderedTasks::get_name() const
+  std::string_view OrderedTasks::get_name() const
   {
     return pimpl->name;
   }
@@ -74,20 +79,9 @@ namespace ccf::tasks
     pimpl->actions.get_queue_summary(num_pending, is_active);
   }
 
-  namespace
+  std::shared_ptr<OrderedTasks> OrderedTasks::create(
+    IJobBoard& job_board_, const std::string& name_)
   {
-    struct ConcreteOrderedTasks : public OrderedTasks
-    {
-    public:
-      ConcreteOrderedTasks(IJobBoard& jb, const std::string& s) :
-        OrderedTasks(jb, s)
-      {}
-    };
-  }
-
-  std::shared_ptr<OrderedTasks> make_ordered_tasks(
-    IJobBoard& jb, const std::string& s)
-  {
-    return std::make_shared<ConcreteOrderedTasks>(jb, s);
+    return std::make_shared<OrderedTasks>(Private{}, job_board_, name_);
   }
 }

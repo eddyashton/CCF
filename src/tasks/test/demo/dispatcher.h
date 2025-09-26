@@ -15,12 +15,17 @@ struct Action_ProcessClientAction : public ccf::tasks::ITaskAction
   const SerialisedAction input_action;
   Session& client_session;
   std::atomic<size_t>& responses_sent;
+  const std::string name;
 
   Action_ProcessClientAction(
     const SerialisedAction& action, Session& cs, std::atomic<size_t>& rs) :
     input_action(action),
     client_session(cs),
-    responses_sent(rs)
+    responses_sent(rs),
+    name(fmt::format(
+      "Processing action '{}' from session {}",
+      input_action,
+      (void*)&client_session))
   {}
 
   void do_action() override
@@ -37,10 +42,10 @@ struct Action_ProcessClientAction : public ccf::tasks::ITaskAction
         std::launch::async,
         [paused_task = std::move(paused_task),
          result = std::move(result),
-         client_session = &client_session,
-         responses_sent = &responses_sent]() mutable {
+         &client_session = client_session,
+         &responses_sent = responses_sent]() mutable {
           std::this_thread::sleep_for(std::chrono::milliseconds(100));
-          client_session->from_node.push_back(std::move(result));
+          client_session.from_node.push_back(std::move(result));
           ++responses_sent;
           ccf::tasks::resume_task(std::move(paused_task));
         });
@@ -52,12 +57,9 @@ struct Action_ProcessClientAction : public ccf::tasks::ITaskAction
     }
   }
 
-  std::string get_name() const override
+  std::string_view get_name() const override
   {
-    return fmt::format(
-      "Processing action '{}' from session {}",
-      input_action,
-      (void*)&client_session);
+    return name;
   }
 };
 
@@ -105,7 +107,7 @@ struct Dispatcher : public LoopingThread<DispatcherState>
         it = state.ordered_tasks_per_client.emplace_hint(
           it,
           session.get(),
-          ccf::tasks::make_ordered_tasks(
+          ccf::tasks::OrderedTasks::create(
             state.job_board, fmt::format("Tasks for {}", session->name)));
       }
 

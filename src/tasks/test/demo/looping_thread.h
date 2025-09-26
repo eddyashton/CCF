@@ -58,8 +58,6 @@ struct LoopingThread
   virtual void start()
   {
     thread = std::thread([this]() {
-      ccf::threading::set_current_thread_name(name);
-
       lifetime_stage.store(Stage::PreInit);
 
       this->init_behaviour();

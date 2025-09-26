@@ -12,10 +12,22 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Added `ccf.gov.validateConstitution` function to JS API, which can be used to confirm some basic properties of a proposed constitution (it is a string, parseable by our JS interpreter, exporting functions named `validate`, `resolve` and `apply` with the correct number of arguments). This is called in the default sample constitution's `set_constitution.validate`.
+- Added logging of the initial node attestation value ("Initial node attestation...") (#7256).
+- Improved handling of socket errors in curlm callbacks (#7308)
 
 ### Fixed
 
 - Correctly validate the full AMD ASK endorsement chain (#7233)
+- Validate endorsement metadata (tcb version and chip id) against attestation (#7240)
+
+### Changed
+
+- The `submit_recovery_share.sh` script will no longer try to create a virtual environment and install the CCF Python package on every call. Instead it will return an error if the package is not installed (specifically if the `ccf_cose_sign1` tool it relies on cannot be found) (#7306)
+
+### Removed
+
+- Removed `ccf::crypt::openssl_sha256_init()` and `ccf::crypt::openssl_sha256_shutdown()` interface, as it's now implicitly called by the crypto implementation (#7251).
+- Removed support for v2 attestations as the corresponding firmware is [know to be insecure](https://www.amd.com/en/resources/product-security/bulletin/amd-sb-3019.html) (#7282)
 
 ## [7.0.0-dev2]
 

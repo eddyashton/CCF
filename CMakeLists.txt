@@ -221,6 +221,9 @@ install(
   DESTINATION lib
 )
 
+# CCF platform agnostic library
+add_ccf_static_library(ccf_pal SRCS ${CCF_DIR}/src/pal/attestation.cpp)
+
 # CCF js lib
 add_ccf_static_library(
   ccf_js
@@ -244,7 +247,7 @@ add_ccf_static_library(
        ${CCF_DIR}/src/js/extensions/ccf/rpc.cpp
        ${CCF_DIR}/src/js/extensions/ccf/request.cpp
        ${CCF_DIR}/src/js/registry.cpp
-  LINK_LIBS ccfcrypto quickjs
+  LINK_LIBS ccfcrypto quickjs ccf_pal
 )
 
 # CCF kv lib
@@ -277,10 +280,12 @@ add_ccf_static_library(
   LINK_LIBS qcbor t_cose http_parser ccfcrypto ccf_kv
 )
 
+# CCF task system library
 add_ccf_static_library(
   ccf_tasks
   SRCS ${CCF_DIR}/src/tasks/task_system.cpp ${CCF_DIR}/src/tasks/job_board.cpp
        ${CCF_DIR}/src/tasks/ordered_tasks.cpp
+       ${CCF_DIR}/src/tasks/fan_in_tasks.cpp
 )
 
 # Common test args for Python scripts starting up CCF networks
@@ -390,6 +395,7 @@ add_ccf_static_library(
             nghttp2
             ${CMAKE_THREAD_LIBS_INIT}
             curl
+            ccf_pal
 )
 
 target_include_directories(
@@ -473,6 +479,7 @@ if(BUILD_TESTS)
       snp_attestation_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/pal/test/snp_attestation_validation.cpp
     )
+    target_link_libraries(snp_attestation_test PRIVATE ccf_pal ccfcrypto)
 
     add_unit_test(map_test ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/map_test.cpp)
 
@@ -531,17 +538,13 @@ if(BUILD_TESTS)
     target_link_libraries(ds_test PRIVATE ${CMAKE_THREAD_LIBS_INIT})
 
     add_unit_test(
-      task_system_test ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/queues.cpp
+      task_system_test
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/basic_tasks.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/ordered_tasks.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/delayed_tasks.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/fan_in_tasks.cpp
     )
     target_link_libraries(task_system_test PRIVATE ccf_tasks)
-
-    add_picobench(
-      tasks_bench
-      SRCS ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/merge_bench.cpp
-           ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/sleep_bench.cpp
-    )
-    target_link_libraries(tasks_bench PRIVATE ccf_tasks)
 
     add_unit_test(
       task_system_demo ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/demo/main.cpp
@@ -746,7 +749,6 @@ if(BUILD_TESTS)
     target_link_libraries(
       merkle_mem PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${LINK_LIBCXX} ccfcrypto
     )
-    target_compile_definitions(merkle_mem PRIVATE CCF_LOGGER_NO_DEPRECATE)
 
     # Raft driver and scenario test
     add_executable(
@@ -755,7 +757,6 @@ if(BUILD_TESTS)
     )
     target_link_libraries(raft_driver PRIVATE ccfcrypto ccf_tasks)
     target_include_directories(raft_driver PRIVATE src/aft)
-    target_compile_definitions(raft_driver PRIVATE CCF_LOGGER_NO_DEPRECATE)
 
     add_test(
       NAME raft_scenario_test
@@ -807,6 +808,14 @@ if(BUILD_TESTS)
     )
     add_picobench(merkle_bench SRCS src/node/test/merkle_bench.cpp)
     add_picobench(hash_bench SRCS src/ds/test/hash_bench.cpp)
+
+    add_picobench(
+      task_bench
+      SRCS ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/bench/merge_bench.cpp
+           ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/bench/sleep_bench.cpp
+           ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/bench/contention_bench.cpp
+      LINK_LIBS ccf_tasks
+    )
   endif()
 
   if(LONG_TESTS)
@@ -1153,7 +1162,7 @@ if(BUILD_TESTS)
     PYTHON_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/tests/infra/basicperf.py
     CLIENT_BIN ./submit PERF_LABEL "Basic"
     ADDITIONAL_ARGS --package "samples/apps/basic/basic" --client-def
-                    "1,write,1000000,primary"
+                    "1,write,3000000,primary"
   )
 
   add_piccolo_test(
@@ -1161,7 +1170,7 @@ if(BUILD_TESTS)
     PYTHON_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/tests/infra/basicperf.py
     CLIENT_BIN ./submit PERF_LABEL "Basic JS"
     ADDITIONAL_ARGS --js-app-bundle ${CMAKE_SOURCE_DIR}/samples/apps/basic/js
-                    --client-def "1,write,1000000,primary"
+                    --client-def "1,write,300000,primary"
   )
 
   if(WORKER_THREADS)
@@ -1170,7 +1179,7 @@ if(BUILD_TESTS)
       PYTHON_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/tests/infra/basicperf.py
       CLIENT_BIN ./submit PERF_LABEL "Basic Multi-Threaded"
       ADDITIONAL_ARGS --package "samples/apps/basic/basic" --client-def
-                      "${WORKER_THREADS},write,1000000,primary"
+                      "${WORKER_THREADS},write,2000000,primary"
     )
   endif()
 
