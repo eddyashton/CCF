@@ -88,6 +88,9 @@ namespace ccf::pal
     QuoteInfo& node_quote_info,
     const ccf::CCFConfig::Attestation& attestation_config)
   {
+    auto* quote =
+      reinterpret_cast<const snp::Attestation*>(node_quote_info.quote.data());
+
     if (attestation_config.environment.snp_endorsements.has_value())
     {
       const auto raw_data = ccf::crypto::raw_from_b64(
@@ -99,8 +102,6 @@ namespace ccf::pal
 
       // Check that tcbm in endorsement matches reported TCB in our retrieved
       // attestation
-      auto* quote =
-        reinterpret_cast<const snp::Attestation*>(node_quote_info.quote.data());
       const auto reported_tcb = quote->reported_tcb;
 
       // tcbm is a single hex value, like DB18000000000004. To match that with a
@@ -122,6 +123,7 @@ namespace ccf::pal
           aci_endorsements.certificate_chain.begin(),
           aci_endorsements.certificate_chain.end());
 
+        node_quote_info.endorsed_tcb = tcb_as_hex;
         return;
       }
       else
@@ -143,6 +145,17 @@ namespace ccf::pal
         "the collateral for the attestation");
     }
 
+    for (const auto& server : attestation_config.snp_endorsements_servers)
+    {
+      // Make some kind of request struct
+
+      // Make this request, max_retries_count times
+      for (auto i = 0; i < server.max_retries_count; ++i)
+      {
+      }
+
+      // Parse the result, depending on type
+    }
     // TODO: Fetch from servers, inline
     throw std::runtime_error(
       "Fetching from SNP endorsement servers is currently unimplemented");
