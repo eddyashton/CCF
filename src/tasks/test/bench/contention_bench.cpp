@@ -14,9 +14,10 @@ struct NopTask : public ccf::tasks::BaseTask
 {
   void do_task_implementation() override {}
 
-  std::string_view get_name() const override
+  const std::string& get_name() const override
   {
-    return "NopTask";
+    static const std::string name = "NopTask";
+    return name;
   }
 };
 
@@ -59,9 +60,10 @@ struct IncTask : public ccf::tasks::BaseTask
     ++value;
   }
 
-  std::string_view get_name() const override
+  const std::string& get_name() const override
   {
-    return "IncTask";
+    static const std::string name = "IncTask";
+    return name;
   }
 };
 
@@ -79,7 +81,7 @@ void dequeue_many(picobench::state& s, size_t thread_count, size_t task_count)
   for (auto i = 0; i < thread_count; ++i)
   {
     threads.emplace_back([task_count, &tasks_done]() {
-      if (tasks_done.load() < task_count)
+      while (tasks_done.load() < task_count)
       {
         auto task = ccf::tasks::get_main_job_board().get_task();
         if (task != nullptr)

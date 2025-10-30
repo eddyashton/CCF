@@ -16,10 +16,8 @@
 #include "ccf/pal/uvm_endorsements.h"
 #include "ccf/service/node_info_network.h"
 #include "ccf/service/reconfiguration_type.h"
-#include "ccf/service/tables/acme_certificates.h"
 #include "ccf/service/tables/service.h"
 #include "ccf/tx.h"
-#include "ccf_acme_client.h"
 #include "consensus/aft/raft.h"
 #include "consensus/ledger_enclave.h"
 #include "crypto/certs.h"
@@ -161,15 +159,6 @@ namespace ccf
     ccf::kv::Version startup_seqno = 0;
 
     ccf::tasks::Task join_periodic_task;
-
-    // ACME certificate endorsement client
-    std::map<NodeInfoNetwork::RpcInterfaceID, std::shared_ptr<ACMEClient>>
-      acme_clients;
-    std::map<
-      NodeInfoNetwork::RpcInterfaceID,
-      std::shared_ptr<ACMEChallengeHandler>>
-      acme_challenge_handlers;
-    size_t num_acme_interfaces = 0;
 
     std::shared_ptr<ccf::kv::AbstractTxEncryptor> make_encryptor()
     {
@@ -590,8 +579,6 @@ namespace ccf
       setup_history();
       setup_snapshotter();
       setup_encryptor();
-
-      setup_acme_clients();
 
       initiate_quote_generation();
 
@@ -1510,93 +1497,6 @@ namespace ccf
         ccf::kv::CommittableTx::TxFlag::SNAPSHOT_AT_NEXT_SIGNATURE);
     }
 
-    void trigger_acme_refresh(
-      ccf::kv::Tx& tx,
-      const std::optional<std::vector<std::string>>& interfaces =
-        std::nullopt) override
-    {
-      if (!network.identity)
-      {
-        return;
-      }
-
-      num_acme_interfaces = 0;
-
-      for (const auto& [iname, interface] : config.network.rpc_interfaces)
-      {
-        if (
-          !interface.endorsement ||
-          interface.endorsement->authority != Authority::ACME ||
-          !interface.endorsement->acme_configuration)
-        {
-          continue;
-        }
-
-        num_acme_interfaces++;
-
-        if (
-          !interfaces ||
-          std::find(interfaces->begin(), interfaces->end(), iname) !=
-            interfaces->end())
-        {
-          auto challenge_frontend = find_acme_challenge_frontend();
-
-          const std::string& cfg_name =
-            *interface.endorsement->acme_configuration;
-          auto cit = config.network.acme->configurations.find(cfg_name);
-          if (cit == config.network.acme->configurations.end())
-          {
-            LOG_INFO_FMT("Unknown ACME configuration '{}'", cfg_name);
-            continue;
-          }
-
-          if (
-            !cit->second.directory_url.empty() &&
-            acme_clients.find(cfg_name) == acme_clients.end())
-          {
-            const auto& cfg = cit->second;
-
-            auto client = std::make_shared<ACMEClient>(
-              cfg_name,
-              cfg,
-              rpc_map,
-              rpcsessions,
-              challenge_frontend,
-              network.tables,
-              node_sign_kp);
-
-            auto chit = acme_challenge_handlers.find(iname);
-            if (chit != acme_challenge_handlers.end())
-            {
-              client->install_custom_challenge_handler(chit->second);
-            }
-
-            acme_clients.emplace(cfg_name, client);
-          }
-
-          auto client = acme_clients[cfg_name];
-          if (client && !client->has_active_orders())
-          {
-            client->get_certificate(
-              make_key_pair(network.identity->priv_key), true);
-          }
-        }
-      }
-    }
-
-    void trigger_host_process_launch(
-      const std::vector<std::string>& args,
-      const std::vector<uint8_t>& input) override
-    {
-      HostProcessArguments msg{args};
-      nlohmann::json j = msg;
-      auto json = j.dump();
-      LOG_DEBUG_FMT(
-        "Triggering host process launch: {} size={}", json, input.size());
-      RINGBUFFER_WRITE_MESSAGE(
-        AppMessage::launch_host_process, to_host, json, input);
-    }
-
     void transition_service_to_open(
       ccf::kv::Tx& tx,
       AbstractGovernanceEffects::ServiceIdentities identities) override
@@ -1658,9 +1558,6 @@ namespace ccf
           identities.next.str(),
           service_info->cert.str()));
       }
-
-      service_info->previous_service_identity_version =
-        service->get_version_of_previous_write();
 
       if (is_part_of_public_network())
       {
@@ -2086,28 +1983,6 @@ namespace ccf
     {
       std::lock_guard<pal::Mutex> guard(lock);
       return find_frontend(ActorsType::users)->is_open();
-    }
-
-    std::shared_ptr<ACMERpcFrontend> find_acme_challenge_frontend()
-    {
-      auto acme_challenge_opt = rpc_map->find(ActorsType::acme_challenge);
-      if (!acme_challenge_opt)
-      {
-        throw std::runtime_error("Missing ACME challenge frontend");
-      }
-      return std::static_pointer_cast<ACMERpcFrontend>(*acme_challenge_opt);
-    }
-
-    void open_acme_challenge_frontend()
-    {
-      if (config.network.acme && !config.network.acme->configurations.empty())
-      {
-        auto fe = find_frontend(ActorsType::acme_challenge);
-        if (fe)
-        {
-          fe->open();
-        }
-      }
     }
 
     std::vector<uint8_t> serialize_create_request(
@@ -2562,34 +2437,6 @@ namespace ccf
               LOG_INFO_FMT("Service open at seqno {}", hook_version);
             }
           }));
-
-      network.tables->set_global_hook(
-        network.acme_certificates.get_name(),
-        network.acme_certificates.wrap_commit_hook(
-          [this](
-            ccf::kv::Version hook_version, const ACMECertificates::Write& w) {
-            for (auto const& [interface_id, interface] :
-                 config.network.rpc_interfaces)
-            {
-              if (interface.endorsement->acme_configuration)
-              {
-                auto cit = w.find(*interface.endorsement->acme_configuration);
-                if (cit != w.end())
-                {
-                  LOG_INFO_FMT(
-                    "ACME: new certificate for interface '{}' with "
-                    "configuration '{}'",
-                    interface_id,
-                    *interface.endorsement->acme_configuration);
-                  rpcsessions->set_cert(
-                    Authority::ACME,
-                    *cit->second,
-                    network.identity->priv_key,
-                    cit->first);
-                }
-              }
-            }
-          }));
     }
 
     ccf::kv::Version get_last_recovered_signed_idx() override
@@ -2803,55 +2650,6 @@ namespace ccf
         ::consensus::ledger_truncate, to_host, idx, recovery_mode);
     }
 
-    void setup_acme_clients()
-    {
-      if (!config.network.acme || config.network.acme->configurations.empty())
-      {
-        return;
-      }
-
-      open_acme_challenge_frontend();
-
-      const auto& ifaces = config.network.rpc_interfaces;
-      num_acme_interfaces =
-        std::count_if(ifaces.begin(), ifaces.end(), [](const auto& id_iface) {
-          return id_iface.second.endorsement->authority == Authority::ACME;
-        });
-
-      if (num_acme_interfaces > 0)
-      {
-        using namespace threading;
-
-        // Start task to periodically check whether any of the certs are
-        // expired.
-        ccf::tasks::add_periodic_task(
-          ccf::tasks::make_basic_task([this]() {
-            if (this->consensus && this->consensus->can_replicate())
-            {
-              if (this->acme_clients.size() != this->num_acme_interfaces)
-              {
-                auto tx = this->network.tables->create_tx();
-                this->trigger_acme_refresh(tx);
-                tx.commit();
-              }
-              else
-              {
-                for (auto& [cfg_name, client] : this->acme_clients)
-                {
-                  if (client)
-                  {
-                    client->check_expiry(
-                      this->network.tables, this->network.identity);
-                  }
-                }
-              }
-            }
-          }),
-          std::chrono::seconds(2),
-          std::chrono::minutes(1));
-      }
-    }
-
     void seal_ledger_secret(const VersionedLedgerSecret& ledger_secret)
     {
       seal_ledger_secret(ledger_secret.first, ledger_secret.second);
@@ -2913,13 +2711,6 @@ namespace ccf
     virtual ccf::crypto::Pem get_network_cert() override
     {
       return network.identity->cert;
-    }
-
-    virtual void install_custom_acme_challenge_handler(
-      const ccf::NodeInfoNetwork::RpcInterfaceID& interface_id,
-      std::shared_ptr<ACMEChallengeHandler> h) override
-    {
-      acme_challenge_handlers[interface_id] = h;
     }
 
     // Stop-gap until it becomes easier to use other HTTP clients

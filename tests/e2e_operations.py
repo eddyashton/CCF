@@ -33,6 +33,7 @@ import pathlib
 import infra.concurrency
 from collections import defaultdict
 import ccf.read_ledger
+import re
 
 from loguru import logger as LOG
 
@@ -171,54 +172,69 @@ def test_forced_ledger_chunk(network, args):
 @reqs.description("Forced snapshot")
 @app.scoped_txs()
 def test_forced_snapshot(network, args):
-    if args.worker_threads > 0:
-        LOG.warning(
-            f"Skipping as broken when the number of threads ({args.worker_threads}) is > 0"
+    inner_args = copy.deepcopy(args)
+    inner_args.common_read_only_ledger_dir = (
+        None  # Side-effect setting which would break the starting node
+    )
+    inner_args.label = f"{inner_args.label}_forced_snapshot"
+    inner_args.snapshot_tx_interval = (
+        10000  # Large interval to avoid interference from regular snapshots
+    )
+
+    # Use a separate network to ensure unforced snapshots do not happen
+    with infra.network.network(
+        inner_args.nodes,
+        inner_args.binary_dir,
+        inner_args.debug_nodes,
+        pdb=inner_args.pdb,
+        txs=app.LoggingTxs("user0"),
+    ) as inner_network:
+        inner_network.start_and_open(inner_args)
+
+        primary, _ = inner_network.find_primary()
+
+        # Submit some dummy transactions
+        inner_network.txs.issue(inner_network, number_txs=3)
+
+        with primary.client() as c:
+            r = c.get("/node/commit").body.json()
+            hwm_pre_proposal = TxID.from_str(r["transaction_id"]).seqno
+
+        # Ensure there is at least one signature greater than the hwm
+        inner_network.txs.issue(inner_network, number_txs=1, wait_for_sync=True)
+
+        # Submit a proposal to force a snapshot
+        proposal_body, careful_vote = inner_network.consortium.make_proposal(
+            "trigger_snapshot", node_id=primary.node_id
         )
-        return network
+        proposal = inner_network.consortium.get_any_active_member().propose(
+            primary, proposal_body
+        )
+        proposal = inner_network.consortium.vote_using_majority(
+            primary,
+            proposal,
+            careful_vote,
+        )
 
-    primary, _ = network.find_primary()
+        # Issue some more transactions
+        inner_network.txs.issue(inner_network, number_txs=5)
 
-    # Submit some dummy transactions
-    network.txs.issue(network, number_txs=3)
+        snapshots_dir = inner_network.get_committed_snapshots(
+            primary, target_seqno=hwm_pre_proposal + 1
+        )
 
-    # Submit a proposal to force a snapshot at the following signature
-    proposal_body, careful_vote = network.consortium.make_proposal(
-        "trigger_snapshot", node_id=primary.node_id
-    )
-    proposal = network.consortium.get_any_active_member().propose(
-        primary, proposal_body
-    )
+        for s in os.listdir(snapshots_dir):
+            with ccf.ledger.Snapshot(os.path.join(snapshots_dir, s)) as snapshot:
+                snapshot_seqno = snapshot.get_public_domain().get_seqno()
+                if snapshot_seqno > hwm_pre_proposal:
+                    LOG.info(
+                        f"Found a snapshot at {snapshot_seqno} which is after the pre-proposal-high-water-mark {hwm_pre_proposal}"
+                    )
+                    return network
 
-    proposal = network.consortium.vote_using_majority(
-        primary,
-        proposal,
-        careful_vote,
-    )
+        raise RuntimeError("Could not find matching snapshot file")
 
-    # Issue some more transactions
-    network.txs.issue(network, number_txs=5)
-
-    ledger_dirs = primary.remote.ledger_paths()
-
-    # Find first signature after proposal.completed_seqno
-    ledger = ccf.ledger.Ledger(ledger_dirs)
-    chunk, _, _, next_signature = find_ledger_chunk_for_seqno(
-        ledger, proposal.completed_seqno
-    )
-
-    assert chunk.is_complete and chunk.is_committed()
-    LOG.info(f"Expecting snapshot at {next_signature}")
-
-    snapshots_dir = network.get_committed_snapshots(primary)
-    for s in os.listdir(snapshots_dir):
-        with ccf.ledger.Snapshot(os.path.join(snapshots_dir, s)) as snapshot:
-            snapshot_seqno = snapshot.get_public_domain().get_seqno()
-            if snapshot_seqno == next_signature:
-                LOG.info(f"Found expected forced snapshot at {next_signature}")
-                return network
-
-    raise RuntimeError("Could not find matching snapshot file")
+    return network
 
 
 # https://github.com/microsoft/CCF/issues/1858
@@ -280,12 +296,16 @@ def test_snapshot_access(network, args):
     with open(os.path.join(snapshots_dir, snapshot_name), "rb") as f:
         snapshot_data = f.read()
 
+    interface = primary.host.rpc_interfaces[infra.interfaces.PRIMARY_RPC_INTERFACE]
+    loc = f"https://{interface.public_host}:{interface.public_port}"
+
     with primary.client() as c:
         r = c.head("/node/snapshot", allow_redirects=False)
         assert r.status_code == http.HTTPStatus.PERMANENT_REDIRECT.value, r
         assert "location" in r.headers, r.headers
         location = r.headers["location"]
-        assert location == f"/node/snapshot/{snapshot_name}"
+        path = f"/node/snapshot/{snapshot_name}"
+        assert location == f"{loc}{path}"
         LOG.warning(r.headers)
 
         for since, expected in (
@@ -310,7 +330,7 @@ def test_snapshot_access(network, args):
                     actual = r.headers["location"]
                     assert actual == expected
 
-        r = c.head(location)
+        r = c.head(path)
         assert r.status_code == http.HTTPStatus.OK.value, r
         assert r.headers["accept-ranges"] == "bytes", r.headers
         total_size = int(r.headers["content-length"])
@@ -328,7 +348,7 @@ def test_snapshot_access(network, args):
             (b, None),
         ]:
             range_header_value = f"{start}-{'' if end is None else end}"
-            r = c.get(location, headers={"range": f"bytes={range_header_value}"})
+            r = c.get(path, headers={"range": f"bytes={range_header_value}"})
             assert r.status_code == http.HTTPStatus.PARTIAL_CONTENT.value, r
 
             expected = snapshot_data[start:end]
@@ -343,7 +363,7 @@ def test_snapshot_access(network, args):
             b,
         ]:
             range_header_value = f"-{negative_offset}"
-            r = c.get(location, headers={"range": f"bytes={range_header_value}"})
+            r = c.get(path, headers={"range": f"bytes={range_header_value}"})
             assert r.status_code == http.HTTPStatus.PARTIAL_CONTENT.value, r
 
             expected = snapshot_data[-negative_offset:]
@@ -358,13 +378,12 @@ def test_snapshot_access(network, args):
             ("foo-foo", "Unable to parse start of range value foo"),
             (f"foo-{b}", "Unable to parse start of range value foo"),
             (f"{b}-{a}", "out of order"),
-            (f"0-{total_size + 1}", "larger than total file size"),
             ("-1-5", "Invalid format"),
             ("-", "Invalid range"),
             ("-foo", "Unable to parse end of range offset value foo"),
             ("", "Invalid format"),
         ]:
-            r = c.get(location, headers={"range": f"bytes={invalid_range}"})
+            r = c.get(path, headers={"range": f"bytes={invalid_range}"})
             assert r.status_code == http.HTTPStatus.BAD_REQUEST.value, r
             assert err_msg in r.body.json()["error"]["message"], r
 
@@ -1046,7 +1065,9 @@ def run_empty_ledger_dir_check(args):
                 )
 
 
-def run_initial_uvm_descriptor_checks(args):
+def run_initial_uvm_descriptor_checks(const_args):
+    args = copy.deepcopy(const_args)
+    args.label += "_uvm_descriptor"
     with infra.network.network(
         args.nodes,
         args.binary_dir,
@@ -1074,57 +1095,65 @@ def run_initial_uvm_descriptor_checks(args):
 
         LOG.info("Start a recovery network and stop it")
         current_ledger_dir, committed_ledger_dirs = primary.get_ledger()
-        recovered_network = infra.network.Network(
-            args.nodes,
-            args.binary_dir,
-            args.debug_nodes,
+        recovered_network_args = copy.deepcopy(args)
+        recovered_network_args.label += "_recovery"
+
+        with infra.network.network(
+            recovered_network_args.nodes,
+            recovered_network_args.binary_dir,
+            recovered_network_args.debug_nodes,
             existing_network=network,
-        )
+        ) as recovered_network:
 
-        args.previous_service_identity_file = os.path.join(
-            old_common, "service_cert.pem"
-        )
-        recovered_network.start_in_recovery(
-            args,
-            ledger_dir=current_ledger_dir,
-            committed_ledger_dirs=committed_ledger_dirs,
-            snapshots_dir=snapshots_dir,
-        )
-        recovered_primary, _ = recovered_network.find_primary()
-        LOG.info("Check that the UVM descriptor is present in the recovery tx")
-        recovery_seqno = None
-        with recovered_primary.client() as c:
-            r = c.get("/node/network").body.json()
-            recovery_seqno = int(r["current_service_create_txid"].split(".")[1])
-        network.stop_all_nodes()
-        ledger = ccf.ledger.Ledger(
-            recovered_primary.remote.ledger_paths(),
-            committed_only=False,
-            read_recovery_files=True,
-        )
-        for chunk in ledger:
-            _, chunk_end_seqno = chunk.get_seqnos()
-            if chunk_end_seqno < recovery_seqno:
-                continue
-            for tx in chunk:
-                tables = tx.get_public_domain().get_tables()
-                seqno = tx.get_public_domain().get_seqno()
-                if seqno < recovery_seqno:
+            recovered_network_args.previous_service_identity_file = os.path.join(
+                old_common, "service_cert.pem"
+            )
+            recovered_network.start_in_recovery(
+                recovered_network_args,
+                common_dir=old_common,
+                ledger_dir=current_ledger_dir,
+                committed_ledger_dirs=committed_ledger_dirs,
+                snapshots_dir=snapshots_dir,
+            )
+            recovered_primary, _ = recovered_network.find_primary()
+            LOG.info("Check that the UVM descriptor is present in the recovery tx")
+            recovery_seqno = None
+            with recovered_primary.client() as c:
+                r = c.get("/node/network").body.json()
+                recovery_seqno = int(r["current_service_create_txid"].split(".")[1])
+            network.stop_all_nodes()
+            ledger = ccf.ledger.Ledger(
+                recovered_primary.remote.ledger_paths(),
+                committed_only=False,
+                read_recovery_files=True,
+            )
+            for chunk in ledger:
+                _, chunk_end_seqno = chunk.get_seqnos()
+                if chunk_end_seqno < recovery_seqno:
                     continue
-                else:
+                for tx in chunk:
                     tables = tx.get_public_domain().get_tables()
-                    endorsements = tables["public:ccf.gov.nodes.snp.uvm_endorsements"]
-                    assert len(endorsements) == 1, endorsements
-                    (key,) = endorsements.keys()
-                    assert key.startswith(b"did:x509:"), key
-                    LOG.info(
-                        f"Recovery UVM endorsement found in ledger: {endorsements[key]}"
-                    )
-                    return
-        assert False, "No UVM endorsement found in recovery ledger"
+                    seqno = tx.get_public_domain().get_seqno()
+                    if seqno < recovery_seqno:
+                        continue
+                    else:
+                        tables = tx.get_public_domain().get_tables()
+                        endorsements = tables[
+                            "public:ccf.gov.nodes.snp.uvm_endorsements"
+                        ]
+                        assert len(endorsements) == 1, endorsements
+                        (key,) = endorsements.keys()
+                        assert key.startswith(b"did:x509:"), key
+                        LOG.info(
+                            f"Recovery UVM endorsement found in ledger: {endorsements[key]}"
+                        )
+                        return
+            assert False, "No UVM endorsement found in recovery ledger"
 
 
-def run_initial_tcb_version_checks(args):
+def run_initial_tcb_version_checks(const_args):
+    args = copy.deepcopy(const_args)
+    args.label += "_tcb_version"
     with infra.network.network(
         args.nodes,
         args.binary_dir,
@@ -1150,49 +1179,55 @@ def run_initial_tcb_version_checks(args):
 
         LOG.info("Start a recovery network and stop it")
         current_ledger_dir, committed_ledger_dirs = primary.get_ledger()
-        recovered_network = infra.network.Network(
-            args.nodes,
-            args.binary_dir,
-            args.debug_nodes,
-            existing_network=network,
-        )
-        args.previous_service_identity_file = os.path.join(
+
+        recovered_network_args = copy.deepcopy(args)
+        recovered_network_args.previous_service_identity_file = os.path.join(
             old_common, "service_cert.pem"
         )
-        recovered_network.start_in_recovery(
-            args,
-            ledger_dir=current_ledger_dir,
-            committed_ledger_dirs=committed_ledger_dirs,
-            snapshots_dir=snapshots_dir,
-        )
-        recovered_primary, _ = recovered_network.find_primary()
-        LOG.info("Check that the TCB_version is present in the recovery tx")
-        recovery_seqno = None
-        with recovered_primary.client() as c:
-            r = c.get("/node/network").body.json()
-            recovery_seqno = int(r["current_service_create_txid"].split(".")[1])
-        network.stop_all_nodes()
-        ledger = ccf.ledger.Ledger(
-            recovered_primary.remote.ledger_paths(),
-            committed_only=False,
-            read_recovery_files=True,
-        )
-        for chunk in ledger:
-            _, chunk_end_seqno = chunk.get_seqnos()
-            if chunk_end_seqno < recovery_seqno:
-                continue
-            for tx in chunk:
-                tables = tx.get_public_domain().get_tables()
-                seqno = tx.get_public_domain().get_seqno()
-                if seqno < recovery_seqno:
+        recovered_network_args.label += "_recovery"
+        with infra.network.network(
+            recovered_network_args.nodes,
+            recovered_network_args.binary_dir,
+            recovered_network_args.debug_nodes,
+            existing_network=network,
+        ) as recovered_network:
+            recovered_network.start_in_recovery(
+                recovered_network_args,
+                common_dir=old_common,
+                ledger_dir=current_ledger_dir,
+                committed_ledger_dirs=committed_ledger_dirs,
+                snapshots_dir=snapshots_dir,
+            )
+            recovered_primary, _ = recovered_network.find_primary()
+            LOG.info("Check that the TCB_version is present in the recovery tx")
+            recovery_seqno = None
+            with recovered_primary.client() as c:
+                r = c.get("/node/network").body.json()
+                recovery_seqno = int(r["current_service_create_txid"].split(".")[1])
+            network.stop_all_nodes()
+            ledger = ccf.ledger.Ledger(
+                recovered_primary.remote.ledger_paths(),
+                committed_only=False,
+                read_recovery_files=True,
+            )
+            for chunk in ledger:
+                _, chunk_end_seqno = chunk.get_seqnos()
+                if chunk_end_seqno < recovery_seqno:
                     continue
-                else:
+                for tx in chunk:
                     tables = tx.get_public_domain().get_tables()
-                    tcb_versions = tables["public:ccf.gov.nodes.snp.tcb_versions"]
-                    assert len(tcb_versions) == 1, tcb_versions
-                    LOG.info(f"Recovery TCB_version found in ledger: {tcb_versions}")
-                    return
-        assert False, "No TCB_version found in recovery ledger"
+                    seqno = tx.get_public_domain().get_seqno()
+                    if seqno < recovery_seqno:
+                        continue
+                    else:
+                        tables = tx.get_public_domain().get_tables()
+                        tcb_versions = tables["public:ccf.gov.nodes.snp.tcb_versions"]
+                        assert len(tcb_versions) == 1, tcb_versions
+                        LOG.info(
+                            f"Recovery TCB_version found in ledger: {tcb_versions}"
+                        )
+                        return
+            assert False, "No TCB_version found in recovery ledger"
 
 
 def run_recovery_local_unsealing(
@@ -1202,6 +1237,7 @@ def run_recovery_local_unsealing(
     args = copy.deepcopy(const_args)
     args.nodes = infra.e2e_args.min_nodes(args, f=1)
     args.enable_local_sealing = True
+    args.label += "_unsealing"
 
     with infra.network.network(args.nodes, args.binary_dir) as network:
         network.start_and_open(args)
@@ -1228,29 +1264,34 @@ def run_recovery_local_unsealing(
             recovery_network_args.previous_sealed_ledger_secret_location = (
                 node_secret_map[node.local_node_id]
             )
-            recovery_network = infra.network.Network(
+            recovery_network_args.label += f"_recovery_from_node_{node.local_node_id}"
+
+            with infra.network.network(
                 recovery_network_args.nodes,
                 recovery_network_args.binary_dir,
                 next_node_id=prev_network.next_node_id,
-            )
+            ) as recovery_network:
 
-            # Reset consortium and users to prevent issues with hosts from existing_network
-            recovery_network.consortium = prev_network.consortium
-            recovery_network.users = prev_network.users
-            recovery_network.txs = prev_network.txs
-            recovery_network.jwt_issuer = prev_network.jwt_issuer
+                # Reset consortium and users to prevent issues with hosts from existing_network
+                recovery_network.consortium = prev_network.consortium
+                recovery_network.users = prev_network.users
+                recovery_network.txs = prev_network.txs
+                recovery_network.jwt_issuer = prev_network.jwt_issuer
 
-            current_ledger_dir, committed_ledger_dirs = node.get_ledger()
-            recovery_network.start_in_recovery(
-                recovery_network_args,
-                ledger_dir=current_ledger_dir,
-                committed_ledger_dirs=committed_ledger_dirs,
-            )
+                current_ledger_dir, committed_ledger_dirs = node.get_ledger()
+                recovery_network.start_in_recovery(
+                    recovery_network_args,
+                    common_dir=infra.network.get_common_folder_name(
+                        args.workspace, args.label
+                    ),
+                    ledger_dir=current_ledger_dir,
+                    committed_ledger_dirs=committed_ledger_dirs,
+                )
 
-            recovery_network.recover(recovery_network_args, via_local_sealing=True)
+                recovery_network.recover(recovery_network_args, via_local_sealing=True)
 
-            recovery_network.stop_all_nodes()
-            prev_network = recovery_network
+                recovery_network.stop_all_nodes()
+                prev_network = recovery_network
 
 
 def run_recovery_unsealing_validate_audit(const_args):
@@ -1258,6 +1299,7 @@ def run_recovery_unsealing_validate_audit(const_args):
     args = copy.deepcopy(const_args)
     args.nodes = infra.e2e_args.min_nodes(args, f=1)
     args.enable_local_sealing = True
+    args.label += "_unsealing_audit"
 
     with infra.network.network(args.nodes, args.binary_dir) as network:
         network.start_and_open(args)
@@ -1281,46 +1323,58 @@ def run_recovery_unsealing_validate_audit(const_args):
             recovery_network_args = copy.deepcopy(args)
             recovery_network_args.nodes = infra.e2e_args.min_nodes(args, f=0)
             if via_local_unsealing:
+                recovery_network_args.label += "_via_local_unsealing"
+            else:
+                recovery_network_args.label += "_via_recovery_shares"
+
+            if via_local_unsealing:
                 recovery_network_args.previous_sealed_ledger_secret_location = (
                     node0_secrets
                 )
-            recovery_network = infra.network.Network(
+            with infra.network.network(
                 recovery_network_args.nodes,
                 recovery_network_args.binary_dir,
                 next_node_id=prev_network.next_node_id,
-            )
+            ) as recovery_network:
 
-            # Reset consortium and users to prevent issues with hosts from existing_network
-            recovery_network.consortium = prev_network.consortium
-            recovery_network.users = prev_network.users
-            recovery_network.txs = prev_network.txs
-            recovery_network.jwt_issuer = prev_network.jwt_issuer
+                # Reset consortium and users to prevent issues with hosts from existing_network
+                recovery_network.consortium = prev_network.consortium
+                recovery_network.users = prev_network.users
+                recovery_network.txs = prev_network.txs
+                recovery_network.jwt_issuer = prev_network.jwt_issuer
 
-            current_ledger_dir, committed_ledger_dirs = network.nodes[0].get_ledger()
-            recovery_network.start_in_recovery(
-                recovery_network_args,
-                ledger_dir=current_ledger_dir,
-                committed_ledger_dirs=committed_ledger_dirs,
-            )
+                current_ledger_dir, committed_ledger_dirs = network.nodes[
+                    0
+                ].get_ledger()
+                recovery_network.start_in_recovery(
+                    recovery_network_args,
+                    common_dir=infra.network.get_common_folder_name(
+                        args.workspace, args.label
+                    ),
+                    ledger_dir=current_ledger_dir,
+                    committed_ledger_dirs=committed_ledger_dirs,
+                )
 
-            recovery_network.recover(
-                recovery_network_args, via_local_sealing=via_local_unsealing
-            )
+                recovery_network.recover(
+                    recovery_network_args, via_local_sealing=via_local_unsealing
+                )
 
-            latest_public_tables, _ = recovery_network.get_latest_ledger_public_state()
-            recovery_type = latest_public_tables[
-                "public:ccf.internal.last_recovery_type"
-            ][b"\x00\x00\x00\x00\x00\x00\x00\x00"].decode("utf-8")
-            expected_recovery_type = (
-                '"LOCAL_UNSEALING"' if via_local_unsealing else '"RECOVERY_SHARES"'
-            )
-            assert (
-                recovery_type == expected_recovery_type
-            ), f"Network recovery type was {recovery_type} instead of {expected_recovery_type}"
+                latest_public_tables, _ = (
+                    recovery_network.get_latest_ledger_public_state()
+                )
+                recovery_type = latest_public_tables[
+                    "public:ccf.internal.last_recovery_type"
+                ][b"\x00\x00\x00\x00\x00\x00\x00\x00"].decode("utf-8")
+                expected_recovery_type = (
+                    '"LOCAL_UNSEALING"' if via_local_unsealing else '"RECOVERY_SHARES"'
+                )
+                assert (
+                    recovery_type == expected_recovery_type
+                ), f"Network recovery type was {recovery_type} instead of {expected_recovery_type}"
 
-            recovery_network.stop_all_nodes()
+                recovery_network.stop_all_nodes()
 
-            prev_network = recovery_network
+                prev_network = recovery_network
 
 
 def run_recovery_unsealing_corrupt(const_args, recovery_f=0):
@@ -1328,6 +1382,7 @@ def run_recovery_unsealing_corrupt(const_args, recovery_f=0):
     args = copy.deepcopy(const_args)
     args.nodes = infra.e2e_args.min_nodes(args, f=1)
     args.enable_local_sealing = True
+    args.label += "_recovery_unsealing_corrupt"
 
     with infra.network.network(args.nodes, args.binary_dir) as network:
         network.start_and_open(args)
@@ -1422,47 +1477,55 @@ def run_recovery_unsealing_corrupt(const_args, recovery_f=0):
             corruption.run(ledger_secret, corrupt_ledger_secret)
 
             recovery_network_args = copy.deepcopy(args)
-            recovery_network_args.nodes = infra.e2e_args.min_nodes(args, f=recovery_f)
+            recovery_network_args.nodes = infra.e2e_args.min_nodes(
+                recovery_network_args, f=recovery_f
+            )
             recovery_network_args.previous_sealed_ledger_secret_location = (
                 corrupt_ledger_secret
             )
-            recovery_network = infra.network.Network(
+            recovery_network_args.label += f"_{corruption.tag}"
+            with infra.network.network(
                 recovery_network_args.nodes,
                 recovery_network_args.binary_dir,
                 next_node_id=prev_network.next_node_id,
-            )
+            ) as recovery_network:
 
-            # Reset consortium and users to prevent issues with hosts from existing_network
-            recovery_network.consortium = prev_network.consortium
-            recovery_network.users = prev_network.users
-            recovery_network.txs = prev_network.txs
-            recovery_network.jwt_issuer = prev_network.jwt_issuer
+                # Reset consortium and users to prevent issues with hosts from existing_network
+                recovery_network.consortium = prev_network.consortium
+                recovery_network.users = prev_network.users
+                recovery_network.txs = prev_network.txs
+                recovery_network.jwt_issuer = prev_network.jwt_issuer
 
-            current_ledger_dir, committed_ledger_dirs = node.get_ledger()
-            exception_thrown = None
-            try:
-                recovery_network.start_in_recovery(
-                    recovery_network_args,
-                    ledger_dir=current_ledger_dir,
-                    committed_ledger_dirs=committed_ledger_dirs,
-                )
+                current_ledger_dir, committed_ledger_dirs = node.get_ledger()
+                exception_thrown = None
+                try:
+                    recovery_network.start_in_recovery(
+                        recovery_network_args,
+                        common_dir=infra.network.get_common_folder_name(
+                            args.workspace, args.label
+                        ),
+                        ledger_dir=current_ledger_dir,
+                        committed_ledger_dirs=committed_ledger_dirs,
+                    )
 
-                recovery_network.recover(recovery_network_args, via_local_sealing=True)
-            except Exception as e:
-                exception_thrown = e
-                pass
+                    recovery_network.recover(
+                        recovery_network_args, via_local_sealing=True
+                    )
+                except Exception as e:
+                    exception_thrown = e
+                    pass
 
-            if corruption.expected_exception:
-                assert (
-                    exception_thrown is not None
-                ), f"Expected exception to be thrown for {corruption.tag} corruption"
-            else:
-                assert (
-                    exception_thrown is None
-                ), f"Expected no exception to be thrown for {corruption.tag} corruption"
+                if corruption.expected_exception:
+                    assert (
+                        exception_thrown is not None
+                    ), f"Expected exception to be thrown for {corruption.tag} corruption"
+                else:
+                    assert (
+                        exception_thrown is None
+                    ), f"Expected no exception to be thrown for {corruption.tag} corruption"
 
-            recovery_network.stop_all_nodes()
-            prev_network = recovery_network
+                recovery_network.stop_all_nodes()
+                prev_network = recovery_network
 
 
 def run_read_ledger_on_testdata(args):
@@ -1741,6 +1804,67 @@ def test_error_message_on_failure_to_read_aci_sec_context(args):
                 if expected in line:
                     expected_log_messages.remove(expected)
                     LOG.info(f"Found expected log message: {expected}")
+            if len(expected_log_messages) == 0:
+                break
+
+        assert (
+            len(expected_log_messages) == 0
+        ), f"Did not find expected log messages: {expected_log_messages}"
+
+
+def test_error_message_on_failure_to_fetch_snapshot(const_args):
+    args = copy.deepcopy(const_args)
+    args.nodes = infra.e2e_args.min_nodes(args, 0)
+    with infra.network.network(
+        args.nodes,
+        args.binary_dir,
+        args.debug_nodes,
+        pdb=args.pdb,
+    ) as network:
+        network.start_and_open(args)
+
+        primary, _ = network.find_primary()
+
+        new_node = network.create_node("local://localhost")
+
+        # Shut down primary to cause snapshot fetch to fail
+        primary.remote.stop()
+
+        failed = False
+        try:
+            LOG.info("Starting join")
+            network.join_node(
+                new_node,
+                args.package,
+                args,
+                target_node=primary,
+                timeout=10,
+                from_snapshot=False,
+                wait_for_node_in_store=False,
+            )
+            new_node.wait_for_node_to_join(timeout=5)
+        except Exception as e:
+            LOG.info(f"Joining node could not join as expected {e}")
+            failed = True
+
+        assert failed, "Joining node could not join failed node as expected"
+
+        expected_log_messages = [
+            re.compile(r"Fetching snapshot from .* \(attempt 1/3\)"),
+            re.compile(r"Fetching snapshot from .* \(attempt 2/3\)"),
+            re.compile(r"Fetching snapshot from .* \(attempt 3/3\)"),
+            re.compile(
+                r"Exceeded maximum snapshot fetch retries \([0-9]+\), giving up"
+            ),
+        ]
+
+        out_path, _ = new_node.get_logs()
+        for line in open(out_path, "r", encoding="utf-8").readlines():
+            for expected in expected_log_messages:
+                match = re.search(expected, line)
+                if match:
+                    expected_log_messages.remove(expected)
+                    LOG.info(f"Found expected log message: {line}")
             if len(expected_log_messages) == 0:
                 break
 

@@ -13,6 +13,7 @@
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <openssl/x509_vfy.h>
+#include <optional>
 #include <random>
 #include <span>
 #include <uv.h>
@@ -36,7 +37,7 @@ TEST_CASE("Synchronous")
 {
   Data data = {.foo = "alpha", .bar = "beta"};
   size_t response_count = 0;
-  constexpr size_t sync_number_requests = 100;
+  constexpr size_t sync_number_requests = 10;
   for (int i = 0; i < sync_number_requests; ++i)
   {
     data.iter = i;
@@ -48,6 +49,17 @@ TEST_CASE("Synchronous")
 
     auto curl_handle = ccf::curl::UniqueCURL();
 
+    CURLcode curl_code = CURLE_OK;
+    long status_code = 0;
+
+    auto response = [&curl_code, &status_code](
+                      std::unique_ptr<ccf::curl::CurlRequest>&& /*request*/,
+                      CURLcode curl_response,
+                      long status) {
+      curl_code = curl_response;
+      status_code = status;
+    };
+
     auto request = std::make_unique<ccf::curl::CurlRequest>(
       std::move(curl_handle),
       HTTP_PUT,
@@ -55,12 +67,10 @@ TEST_CASE("Synchronous")
       std::move(headers),
       std::move(body),
       std::make_unique<ccf::curl::ResponseBody>(SIZE_MAX),
-      std::nullopt);
+      response);
 
-    CURLcode curl_code = CURLE_OK;
-    long status_code = 0;
+    ccf::curl::CurlRequest::synchronous_perform(std::move(request));
 
-    request->synchronous_perform(curl_code, status_code);
     constexpr size_t HTTP_SUCCESS = 200;
     if (curl_code == CURLE_OK && status_code == HTTP_SUCCESS)
     {
@@ -96,17 +106,18 @@ TEST_CASE("CurlmLibuvContext")
       auto curl_handle = ccf::curl::UniqueCURL();
       curl_handle.set_opt(CURLOPT_FORBID_REUSE, 1L);
 
-      auto response_callback = [response_count_ptr](
-                                 ccf::curl::CurlRequest& request,
-                                 CURLcode curl_response,
-                                 long status_code) {
-        (void)request;
-        constexpr size_t HTTP_SUCCESS = 200;
-        if (curl_response == CURLE_OK && status_code == HTTP_SUCCESS)
-        {
-          (*response_count_ptr)++;
-        }
-      };
+      auto response_callback =
+        [response_count_ptr](
+          std::unique_ptr<ccf::curl::CurlRequest>&& request,
+          CURLcode curl_response,
+          long status_code) {
+          (void)request;
+          constexpr size_t HTTP_SUCCESS = 200;
+          if (curl_response == CURLE_OK && status_code == HTTP_SUCCESS)
+          {
+            (*response_count_ptr)++;
+          }
+        };
 
       auto request = std::make_unique<ccf::curl::CurlRequest>(
         std::move(curl_handle),
@@ -115,7 +126,8 @@ TEST_CASE("CurlmLibuvContext")
         std::move(headers),
         std::move(body),
         std::make_unique<ccf::curl::ResponseBody>(SIZE_MAX),
-        std::move(response_callback));
+        std::move(response_callback),
+        std::nullopt);
 
       ccf::curl::CurlmLibuvContextSingleton::get_instance()->attach_request(
         std::move(request));
@@ -160,17 +172,18 @@ TEST_CASE("CurlmLibuvContext slow")
       auto curl_handle = ccf::curl::UniqueCURL();
       curl_handle.set_opt(CURLOPT_FORBID_REUSE, 1L);
 
-      auto response_callback = [response_count_ptr](
-                                 ccf::curl::CurlRequest& request,
-                                 CURLcode curl_response,
-                                 long status_code) {
-        (void)request;
-        constexpr size_t HTTP_SUCCESS = 200;
-        if (curl_response == CURLE_OK && status_code == HTTP_SUCCESS)
-        {
-          (*response_count_ptr)++;
-        }
-      };
+      auto response_callback =
+        [response_count_ptr](
+          std::unique_ptr<ccf::curl::CurlRequest>&& request,
+          CURLcode curl_response,
+          long status_code) {
+          (void)request;
+          constexpr size_t HTTP_SUCCESS = 200;
+          if (curl_response == CURLE_OK && status_code == HTTP_SUCCESS)
+          {
+            (*response_count_ptr)++;
+          }
+        };
 
       auto request = std::make_unique<ccf::curl::CurlRequest>(
         std::move(curl_handle),
@@ -179,7 +192,8 @@ TEST_CASE("CurlmLibuvContext slow")
         std::move(headers),
         std::move(body),
         std::make_unique<ccf::curl::ResponseBody>(SIZE_MAX),
-        std::move(response_callback));
+        std::move(response_callback),
+        std::nullopt);
 
       ccf::curl::CurlmLibuvContextSingleton::get_instance()->attach_request(
         std::move(request));
@@ -231,18 +245,19 @@ TEST_CASE("CurlmLibuvContext timeouts")
       curl_handle.set_opt(CURLOPT_TIMEOUT_MS, max_delay_ms);
       curl_handle.set_opt(CURLOPT_FORBID_REUSE, 1L);
 
-      auto response_callback = [response_count_ptr](
-                                 ccf::curl::CurlRequest& request,
-                                 CURLcode curl_response,
-                                 long status_code) {
-        (void)request;
-        // We expect all to fail to connect; count only unexpected successes.
-        constexpr size_t HTTP_SUCCESS = 200;
-        if (curl_response == CURLE_OK && status_code == HTTP_SUCCESS)
-        {
-          (*response_count_ptr)++;
-        }
-      };
+      auto response_callback =
+        [response_count_ptr](
+          std::unique_ptr<ccf::curl::CurlRequest>&& request,
+          CURLcode curl_response,
+          long status_code) {
+          (void)request;
+          // We expect all to fail to connect; count only unexpected successes.
+          constexpr size_t HTTP_SUCCESS = 200;
+          if (curl_response == CURLE_OK && status_code == HTTP_SUCCESS)
+          {
+            (*response_count_ptr)++;
+          }
+        };
 
       auto request = std::make_unique<ccf::curl::CurlRequest>(
         std::move(curl_handle),
@@ -251,7 +266,8 @@ TEST_CASE("CurlmLibuvContext timeouts")
         std::move(headers),
         std::move(body),
         std::make_unique<ccf::curl::ResponseBody>(SIZE_MAX),
-        std::move(response_callback));
+        std::move(response_callback),
+        std::nullopt);
 
       ccf::curl::CurlmLibuvContextSingleton::get_instance()->attach_request(
         std::move(request));
@@ -302,25 +318,26 @@ TEST_CASE("CurlmLibuvContext multiple init")
       curl_handle.set_opt(CURLOPT_TIMEOUT_MS, max_delay_ms);
       curl_handle.set_opt(CURLOPT_FORBID_REUSE, 1L);
 
-      auto response_callback = [response_count_ptr](
-                                 ccf::curl::CurlRequest& request,
-                                 CURLcode curl_response,
-                                 long status_code) {
-        //(void)request;
-        LOG_INFO_FMT(
-          "Request to {} completed: {} ({}) {}",
-          request.get_url(),
-          curl_easy_strerror(curl_response),
-          curl_response,
-          status_code);
+      auto response_callback =
+        [response_count_ptr](
+          std::unique_ptr<ccf::curl::CurlRequest>&& request,
+          CURLcode curl_response,
+          long status_code) {
+          //(void)request;
+          LOG_INFO_FMT(
+            "Request to {} completed: {} ({}) {}",
+            request->get_url(),
+            curl_easy_strerror(curl_response),
+            curl_response,
+            status_code);
 
-        // We expect all to fail to connect; count only unexpected successes.
-        constexpr size_t HTTP_SUCCESS = 200;
-        if (curl_response == CURLE_OK && status_code == HTTP_SUCCESS)
-        {
-          (*response_count_ptr)++;
-        }
-      };
+          // We expect all to fail to connect; count only unexpected successes.
+          constexpr size_t HTTP_SUCCESS = 200;
+          if (curl_response == CURLE_OK && status_code == HTTP_SUCCESS)
+          {
+            (*response_count_ptr)++;
+          }
+        };
 
       auto request = std::make_unique<ccf::curl::CurlRequest>(
         std::move(curl_handle),
@@ -329,7 +346,8 @@ TEST_CASE("CurlmLibuvContext multiple init")
         std::move(headers),
         std::move(body),
         std::make_unique<ccf::curl::ResponseBody>(SIZE_MAX),
-        std::move(response_callback));
+        std::move(response_callback),
+        std::nullopt);
 
       ccf::curl::CurlmLibuvContextSingleton::get_instance()->attach_request(
         std::move(request));

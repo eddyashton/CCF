@@ -4,6 +4,7 @@
 
 #include "ccf/pal/attestation.h"
 #include "ccf/pal/attestation_sev_snp_endorsements.h"
+#include "ds/thread_messaging.h"
 #include "enclave/rpc_sessions.h"
 #include "http/curl.h"
 
@@ -194,15 +195,15 @@ namespace ccf
       headers.append(http::headers::HOST, endpoint.host);
 
       auto response_callback = ([this, lifetime = shared_from_this()](
-                                  curl::CurlRequest& request,
+                                  std::unique_ptr<curl::CurlRequest>&& request,
                                   CURLcode curl_response,
                                   long status_code) {
         std::lock_guard<ccf::pal::Mutex> guard(this->lock);
 
         const auto& server = servers.front();
         const auto& endpoint = server.front();
-        auto* response_body = request.get_response_body();
-        auto& response_headers = request.get_response_headers();
+        auto* response_body = request->get_response_body();
+        const auto& response_headers = request->get_response_headers();
 
         if (curl_response == CURLE_OK && status_code == HTTP_STATUS_OK)
         {
@@ -258,8 +259,8 @@ namespace ccf
             curl_response == CURLE_OK &&
             status_code == HTTP_STATUS_TOO_MANY_REQUESTS)
           {
-            auto h = response_headers.data.find(http::headers::RETRY_AFTER);
-            if (h != response_headers.data.end())
+            auto h = response_headers.find(http::headers::RETRY_AFTER);
+            if (h != response_headers.end())
             {
               const auto& retry_after_value = h->second;
               // If value is invalid, retry_after_s is unchanged

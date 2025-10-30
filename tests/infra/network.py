@@ -202,7 +202,6 @@ class Network:
         "config_file",
         "ubsan_options",
         "previous_service_identity_file",
-        "acme",
         "snp_endorsements_servers",
         "node_to_node_message_limit",
         "historical_cache_soft_limit",
@@ -344,10 +343,11 @@ class Network:
         **kwargs,
     ):
         # Contact primary if no target node is set
-        primary, _ = self.find_primary(
-            timeout=args.ledger_recovery_timeout if recovery else 10
-        )
-        target_node = target_node or primary
+        if target_node is None:
+            primary, _ = self.find_primary(
+                timeout=args.ledger_recovery_timeout if recovery else 10
+            )
+            target_node = primary
         LOG.info(f"Joining from target node {target_node.local_node_id}")
 
         committed_ledger_dirs = read_only_ledger_dirs or []
@@ -359,6 +359,9 @@ class Network:
         if from_snapshot:
             # Only retrieve snapshot from primary if the snapshot directory is not specified
             if snapshots_dir is None:
+                primary, _ = self.find_primary(
+                    timeout=args.ledger_recovery_timeout if recovery else 10
+                )
                 read_only_snapshots_dir = self.get_committed_snapshots(primary)
             if os.listdir(snapshots_dir) or os.listdir(read_only_snapshots_dir):
                 LOG.info(
@@ -546,6 +549,11 @@ class Network:
         assert (
             infra.proc.ccall(*cmd).returncode == 0
         ), f"Could not symlink {self.KEY_GEN} to {self.common_dir}"
+
+    def log_stack_traces(self, timeout=20):
+        LOG.info("Logging stack traces for all nodes")
+        for node in self.nodes:
+            node.log_stack_trace(timeout=timeout)
 
     def start(self, args, **kwargs):
         """
@@ -1028,10 +1036,11 @@ class Network:
         target_node=None,
         timeout=JOIN_TIMEOUT,
         stop_on_error=False,
+        wait_for_node_in_store=True,
         **kwargs,
     ):
         self.setup_join_node(node, lib_name, args, target_node, **kwargs)
-        self.run_join_node(node, timeout, stop_on_error)
+        self.run_join_node(node, timeout, stop_on_error, wait_for_node_in_store)
 
     def trust_node(
         self,
@@ -1779,6 +1788,7 @@ def network(
     version=None,
     service_load=None,
     node_data_json_file=None,
+    **kwargs,
 ):
     """
     Context manager for Network class.
@@ -1788,6 +1798,7 @@ def network(
     :param dbg_nodes: default: []. List of node id's that will not start (user is prompted to start them manually)
     :param pdb: default: False. Debugger.
     :param txs: default: None. Transactions committed on that network.
+    :param kwargs. Parameters to forward to the Network constructor
     :return: a Network instance that can be used to create/access nodes, handle the genesis state (add members, create
     node.json), and stop all the nodes that belong to the network
     """
@@ -1805,12 +1816,15 @@ def network(
         version=version,
         service_load=service_load,
         node_data_json_file=node_data_json_file,
+        **kwargs,
     )
     try:
         yield net
     except Exception:
         # Don't try to verify txs on Exception path
         net.txs = None
+
+        net.log_stack_traces(timeout=10)
 
         if pdb:
             import pdb

@@ -174,13 +174,6 @@ if(SAN)
   install(FILES ${CCF_DIR}/src/san_common.suppressions DESTINATION bin)
 endif()
 
-# Install getting_started scripts for VM creation and setup
-install(
-  DIRECTORY ${CCF_DIR}/getting_started/
-  DESTINATION getting_started
-  USE_SOURCE_PERMISSIONS
-)
-
 set(HTTP_PARSER_SOURCES
     ${CCF_3RD_PARTY_EXPORTED_DIR}/llhttp/api.c
     ${CCF_3RD_PARTY_EXPORTED_DIR}/llhttp/http.c
@@ -222,7 +215,11 @@ install(
 )
 
 # CCF platform agnostic library
-add_ccf_static_library(ccf_pal SRCS ${CCF_DIR}/src/pal/attestation.cpp)
+add_ccf_static_library(
+  ccf_pal
+  SRCS ${CCF_DIR}/src/pal/attestation.cpp
+  LINK_LIBS ccfcrypto
+)
 
 # CCF js lib
 add_ccf_static_library(
@@ -240,7 +237,6 @@ add_ccf_static_library(
        ${CCF_DIR}/src/js/extensions/ccf/gov.cpp
        ${CCF_DIR}/src/js/extensions/ccf/gov_effects.cpp
        ${CCF_DIR}/src/js/extensions/ccf/historical.cpp
-       ${CCF_DIR}/src/js/extensions/ccf/host.cpp
        ${CCF_DIR}/src/js/extensions/ccf/kv.cpp
        ${CCF_DIR}/src/js/extensions/ccf/network.cpp
        ${CCF_DIR}/src/js/extensions/ccf/node.cpp
@@ -283,9 +279,11 @@ add_ccf_static_library(
 # CCF task system library
 add_ccf_static_library(
   ccf_tasks
-  SRCS ${CCF_DIR}/src/tasks/task_system.cpp ${CCF_DIR}/src/tasks/job_board.cpp
+  SRCS ${CCF_DIR}/src/tasks/task_system.cpp
+       ${CCF_DIR}/src/tasks/job_board.cpp
        ${CCF_DIR}/src/tasks/ordered_tasks.cpp
        ${CCF_DIR}/src/tasks/fan_in_tasks.cpp
+       ${CCF_DIR}/src/tasks/thread_manager.cpp
 )
 
 # Common test args for Python scripts starting up CCF networks
@@ -465,11 +463,36 @@ install(FILES tests/requirements.txt DESTINATION bin)
 # Add sample apps
 add_subdirectory(${CCF_DIR}/samples)
 
+# UVM canary executable
+add_test_bin(
+  verify_uvm_attestation_and_endorsements
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/pal/test/verify_uvm_attestation_and_endorsements.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/host/env.cpp
+)
+target_link_libraries(
+  verify_uvm_attestation_and_endorsements PRIVATE ccf_pal ccf
+)
+install(TARGETS verify_uvm_attestation_and_endorsements DESTINATION bin)
+
 if(BUILD_TESTS)
   enable_testing()
 
   # Unit tests
   if(BUILD_UNIT_TESTS)
+    add_test(
+      NAME verify_uvm_attestation_and_endorsements
+      COMMAND
+        bash
+        ${CMAKE_SOURCE_DIR}/tests/run_verify_uvm_attestation_and_endorsements.sh
+        $<TARGET_FILE:verify_uvm_attestation_and_endorsements>
+    )
+    set_property(
+      TEST verify_uvm_attestation_and_endorsements
+      APPEND
+      PROPERTY LABELS unit
+    )
+    add_san_test_properties(verify_uvm_attestation_and_endorsements)
+
     add_unit_test(
       snp_ioctl_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/pal/test/snp_ioctl_test.cpp
@@ -543,6 +566,7 @@ if(BUILD_TESTS)
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/ordered_tasks.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/delayed_tasks.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/fan_in_tasks.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/test/tasks_api.cpp
     )
     target_link_libraries(task_system_test PRIVATE ccf_tasks)
 
@@ -826,7 +850,7 @@ if(BUILD_TESTS)
   endif()
 
   add_e2e_test(
-    NAME recovery_test_cft_api_1
+    NAME recovery_test_api_1
     PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/recovery.py
     ADDITIONAL_ARGS ${ADDITIONAL_RECOVERY_ARGS} --gov-api-version "2024-07-01"
   )
@@ -920,14 +944,6 @@ if(BUILD_TESTS)
                     ${CMAKE_SOURCE_DIR}/tests
   )
 
-  add_e2e_test(
-    NAME launch_host_process_test
-    PYTHON_SCRIPT
-      ${CMAKE_SOURCE_DIR}/tests/js-launch-host-process/host_process.py
-    ADDITIONAL_ARGS --js-app-bundle
-                    ${CMAKE_SOURCE_DIR}/tests/js-launch-host-process
-  )
-
   set(CONSTITUTION_ARGS
       --constitution
       ${CCF_DIR}/samples/constitutions/default/actions.js
@@ -978,7 +994,7 @@ if(BUILD_TESTS)
   endif()
 
   add_e2e_test(
-    NAME e2e_logging_cft
+    NAME e2e_logging
     PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/e2e_logging.py
     ADDITIONAL_ARGS --js-app-bundle ${CMAKE_SOURCE_DIR}/samples/apps/logging/js
   )
@@ -1029,7 +1045,7 @@ if(BUILD_TESTS)
   )
 
   add_e2e_test(
-    NAME partitions_cft
+    NAME partitions
     PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/partitions_test.py
     LABEL partitions
     CONFIGURATIONS partitions
@@ -1050,14 +1066,14 @@ if(BUILD_TESTS)
   message(STATUS "OS_RELEASE = ${OS_RELEASE}")
   if(OS_RELEASE STREQUAL "Microsoft Azure Linux")
     set_property(
-      TEST partitions_cft
+      TEST partitions
       APPEND
       PROPERTY ENVIRONMENT "XTABLES_LIBDIR=/usr/lib/iptables"
     )
   endif()
 
   add_e2e_test(
-    NAME connections_cft PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/connections.py
+    NAME connections PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/connections.py
   )
 
   add_e2e_test(
@@ -1078,7 +1094,7 @@ if(BUILD_TESTS)
   endif()
 
   add_e2e_test(
-    NAME schema_test_cft
+    NAME schema_test
     PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/schema.py
     ADDITIONAL_ARGS
       --schema-dir
@@ -1123,7 +1139,7 @@ if(BUILD_TESTS)
   endif()
 
   add_e2e_test(
-    NAME rotation_test_cft
+    NAME rotation_test
     PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/rotation.py
     LABEL rotation
     ADDITIONAL_ARGS ${ROTATION_TEST_ARGS}
@@ -1131,23 +1147,15 @@ if(BUILD_TESTS)
 
   set(RECONFIG_TEST_ARGS --ccf-version ${CCF_VERSION})
   add_e2e_test(
-    NAME reconfiguration_test_cft
+    NAME reconfiguration_test
     PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/reconfiguration.py
     ADDITIONAL_ARGS ${RECONFIG_TEST_ARGS}
   )
-  set_property(TEST reconfiguration_test_cft PROPERTY LABELS reconfiguration)
+  set_property(TEST reconfiguration_test PROPERTY LABELS reconfiguration)
 
   add_e2e_test(
     NAME election_test PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/election.py
   )
-
-  if(LONG_TESTS)
-    add_e2e_test(
-      NAME acme_endorsement_test
-      PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/acme_endorsement.py
-      LABEL ACME
-    )
-  endif()
 
   add_piccolo_test(
     NAME pi_ls
@@ -1196,6 +1204,14 @@ if(BUILD_TESTS)
       10000
       --use-jwt
   )
+
+  add_e2e_test(
+    NAME historical_query_perf_test
+    PYTHON_SCRIPT ${CMAKE_SOURCE_DIR}/tests/historical_query_perf.py
+    LABEL perf
+    CONFIGURATIONS perf
+  )
+
   add_test_bin(
     curl_test ${CMAKE_CURRENT_SOURCE_DIR}/src/http/test/curl_test.cpp
   )

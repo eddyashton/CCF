@@ -4,7 +4,9 @@
 
 #include "ccf/ds/nonstd.h"
 #include "ccf/rest_verb.h"
+#include "ccf/threading/thread_ids.h"
 #include "ds/internal_logger.h"
+#include "ds/thread_messaging.h"
 #include "host/proxy.h"
 
 #include <cstddef>
@@ -62,6 +64,20 @@ namespace ccf::curl
         throw std::runtime_error("Error initialising curl easy request");
       }
     }
+
+    // No implicit copying: unique ownership of the CURL handle
+    UniqueCURL(const UniqueCURL&) = delete;
+    UniqueCURL& operator=(const UniqueCURL&) = delete;
+
+    // Move semantics
+    UniqueCURL(UniqueCURL&& other) noexcept : p(std::move(other.p)) {}
+    UniqueCURL& operator=(UniqueCURL&& other) noexcept
+    {
+      p = std::move(other.p);
+      return *this;
+    }
+
+    ~UniqueCURL() = default;
 
     operator CURL*() const
     {
@@ -360,7 +376,9 @@ namespace ccf::curl
   {
   public:
     using ResponseCallback = std::function<void(
-      CurlRequest& request, CURLcode curl_response_code, long status_code)>;
+      std::unique_ptr<CurlRequest>&& request,
+      CURLcode curl_response_code,
+      long status_code)>;
 
   private:
     UniqueCURL curl_handle;
@@ -371,23 +389,27 @@ namespace ccf::curl
     std::unique_ptr<ccf::curl::ResponseBody> response;
     ResponseHeaders response_headers;
     std::optional<ResponseCallback> response_callback;
+    std::optional<uint16_t> response_thread;
 
   public:
     CurlRequest(
       UniqueCURL&& curl_handle_,
       RESTVerb method_,
-      std::string&& url_,
+      const std::string& url_,
       UniqueSlist&& headers_,
       std::unique_ptr<RequestBody>&& request_body_,
       std::unique_ptr<ccf::curl::ResponseBody>&& response_,
-      std::optional<ResponseCallback>&& response_callback_) :
+      std::optional<ResponseCallback>&& response_callback_,
+      std::optional<uint16_t> response_thread_ =
+        threading::get_current_thread_id()) :
       curl_handle(std::move(curl_handle_)),
       method(method_),
       url(std::move(url_)),
       headers(std::move(headers_)),
       request_body(std::move(request_body_)),
       response(std::move(response_)),
-      response_callback(std::move(response_callback_))
+      response_callback(std::move(response_callback_)),
+      response_thread(response_thread_)
     {
       if (url.empty())
       {
@@ -453,35 +475,45 @@ namespace ccf::curl
       }
     }
 
-    void handle_response(CURLcode curl_response_code)
+    static void handle_response(
+      std::unique_ptr<CurlRequest>&& request, CURLcode curl_response_code)
     {
-      LOG_DEBUG_FMT("Handling response for {}", url);
-      if (response_callback.has_value())
+      LOG_TRACE_FMT("Handling response for {}", request->url);
+      if (request->response_callback.has_value())
       {
         long status_code = 0;
         CHECK_CURL_EASY_GETINFO(
-          curl_handle, CURLINFO_RESPONSE_CODE, &status_code);
-        response_callback.value()(*this, curl_response_code, status_code);
+          request->curl_handle, CURLINFO_RESPONSE_CODE, &status_code);
+        request->response_callback.value()(
+          std::move(request), curl_response_code, status_code);
       }
     }
 
-    void synchronous_perform(CURLcode& curl_code, long& status_code)
+    static void synchronous_perform(std::unique_ptr<CurlRequest>&& request)
     {
-      if (curl_handle == nullptr)
+      if (request == nullptr)
+      {
+        throw std::logic_error("Cannot perform a null CurlRequest");
+      }
+      if (request->curl_handle == nullptr)
       {
         throw std::logic_error(
           "Cannot curl_easy_perform on a null CURL handle");
       }
 
-      curl_code = curl_easy_perform(curl_handle);
+      auto curl_code = curl_easy_perform(request->curl_handle);
 
-      handle_response(curl_code); // handle the response callback if set
-
-      CHECK_CURL_EASY_GETINFO(
-        curl_handle, CURLINFO_RESPONSE_CODE, &status_code);
+      handle_response(
+        std::move(request),
+        curl_code); // handle the response callback if set
     }
 
     [[nodiscard]] CURL* get_easy_handle() const
+    {
+      return curl_handle;
+    }
+
+    [[nodiscard]] UniqueCURL& get_easy_handle_ptr()
     {
       return curl_handle;
     }
@@ -506,9 +538,14 @@ namespace ccf::curl
       return response;
     }
 
-    [[nodiscard]] ResponseHeaders& get_response_headers()
+    [[nodiscard]] const ResponseHeaders::HeaderMap& get_response_headers() const
     {
-      return response_headers;
+      return response_headers.data;
+    }
+
+    [[nodiscard]] std::optional<uint16_t> get_response_thread() const
+    {
+      return response_thread;
     }
   };
 
@@ -568,7 +605,27 @@ namespace ccf::curl
           // detach the easy handle such that it can be cleaned up with the
           // destructor of CurlRequest
           curl_multi_remove_handle(p.get(), easy);
-          request->handle_response(result);
+
+          // dispatch the response handling to a thread for processing
+          if (request->get_response_thread().has_value())
+          {
+            using Data =
+              std::tuple<std::unique_ptr<curl::CurlRequest>, CURLcode>;
+            ::threading::ThreadMessaging::instance().add_task(
+              request->get_response_thread().value(),
+              std::make_unique<::threading::Tmsg<Data>>(
+                [](std::unique_ptr<::threading::Tmsg<Data>> msg) {
+                  auto& [curl_request, curl_code] = msg->data;
+                  CurlRequest::handle_response(
+                    std::move(curl_request), curl_code);
+                },
+                std::make_tuple(std::move(request_data_ptr), result)));
+          }
+          else
+          {
+            // If the response thread is not set, run on the uv thread
+            CurlRequest::handle_response(std::move(request_data_ptr), result);
+          }
         }
       } while (msgq > 0);
       return running_handles;
@@ -758,12 +815,13 @@ namespace ccf::curl
         }
 
         // Notify curl of the error
+        int running_handles = 0;
         CHECK_CURL_MULTI(
           curl_multi_socket_action,
           self->curl_request_curlm,
           socket_context->socket,
           CURL_CSELECT_ERR,
-          nullptr);
+          &running_handles);
         self->curl_request_curlm.perform();
         return;
       }
