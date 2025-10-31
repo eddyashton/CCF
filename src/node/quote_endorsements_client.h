@@ -153,54 +153,28 @@ namespace ccf
       fetch_unsafe();
     }
 
-    void fetch_unsafe()
+    struct HandleResponseTask : public ccf::tasks::BaseTask
     {
-      const auto& server = servers.front();
-      const auto& endpoint = server.front();
+      std::shared_ptr<QuoteEndorsementsClient> self;
+      std::unique_ptr<curl::CurlRequest> request;
+      CURLcode curl_response;
+      long status_code;
 
-      curl::UniqueCURL curl_handle;
+      HandleResponseTask(
+        std::shared_ptr<QuoteEndorsementsClient> self_,
+        std::unique_ptr<curl::CurlRequest>&& request_,
+        CURLcode curl_response_,
+        long status_code_) :
+        self(self_),
+        request(std::move(request_)),
+        curl_response(curl_response_),
+        status_code(status_code_)
+      {}
 
-      // Set curl get
-      curl_handle.set_opt(CURLOPT_HTTPGET, 1L);
-      // If the server does not respond at all within this time timeout
-      curl_handle.set_opt(CURLOPT_CONNECTTIMEOUT, server_connection_timeout_s);
-      // If the server does not completely response within this time timeout
-      curl_handle.set_opt(CURLOPT_TIMEOUT, server_response_timeout_s);
-
-      auto url = fmt::format(
-        "{}://{}:{}{}{}",
-        endpoint.tls ? "https" : "http",
-        endpoint.host,
-        endpoint.port,
-        endpoint.uri,
-        get_formatted_query(endpoint.params));
-
-      if (endpoint.tls)
+      void do_task_implementation() override
       {
-        // Note: server CA is not checked here as this client is not sending
-        // private data. If the server was malicious and the certificate chain
-        // was bogus, the verification of the endorsement of the quote would
-        // fail anyway.
-        curl_handle.set_opt(CURLOPT_SSL_VERIFYHOST, 0L);
-        curl_handle.set_opt(CURLOPT_SSL_VERIFYPEER, 0L);
-        curl_handle.set_opt(CURLOPT_SSL_VERIFYSTATUS, 0L);
-      }
+        std::lock_guard<ccf::pal::Mutex> guard(self->lock);
 
-      auto headers = ccf::curl::UniqueSlist();
-      for (auto const& [k, v] : endpoint.headers)
-      {
-        headers.append(k, v);
-      }
-      headers.append(http::headers::HOST, endpoint.host);
-
-      auto response_callback = ([this, lifetime = shared_from_this()](
-                                  std::unique_ptr<curl::CurlRequest>&& request,
-                                  CURLcode curl_response,
-                                  long status_code) {
-        std::lock_guard<ccf::pal::Mutex> guard(this->lock);
-
-        const auto& server = servers.front();
-        const auto& endpoint = server.front();
         auto* response_body = request->get_response_body();
         const auto& response_headers = request->get_response_headers();
 
@@ -211,7 +185,8 @@ namespace ccf
             "{} bytes",
             response_body->buffer.size());
 
-          handle_success_response_unsafe(std::move(response_body->buffer));
+          self->handle_success_response_unsafe(
+            std::move(response_body->buffer));
           return;
         }
 
@@ -221,15 +196,17 @@ namespace ccf
           curl_response,
           status_code);
 
-        if (server_retries_count >= max_retries_count(server))
+        if (
+          self->server_retries_count >=
+          max_retries_count(self->servers.front()))
         {
-          servers.pop_front();
+          self->servers.pop_front();
 
-          if (servers.empty())
+          if (self->servers.empty())
           {
             auto servers_tried = std::accumulate(
-              config.servers.begin(),
-              config.servers.end(),
+              self->config.servers.begin(),
+              self->config.servers.end(),
               std::string{},
               [](const std::string& a, const Server& b) {
                 return a + (a.length() > 0 ? ", " : "") + b.front().host;
@@ -238,19 +215,21 @@ namespace ccf
               "Giving up retrying fetching attestation endorsements from [{}] "
               "after {} attempts",
               servers_tried,
-              total_retries_count);
+              self->total_retries_count);
             throw ccf::pal::AttestationCollateralFetchingTimeout(
               "Timed out fetching attestation endorsements from all "
               "configured servers");
           }
 
-          server_retries_count = 0;
-          fetch_unsafe();
+          self->server_retries_count = 0;
+          self->fetch_unsafe();
         }
         else
         {
-          ++this->server_retries_count;
-          ++this->total_retries_count;
+          ++self->server_retries_count;
+          ++self->total_retries_count;
+
+          const auto& endpoint = self->servers.front().front();
 
           constexpr size_t default_retry_after_s = 3;
           size_t retry_after_s = default_retry_after_s;
@@ -292,11 +271,69 @@ namespace ccf
             endpoint,
             retry_after_s);
 
-          auto self = shared_from_this();
           ccf::tasks::add_delayed_task(
-            ccf::tasks::make_basic_task([self]() { self->fetch(); }),
+            ccf::tasks::make_basic_task(
+              [self = this->self]() { self->fetch(); }),
             retry_after);
         }
+      }
+
+      const std::string& get_name() const override
+      {
+        static const std::string name =
+          "QuoteEndorsementsClient::HandleResponseTask";
+        return name;
+      }
+    };
+
+    void fetch_unsafe()
+    {
+      const auto& server = servers.front();
+      const auto& endpoint = server.front();
+
+      curl::UniqueCURL curl_handle;
+
+      // Set curl get
+      curl_handle.set_opt(CURLOPT_HTTPGET, 1L);
+      // If the server does not respond at all within this time timeout
+      curl_handle.set_opt(CURLOPT_CONNECTTIMEOUT, server_connection_timeout_s);
+      // If the server does not completely response within this time timeout
+      curl_handle.set_opt(CURLOPT_TIMEOUT, server_response_timeout_s);
+
+      auto url = fmt::format(
+        "{}://{}:{}{}{}",
+        endpoint.tls ? "https" : "http",
+        endpoint.host,
+        endpoint.port,
+        endpoint.uri,
+        get_formatted_query(endpoint.params));
+
+      if (endpoint.tls)
+      {
+        // Note: server CA is not checked here as this client is not sending
+        // private data. If the server was malicious and the certificate chain
+        // was bogus, the verification of the endorsement of the quote would
+        // fail anyway.
+        curl_handle.set_opt(CURLOPT_SSL_VERIFYHOST, 0L);
+        curl_handle.set_opt(CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_handle.set_opt(CURLOPT_SSL_VERIFYSTATUS, 0L);
+      }
+
+      auto headers = ccf::curl::UniqueSlist();
+      for (auto const& [k, v] : endpoint.headers)
+      {
+        headers.append(k, v);
+      }
+      headers.append(http::headers::HOST, endpoint.host);
+
+      auto response_callback = ([self = shared_from_this()](
+                                  std::unique_ptr<curl::CurlRequest>&& request,
+                                  CURLcode curl_response,
+                                  long status_code) {
+        std::shared_ptr<HandleResponseTask> response_task =
+          std::make_shared<HandleResponseTask>(
+            self, std::move(request), curl_response, status_code);
+        ccf::tasks::add_task(response_task);
       });
 
       auto request = std::make_unique<curl::CurlRequest>(
@@ -308,58 +345,6 @@ namespace ccf
         std::make_unique<ccf::curl::ResponseBody>(
           endpoint.max_client_response_size),
         std::move(response_callback));
-
-      /* TODO: Work out where this lives now
-      // Start watchdog to send request on new server if it is unresponsive
-      auto self = shared_from_this();
-      ccf::tasks::add_delayed_task(
-        ccf::tasks::make_basic_task([self, endpoint, request_id]() {
-          std::lock_guard<ccf::pal::Mutex> guard(self->lock);
-          if (self->has_completed)
-          {
-            return;
-          }
-          if (request_id >= self->last_submitted_request_id)
-          {
-            auto& servers = self->config.servers;
-            // Should always contain at least one server,
-            // installed by ccf::pal::make_endorsement_endpoint_configuration()
-            if (servers.empty())
-            {
-              throw std::logic_error(
-                "No server specified to fetch endorsements");
-            }
-
-            self->server_retries_count++;
-            if (
-              self->server_retries_count >= max_retries_count(servers.front()))
-            {
-              if (servers.size() > 1)
-              {
-                // Move on to next server if we have passed max retries count
-                servers.pop_front();
-              }
-              else
-              {
-                auto& server = servers.front();
-                LOG_FAIL_FMT(
-                  "Giving up retrying fetching attestation endorsements from "
-                  "{} after {} attempts",
-                  server.front().host,
-                  server.front().max_retries_count);
-
-                throw ccf::pal::AttestationCollateralFetchingTimeout(
-                  "Timed out fetching attestation endorsements from all "
-                  "configured servers");
-                return;
-              }
-            }
-
-            self->fetch(servers.front());
-          }
-        }),
-        server_connection_timeout);
-        */
 
       LOG_INFO_FMT(
         "Fetching endorsements for attestation report at {}",
