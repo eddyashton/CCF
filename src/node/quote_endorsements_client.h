@@ -4,7 +4,6 @@
 
 #include "ccf/pal/attestation.h"
 #include "ccf/pal/attestation_sev_snp_endorsements.h"
-#include "ds/thread_messaging.h"
 #include "enclave/rpc_sessions.h"
 #include "http/curl.h"
 

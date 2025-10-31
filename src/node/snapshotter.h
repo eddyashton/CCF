@@ -120,7 +120,7 @@ namespace ccf
         self->snapshot_(std::move(snapshot), generation_count);
       }
 
-      std::string_view get_name() const override
+      const std::string& get_name() const override
       {
         return name;
       }

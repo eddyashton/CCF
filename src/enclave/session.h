@@ -46,6 +46,13 @@ namespace ccf
 
         self->handle_incoming_data_thread(std::move(data));
       }
+
+      const std::string& get_name() const override
+      {
+        static const std::string name =
+          "ThreadedSession::HandleIncomingDataTask";
+        return name;
+      }
     };
 
     struct SendDataTask : public SessionDataTask
@@ -55,6 +62,12 @@ namespace ccf
       void do_action() override
       {
         self->send_data_thread(std::move(data));
+      }
+
+      const std::string& get_name() const override
+      {
+        static const std::string name = "ThreadedSession::SendDataTask";
+        return name;
       }
     };
 

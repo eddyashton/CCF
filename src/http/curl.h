@@ -6,8 +6,9 @@
 #include "ccf/rest_verb.h"
 #include "ccf/threading/thread_ids.h"
 #include "ds/internal_logger.h"
-#include "ds/thread_messaging.h"
 #include "host/proxy.h"
+#include "tasks/basic_task.h"
+#include "tasks/task_system.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -389,7 +390,6 @@ namespace ccf::curl
     std::unique_ptr<ccf::curl::ResponseBody> response;
     ResponseHeaders response_headers;
     std::optional<ResponseCallback> response_callback;
-    std::optional<uint16_t> response_thread;
 
   public:
     CurlRequest(
@@ -399,17 +399,14 @@ namespace ccf::curl
       UniqueSlist&& headers_,
       std::unique_ptr<RequestBody>&& request_body_,
       std::unique_ptr<ccf::curl::ResponseBody>&& response_,
-      std::optional<ResponseCallback>&& response_callback_,
-      std::optional<uint16_t> response_thread_ =
-        threading::get_current_thread_id()) :
+      std::optional<ResponseCallback>&& response_callback_) :
       curl_handle(std::move(curl_handle_)),
       method(method_),
       url(std::move(url_)),
       headers(std::move(headers_)),
       request_body(std::move(request_body_)),
       response(std::move(response_)),
-      response_callback(std::move(response_callback_)),
-      response_thread(response_thread_)
+      response_callback(std::move(response_callback_))
     {
       if (url.empty())
       {
@@ -542,11 +539,6 @@ namespace ccf::curl
     {
       return response_headers.data;
     }
-
-    [[nodiscard]] std::optional<uint16_t> get_response_thread() const
-    {
-      return response_thread;
-    }
   };
 
   class CurlRequestCURLM : public UniqueCURLM
@@ -568,6 +560,29 @@ namespace ccf::curl
       CHECK_CURL_EASY_SETOPT(curl_handle, CURLOPT_PRIVATE, request.release());
       CHECK_CURL_MULTI(curl_multi_add_handle, p.get(), curl_handle);
     }
+
+    struct HandleCurlResponseTask : public ccf::tasks::BaseTask
+    {
+      std::unique_ptr<ccf::curl::CurlRequest> request;
+      CURLcode curl_code;
+
+      HandleCurlResponseTask(
+        std::unique_ptr<ccf::curl::CurlRequest>&& req, CURLcode cc) :
+        request(std::move(req)),
+        curl_code(cc)
+      {}
+
+      void do_task_implementation() override
+      {
+        CurlRequest::handle_response(std::move(request), curl_code);
+      }
+
+      const std::string& get_name() const override
+      {
+        static const std::string name = "HandleCurlResponse";
+        return name;
+      }
+    };
 
     int perform()
     {
@@ -607,25 +622,12 @@ namespace ccf::curl
           curl_multi_remove_handle(p.get(), easy);
 
           // dispatch the response handling to a thread for processing
-          if (request->get_response_thread().has_value())
-          {
-            using Data =
-              std::tuple<std::unique_ptr<curl::CurlRequest>, CURLcode>;
-            ::threading::ThreadMessaging::instance().add_task(
-              request->get_response_thread().value(),
-              std::make_unique<::threading::Tmsg<Data>>(
-                [](std::unique_ptr<::threading::Tmsg<Data>> msg) {
-                  auto& [curl_request, curl_code] = msg->data;
-                  CurlRequest::handle_response(
-                    std::move(curl_request), curl_code);
-                },
-                std::make_tuple(std::move(request_data_ptr), result)));
-          }
-          else
-          {
-            // If the response thread is not set, run on the uv thread
-            CurlRequest::handle_response(std::move(request_data_ptr), result);
-          }
+          ccf::tasks::add_task(std::make_shared<HandleCurlResponseTask>(
+            std::move(request_data_ptr), result));
+
+          // TODO: Retain an option to do this inline, some times some how?
+          // If the response thread is not set, run on the uv thread
+          // CurlRequest::handle_response(std::move(request_data_ptr), result);
         }
       } while (msgq > 0);
       return running_handles;

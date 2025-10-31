@@ -1215,7 +1215,7 @@ if(BUILD_TESTS)
   add_test_bin(
     curl_test ${CMAKE_CURRENT_SOURCE_DIR}/src/http/test/curl_test.cpp
   )
-  target_link_libraries(curl_test PRIVATE curl uv http_parser)
+  target_link_libraries(curl_test PRIVATE curl uv http_parser ccf_tasks)
 
   if(LONG_TESTS)
     add_e2e_test(

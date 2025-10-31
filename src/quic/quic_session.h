@@ -176,6 +176,12 @@ namespace quic
       {
         self->send_raw_thread(data, addr);
       }
+
+      const std::string& get_name() const override
+      {
+        static const std::string name = "quic::SendDataTask";
+        return name;
+      }
     };
 
     struct RecvDataTask : public SessionDataTask
@@ -185,6 +191,12 @@ namespace quic
       void do_action() override
       {
         self->recv(data.data(), data.size(), addr);
+      }
+
+      const std::string& get_name() const override
+      {
+        static const std::string name = "quic::RecvDataTask";
+        return name;
       }
     };
 

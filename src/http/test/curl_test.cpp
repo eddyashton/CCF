@@ -126,8 +126,9 @@ TEST_CASE("CurlmLibuvContext")
         std::move(headers),
         std::move(body),
         std::make_unique<ccf::curl::ResponseBody>(SIZE_MAX),
-        std::move(response_callback),
-        std::nullopt);
+        std::move(response_callback));
+      // std::nullopt); // TODO: Have an inline variant that directly calls
+      //  handle_response, rather than an extra arg
 
       ccf::curl::CurlmLibuvContextSingleton::get_instance()->attach_request(
         std::move(request));
@@ -192,8 +193,9 @@ TEST_CASE("CurlmLibuvContext slow")
         std::move(headers),
         std::move(body),
         std::make_unique<ccf::curl::ResponseBody>(SIZE_MAX),
-        std::move(response_callback),
-        std::nullopt);
+        std::move(response_callback));
+      // std::nullopt); // TODO: Have an inline variant that directly calls
+      //  handle_response, rather than an extra arg
 
       ccf::curl::CurlmLibuvContextSingleton::get_instance()->attach_request(
         std::move(request));
@@ -266,8 +268,9 @@ TEST_CASE("CurlmLibuvContext timeouts")
         std::move(headers),
         std::move(body),
         std::make_unique<ccf::curl::ResponseBody>(SIZE_MAX),
-        std::move(response_callback),
-        std::nullopt);
+        std::move(response_callback));
+      // std::nullopt); // TODO: Have an inline variant that directly calls
+      //  handle_response, rather than an extra arg
 
       ccf::curl::CurlmLibuvContextSingleton::get_instance()->attach_request(
         std::move(request));
@@ -346,8 +349,9 @@ TEST_CASE("CurlmLibuvContext multiple init")
         std::move(headers),
         std::move(body),
         std::make_unique<ccf::curl::ResponseBody>(SIZE_MAX),
-        std::move(response_callback),
-        std::nullopt);
+        std::move(response_callback));
+      // std::nullopt); // TODO: Have an inline variant that directly calls
+      //  handle_response, rather than an extra arg
 
       ccf::curl::CurlmLibuvContextSingleton::get_instance()->attach_request(
         std::move(request));
