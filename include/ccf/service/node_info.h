@@ -26,6 +26,25 @@ namespace ccf
      {NodeStatus::TRUSTED, "Trusted"},
      {NodeStatus::RETIRED, "Retired"}});
 
+  inline auto format_as(NodeStatus status)
+  {
+    switch (status)
+    {
+      case (ccf::NodeStatus::PENDING):
+      {
+        return "PENDING";
+      }
+      case (ccf::NodeStatus::TRUSTED):
+      {
+        return "TRUSTED";
+      }
+      case (ccf::NodeStatus::RETIRED):
+      {
+        return "RETIRED";
+      }
+    }
+  }
+
   struct NodeInfo : NodeInfoNetwork
   {
     /// Node enclave quote
@@ -86,36 +105,3 @@ namespace ccf
     node_data,
     retired_committed);
 }
-
-FMT_BEGIN_NAMESPACE
-template <>
-struct formatter<ccf::NodeStatus>
-{
-  template <typename ParseContext>
-  constexpr auto parse(ParseContext& ctx)
-  {
-    return ctx.begin();
-  }
-
-  template <typename FormatContext>
-  auto format(const ccf::NodeStatus& state, FormatContext& ctx) const
-    -> decltype(ctx.out())
-  {
-    switch (state)
-    {
-      case (ccf::NodeStatus::PENDING):
-      {
-        return format_to(ctx.out(), "PENDING");
-      }
-      case (ccf::NodeStatus::TRUSTED):
-      {
-        return format_to(ctx.out(), "TRUSTED");
-      }
-      case (ccf::NodeStatus::RETIRED):
-      {
-        return format_to(ctx.out(), "RETIRED");
-      }
-    }
-  }
-};
-FMT_END_NAMESPACE
