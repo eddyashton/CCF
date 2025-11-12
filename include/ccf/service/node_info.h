@@ -12,6 +12,8 @@
 #include <fmt/format.h>
 #include <optional>
 
+#define CCF_DEFINE_ENUM_FORMATTER()
+
 namespace ccf
 {
   enum class NodeStatus : uint8_t
@@ -26,24 +28,24 @@ namespace ccf
      {NodeStatus::TRUSTED, "Trusted"},
      {NodeStatus::RETIRED, "Retired"}});
 
-  inline auto format_as(NodeStatus status)
-  {
-    switch (status)
-    {
-      case (ccf::NodeStatus::PENDING):
-      {
-        return "PENDING";
-      }
-      case (ccf::NodeStatus::TRUSTED):
-      {
-        return "TRUSTED";
-      }
-      case (ccf::NodeStatus::RETIRED):
-      {
-        return "RETIRED";
-      }
-    }
-  }
+  // inline auto format_as(NodeStatus status)
+  // {
+  //   switch (status)
+  //   {
+  //     case (ccf::NodeStatus::PENDING):
+  //     {
+  //       return "PENDING";
+  //     }
+  //     case (ccf::NodeStatus::TRUSTED):
+  //     {
+  //       return "TRUSTED";
+  //     }
+  //     case (ccf::NodeStatus::RETIRED):
+  //     {
+  //       return "RETIRED";
+  //     }
+  //   }
+  // }
 
   struct NodeInfo : NodeInfoNetwork
   {

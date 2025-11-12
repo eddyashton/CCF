@@ -838,6 +838,14 @@ namespace std
 
 // Enum conversion, based on NLOHMANN_JSON_SERIALIZE_ENUM, but less permissive
 // (throws on unknown JSON values)
+#define ADD_FORMAT_CASE_FOR_JSON_NEXT(TYPE, VALUE) \
+  case (VALUE): \
+  { \
+    return #VALUE; \
+  }
+#define ADD_FORMAT_CASE_FOR_JSON_FINAL(TYPE, VALUE) \
+  ADD_FORMAT_CASE_FOR_JSON_NEXT(TYPE, VALUE)
+
 #define DECLARE_JSON_ENUM(TYPE, ...) \
   template <typename BasicJsonType> \
   inline void to_json(BasicJsonType& j, const TYPE& e) \
@@ -890,6 +898,20 @@ namespace std
     } \
     j["enum"] = enums; \
     j["type"] = "string"; \
+  } \
+  inline auto format_as(TYPE val) \
+  { \
+    switch (val) \
+    { \
+      _FOR_JSON_COUNT_NN(__VA_ARGS__) \
+      (POP1)(ADD_FORMAT_CASE, TYPE, ##__VA_ARGS__) default: \
+      { \
+        static_assert(nonstd::dependent_false<TYPE>::value, \
+                      "Unhandled value in formatting macro";) \
+      } \
+    } \
   }
+#undef ADD_FORMAT_CASE_FOR_JSON_NEXT
+#undef ADD_FORMAT_CASE_FOR_JSON_FINAL
 
 #pragma clang diagnostic pop
