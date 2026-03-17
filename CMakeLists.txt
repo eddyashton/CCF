@@ -379,9 +379,20 @@ if(CCF_RAFT_TRACING)
   add_compile_definitions(CCF_RAFT_TRACING)
 endif()
 
+add_library(
+  ccf_thread_local OBJECT ${CCF_DIR}/src/enclave/thread_local.cpp
+)
+set_property(TARGET ccf_thread_local PROPERTY POSITION_INDEPENDENT_CODE ON)
+target_compile_options(ccf_thread_local PRIVATE ${COMPILE_LIBCXX})
+add_san(ccf_thread_local)
+install(
+  TARGETS ccf_thread_local
+  EXPORT ccf
+)
+
 # Build common library for CCF enclaves
 set(CCF_IMPL_SOURCE
-    ${CCF_DIR}/src/enclave/main.cpp ${CCF_DIR}/src/enclave/thread_local.cpp
+    ${CCF_DIR}/src/enclave/main.cpp
     ${CCF_DIR}/src/node/quote.cpp ${CCF_DIR}/src/node/uvm_endorsements.cpp
     ${CCF_DIR}/src/node/recovery_decision_protocol.cpp
 )
@@ -401,6 +412,7 @@ add_ccf_static_library(
             curl
             ccf_pal
 )
+target_link_libraries(ccf PUBLIC ccf_thread_local)
 
 target_include_directories(
   ccf SYSTEM
@@ -837,21 +849,20 @@ if(BUILD_TESTS)
     )
 
     # Merkle Tree memory test
-    add_executable(
-      merkle_mem src/node/test/merkle_mem.cpp
-                 ${CCF_DIR}/src/enclave/thread_local.cpp
-    )
+    add_executable(merkle_mem src/node/test/merkle_mem.cpp)
     target_compile_options(merkle_mem PRIVATE ${COMPILE_LIBCXX})
     target_link_libraries(
       merkle_mem PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${LINK_LIBCXX} ccfcrypto
+                         ccf_thread_local
     )
 
     # Raft driver and scenario test
     add_executable(
       raft_driver ${CMAKE_CURRENT_SOURCE_DIR}/src/consensus/aft/test/driver.cpp
-                  src/enclave/thread_local.cpp
     )
-    target_link_libraries(raft_driver PRIVATE ccfcrypto ccf_tasks)
+    target_link_libraries(
+      raft_driver PRIVATE ccfcrypto ccf_tasks ccf_thread_local
+    )
     target_include_directories(raft_driver PRIVATE src/aft)
 
     add_test(
@@ -893,13 +904,13 @@ if(BUILD_TESTS)
     )
     add_picobench(
       history_bench
-      SRCS src/node/test/history_bench.cpp src/enclave/thread_local.cpp
+      SRCS src/node/test/history_bench.cpp
       LINK_LIBS ccf_kv ccf_tasks
     )
 
     add_picobench(
       kv_bench
-      SRCS src/kv/test/kv_bench.cpp src/enclave/thread_local.cpp
+      SRCS src/kv/test/kv_bench.cpp
       LINK_LIBS ccf_kv
     )
     add_picobench(merkle_bench SRCS src/node/test/merkle_bench.cpp)
