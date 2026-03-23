@@ -695,8 +695,8 @@ if(BUILD_TESTS)
     add_unit_test(
       historical_queries_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/historical_queries.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/entry_store_test.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/receipt_builder_test.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/entry_store.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/receipt_builder.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/receipt.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/receipt.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/local_sealing.cpp

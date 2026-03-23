@@ -113,8 +113,7 @@ TEST_CASE("build_receipt_for_seqno: contiguous data then gap")
   REQUIRE(result.supporting_seqnos.count(13) == 1);
 }
 
-TEST_CASE(
-  "build_receipt_for_seqno: target is signature — no supporting needed")
+TEST_CASE("build_receipt_for_seqno: target is signature — no supporting needed")
 {
   AllRequestedStores all;
   TrackedStores tracked;
