@@ -93,18 +93,12 @@ namespace ccf::historical
     {
       EntryStore& entry_store;
 
-      RequestedStores my_stores;
+      // Single map of ALL entries this request is interested in.
+      // Each entry is either user-requested or supporting (for receipts).
+      TrackedStores tracked_stores;
       std::chrono::milliseconds time_to_expiry{};
 
       bool include_receipts = false;
-
-      // Seqnos outside the user-requested range that are needed for receipt
-      // construction (e.g. the next signature after each data TX). Tracked
-      // so they can be properly ref-counted and cleaned up.
-      std::set<SeqNo> supporting_seqnos;
-      // Strong references to StoreDetails for supporting seqnos, keeping
-      // them alive in the weak-pointer all_stores map.
-      RequestedStores supporting_stores;
 
       // Only set when recovering ledger secrets
       std::optional<ccf::SeqNo> awaiting_ledger_secrets = std::nullopt;
@@ -124,22 +118,19 @@ namespace ccf::historical
 
       [[nodiscard]] ccf::SeqNo first_requested_seqno() const
       {
-        if (!my_stores.empty())
+        for (const auto& [seq, entry] : tracked_stores)
         {
-          return my_stores.begin()->first;
+          if (entry.user_requested)
+          {
+            return seq;
+          }
         }
-
         return {};
       }
 
-      struct AdjustResult
-      {
-        std::vector<SeqNo> removed;
-        std::vector<SeqNo> added;
-        std::set<SeqNo> old_supporting;
-      };
-
-      AdjustResult adjust_ranges(
+      // Returns seqnos removed and added from tracked_stores.
+      // The caller should remove_ref for removed and add_ref for added.
+      std::pair<std::vector<SeqNo>, std::vector<SeqNo>> adjust_ranges(
         const SeqNoCollection& new_seqnos,
         bool should_include_receipts,
         SeqNo earliest_ledger_secret_seqno)
@@ -147,131 +138,104 @@ namespace ccf::historical
         std::vector<SeqNo> removed{};
         std::vector<SeqNo> added{};
 
-        // If a seqno is earlier than the earliest known ledger secret, we will
-        // store that it was requested with a nullptr in `my_stores`, but not
-        // add it to `all_stores` to begin fetching until a sufficiently early
-        // secret has been retrieved. To avoid awkwardly sharding requests (and
-        // delaying the secret-fetch with a large request for a later range), we
-        // extend that to say that if _any_ seqno is too early, then _all_
-        // subsequent seqnos will be pending. This bool tracks that behaviour.
+        std::set<SeqNo> new_user_set(new_seqnos.begin(), new_seqnos.end());
+
+        // Clear user_requested flags — will be re-set below for entries
+        // still in the new request.
+        for (auto& [seq, entry] : tracked_stores)
+        {
+          entry.user_requested = false;
+        }
+
+        // Remove entries that are no longer user-requested.
+        // Supporting entries with fetched data are kept (lazy deletion) —
+        // they may still be useful for receipt construction and will be
+        // cleaned up when the whole request is dropped.
+        auto it = tracked_stores.begin();
+        while (it != tracked_stores.end())
+        {
+          const bool still_wanted =
+            new_user_set.find(it->first) != new_user_set.end();
+          const bool has_data = it->second.details != nullptr &&
+            it->second.details->store != nullptr;
+
+          if (!still_wanted && !(should_include_receipts && has_data))
+          {
+            removed.push_back(it->first);
+            it = tracked_stores.erase(it);
+          }
+          else
+          {
+            ++it;
+          }
+        }
+
+        // Add/update user-requested entries
         bool any_too_early = false;
-
+        for (auto seq : new_seqnos)
         {
-          auto prev_it = my_stores.begin();
-          auto new_it = new_seqnos.begin();
-          while (new_it != new_seqnos.end())
+          auto existing = tracked_stores.find(seq);
+          if (existing != tracked_stores.end())
           {
-            if (prev_it != my_stores.end() && *new_it == prev_it->first)
-            {
-              // Asking for a seqno which was also requested previously - do
-              // nothing and advance to compare next entries
-              ++new_it;
-              ++prev_it;
-            }
-            else if (prev_it != my_stores.end() && *new_it > prev_it->first)
-            {
-              // No longer looking for a seqno which was previously requested.
-              // Remove it from my_stores
-              removed.push_back(prev_it->first);
-              prev_it = my_stores.erase(prev_it);
-            }
-            else
-            {
-              // *new_it < prev_it->first
-              // Asking for a seqno which was not previously being fetched =>
-              // check if another request was fetching it, else create new
-              // details to track it
-              if (*new_it < earliest_ledger_secret_seqno || any_too_early)
-              {
-                // If this is too early for known secrets, just record that it
-                // was requested but don't add it to all_stores yet
-                added.push_back(*new_it);
-                prev_it = my_stores.insert_or_assign(prev_it, *new_it, nullptr);
-                any_too_early = true;
-              }
-              else
-              {
-                auto all_it = entry_store.all_stores.find(*new_it);
-                auto details = all_it == entry_store.all_stores.end() ?
-                  nullptr :
-                  all_it->second.lock();
-                if (details == nullptr)
-                {
-                  HISTORICAL_LOG("{} is newly requested", *new_it);
-                  details = std::make_shared<StoreDetails>();
-                  entry_store.all_stores.insert_or_assign(
-                    all_it, *new_it, details);
-                }
-                added.push_back(*new_it);
-                prev_it = my_stores.insert_or_assign(prev_it, *new_it, details);
-              }
-            }
+            existing->second.user_requested = true;
+            continue;
           }
 
-          if (prev_it != my_stores.end())
+          // New entry
+          StoreDetailsPtr details = nullptr;
+          if (seq < earliest_ledger_secret_seqno || any_too_early)
           {
-            // If we have a suffix of seqnos previously requested, now
-            // unrequested, purge them
-            for (auto it = prev_it; it != my_stores.end(); ++it)
-            {
-              removed.push_back(it->first);
-            }
-            my_stores.erase(prev_it, my_stores.end());
+            any_too_early = true;
           }
-        }
-
-        const bool any_diff = !removed.empty() || !added.empty();
-
-        if (!any_diff && (should_include_receipts == include_receipts))
-        {
-          HISTORICAL_LOG("Identical to previous request");
-          // Return current supporting set as "old" so the caller's diff
-          // sees no change and doesn't double-count refs.
-          return {removed, added, supporting_seqnos};
-        }
-
-        include_receipts = should_include_receipts;
-
-        // Save old supporting set for ref-count diffing by the caller.
-        auto old_supporting = std::move(supporting_seqnos);
-        supporting_seqnos.clear();
-        supporting_stores.clear();
-
-        // Rebuild supporting seqnos from scratch — the builder will tell
-        // us exactly what gaps exist now.
-        if (should_include_receipts)
-        {
-          for (auto seqno : new_seqnos)
-          {
-            auto build_result =
-              build_receipt_for_seqno(seqno, entry_store.all_stores, my_stores);
-            for (auto seq : build_result.supporting_seqnos)
-            {
-              // Only add if not already a user-requested seqno
-              if (my_stores.find(seq) == my_stores.end())
-              {
-                supporting_seqnos.insert(seq);
-              }
-            }
-          }
-
-          // Ensure all supporting seqnos have entries in all_stores so
-          // they will be fetched on the next tick. Keep strong refs.
-          for (auto seq : supporting_seqnos)
+          else
           {
             auto all_it = entry_store.all_stores.find(seq);
-            StoreDetailsPtr details = all_it == entry_store.all_stores.end() ?
+            details = all_it == entry_store.all_stores.end() ?
               nullptr :
               all_it->second.lock();
             if (details == nullptr)
             {
+              HISTORICAL_LOG("{} is newly requested", seq);
               details = std::make_shared<StoreDetails>();
               entry_store.all_stores.insert_or_assign(all_it, seq, details);
             }
-            supporting_stores[seq] = details;
+          }
+          added.push_back(seq);
+          tracked_stores[seq] = {details, true};
+        }
+
+        include_receipts = should_include_receipts;
+
+        // Always rebuild supporting entries — even if the user-requested
+        // set didn't change, previously-unfetched entries may now have data,
+        // allowing the receipt chain to extend further.
+        if (should_include_receipts)
+        {
+          for (auto seqno : new_seqnos)
+          {
+            auto build_result = build_receipt_for_seqno(
+              seqno, entry_store.all_stores, tracked_stores);
+            for (auto seq : build_result.supporting_seqnos)
+            {
+              if (tracked_stores.find(seq) == tracked_stores.end())
+              {
+                auto all_it = entry_store.all_stores.find(seq);
+                StoreDetailsPtr details =
+                  all_it == entry_store.all_stores.end() ?
+                  nullptr :
+                  all_it->second.lock();
+                if (details == nullptr)
+                {
+                  details = std::make_shared<StoreDetails>();
+                  entry_store.all_stores.insert_or_assign(all_it, seq, details);
+                }
+                tracked_stores[seq] = {details, false};
+                added.push_back(seq);
+              }
+            }
           }
         }
-        return {removed, added, old_supporting};
+        return {removed, added};
       }
     };
 
@@ -307,9 +271,7 @@ namespace ccf::historical
       else
       {
         lru_lookup[handle] = lru_requests.insert(lru_requests.begin(), handle);
-        const auto& req = requests.at(handle);
-        entry_store.add_refs_for(handle, req.my_stores);
-        entry_store.add_refs_for_set(handle, req.supporting_seqnos);
+        entry_store.add_refs_for(handle, requests.at(handle).tracked_stores);
       }
     }
 
@@ -331,9 +293,7 @@ namespace ccf::historical
           threshold,
           handle);
 
-        entry_store.remove_refs_for(handle, requests.at(handle).my_stores);
-        entry_store.remove_refs_for_set(
-          handle, requests.at(handle).supporting_seqnos);
+        entry_store.remove_refs_for(handle, requests.at(handle).tracked_stores);
         lru_lookup.erase(handle);
 
         requests.erase(handle);
@@ -346,9 +306,7 @@ namespace ccf::historical
       auto it = lru_lookup.find(handle);
       if (it != lru_lookup.end())
       {
-        entry_store.remove_refs_for(handle, requests.at(handle).my_stores);
-        entry_store.remove_refs_for_set(
-          handle, requests.at(handle).supporting_seqnos);
+        entry_store.remove_refs_for(handle, requests.at(handle).tracked_stores);
         lru_requests.erase(it->second);
         lru_lookup.erase(it);
       }
@@ -493,24 +451,29 @@ namespace ccf::historical
             // Newly have all required secrets - begin fetching the actual
             // entries. Note this is adding them to `all_stores`, from where
             // they'll be requested on the next tick.
-            auto my_stores_it = request.my_stores.begin();
-            while (my_stores_it != request.my_stores.end())
+            for (auto& [store_seqno, entry] : request.tracked_stores)
             {
-              auto [store_seqno, _] = *my_stores_it;
-              auto it = entry_store.all_stores.find(store_seqno);
-              auto store_details = it == entry_store.all_stores.end() ?
+              if (!entry.user_requested)
+              {
+                continue;
+              }
+              if (entry.details != nullptr)
+              {
+                continue;
+              }
+              auto sit = entry_store.all_stores.find(store_seqno);
+              auto store_details = sit == entry_store.all_stores.end() ?
                 nullptr :
-                it->second.lock();
+                sit->second.lock();
 
               if (store_details == nullptr)
               {
                 store_details = std::make_shared<StoreDetails>();
                 entry_store.all_stores.insert_or_assign(
-                  it, store_seqno, store_details);
+                  sit, store_seqno, store_details);
               }
 
-              my_stores_it->second = store_details;
-              ++my_stores_it;
+              entry.details = store_details;
             }
           }
 
@@ -522,25 +485,21 @@ namespace ccf::historical
         if (request.include_receipts)
         {
           const bool seqno_in_this_request =
-            (request.my_stores.find(seqno) != request.my_stores.end() ||
-             request.supporting_seqnos.count(seqno) > 0);
+            request.tracked_stores.find(seqno) != request.tracked_stores.end();
           if (seqno_in_this_request)
           {
             // Re-run the receipt builder for this seqno now that we have
             // its data. Collect any new supporting seqnos.
             auto build_result = build_receipt_for_seqno(
-              seqno, entry_store.all_stores, request.my_stores);
+              seqno, entry_store.all_stores, request.tracked_stores);
 
             for (auto seq : build_result.supporting_seqnos)
             {
-              // Only track as supporting if not already a user-requested seqno
-              if (request.my_stores.find(seq) != request.my_stores.end())
+              if (
+                request.tracked_stores.find(seq) ==
+                request.tracked_stores.end())
               {
-                continue;
-              }
-              if (request.supporting_seqnos.insert(seq).second)
-              {
-                // Newly needed — ensure it's in all_stores and ref-counted
+                // Newly needed supporting entry
                 auto all_it = entry_store.all_stores.find(seq);
                 StoreDetailsPtr sup_details =
                   all_it == entry_store.all_stores.end() ?
@@ -552,7 +511,7 @@ namespace ccf::historical
                   entry_store.all_stores.insert_or_assign(
                     all_it, seq, sup_details);
                 }
-                request.supporting_stores[seq] = sup_details;
+                request.tracked_stores[seq] = {sup_details, false};
                 entry_store.add_ref(seq, handle);
               }
             }
@@ -681,37 +640,16 @@ namespace ccf::historical
         seqnos.size(),
         *seqnos.begin(),
         include_receipts);
-      auto adj = request.adjust_ranges(
+      auto [removed, added] = request.adjust_ranges(
         seqnos, include_receipts, earliest_secret_.valid_from);
 
-      // Update refs for my_stores changes
-      for (auto seq : adj.removed)
+      for (auto seq : removed)
       {
         entry_store.remove_ref(seq, handle);
       }
-      for (auto seq : adj.added)
+      for (auto seq : added)
       {
         entry_store.add_ref(seq, handle);
-      }
-
-      // Update refs for supporting seqno changes
-      for (auto seq : adj.old_supporting)
-      {
-        if (
-          request.supporting_seqnos.find(seq) ==
-          request.supporting_seqnos.end())
-        {
-          // Was supporting, no longer needed
-          entry_store.remove_ref(seq, handle);
-        }
-      }
-      for (auto seq : request.supporting_seqnos)
-      {
-        if (adj.old_supporting.find(seq) == adj.old_supporting.end())
-        {
-          // Newly needed supporting seqno
-          entry_store.add_ref(seq, handle);
-        }
       }
 
       // If the earliest target entry cannot be deserialised with the earliest

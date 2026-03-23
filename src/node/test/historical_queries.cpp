@@ -2015,9 +2015,10 @@ TEST_CASE("adjust_ranges")
         seqno_collection.insert(seqno);
       }
 
-      auto adj = request.adjust_ranges(seqno_collection, true, 0);
-      SeqNoSet removed(adj.removed.begin(), adj.removed.end());
-      SeqNoSet added(adj.added.begin(), adj.added.end());
+      auto [removed_v, added_v] =
+        request.adjust_ranges(seqno_collection, true, 0);
+      SeqNoSet removed(removed_v.begin(), removed_v.end());
+      SeqNoSet added(added_v.begin(), added_v.end());
       return {removed, added};
     }
   };

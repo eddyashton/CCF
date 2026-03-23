@@ -12,7 +12,16 @@
 
 namespace ccf::historical
 {
-  using RequestedStores = std::map<ccf::SeqNo, StoreDetailsPtr>;
+  // A single entry tracked by a Request — either user-requested or a
+  // "supporting" entry needed for receipt construction. The flag
+  // distinguishes the two; all other code treats them uniformly.
+  struct TrackedEntry
+  {
+    StoreDetailsPtr details;
+    bool user_requested = false;
+  };
+
+  using TrackedStores = std::map<ccf::SeqNo, TrackedEntry>;
 
   // Result of attempting to build receipts for a set of requested seqnos.
   struct ReceiptBuildResult
@@ -37,8 +46,7 @@ namespace ccf::historical
     const ccf::kv::StorePtr& sig_store)
   {
     auto tx = sig_store->create_read_only_tx();
-    auto* signatures =
-      tx.ro<ccf::CoseSignatures>(ccf::Tables::COSE_SIGNATURES);
+    auto* signatures = tx.ro<ccf::CoseSignatures>(ccf::Tables::COSE_SIGNATURES);
     return signatures->get();
   }
 
@@ -52,14 +60,14 @@ namespace ccf::historical
   }
 
   // Given a signature transaction's StoreDetails, walk backwards through
-  // my_stores and assign receipts (Merkle proofs) to any entries covered by
-  // that signature's tree.
+  // tracked_stores and assign receipts (Merkle proofs) to any entries covered
+  // by that signature's tree.
   //
   // If should_fill is set, returns true iff that specific seqno was covered.
   // Mutates StoreDetails::receipt and ::transaction_id on covered entries.
   static bool fill_receipts_from_signature(
     const StoreDetailsPtr& sig_details,
-    const RequestedStores& my_stores,
+    const TrackedStores& tracked_stores,
     std::optional<ccf::SeqNo> should_fill = std::nullopt)
   {
     const auto sig = get_signature(sig_details->store);
@@ -76,17 +84,17 @@ namespace ccf::historical
     ccf::MerkleTreeHistory tree(serialised_tree.value());
 
     auto sig_lower_bound_it =
-      my_stores.lower_bound(sig_details->transaction_id.seqno);
+      tracked_stores.lower_bound(sig_details->transaction_id.seqno);
 
-    if (sig_lower_bound_it != my_stores.begin())
+    if (sig_lower_bound_it != tracked_stores.begin())
     {
       auto search_rit = std::reverse_iterator(sig_lower_bound_it);
-      while (search_rit != my_stores.rend())
+      while (search_rit != tracked_stores.rend())
       {
         auto seqno = search_rit->first;
         if (tree.in_range(seqno))
         {
-          auto details = search_rit->second;
+          auto& details = search_rit->second.details;
           if (details != nullptr && details->store != nullptr)
           {
             auto proof = tree.get_proof(seqno);
@@ -130,7 +138,7 @@ namespace ccf::historical
   static ReceiptBuildResult build_receipt_for_seqno(
     ccf::SeqNo target_seqno,
     const AllRequestedStores& all_stores,
-    const RequestedStores& my_stores)
+    const TrackedStores& tracked_stores)
   {
     ReceiptBuildResult result;
 
@@ -144,7 +152,7 @@ namespace ccf::historical
 
     if (target_details->is_signature)
     {
-      fill_receipts_from_signature(target_details, my_stores);
+      fill_receipts_from_signature(target_details, tracked_stores);
       return result;
     }
 
@@ -172,10 +180,12 @@ namespace ccf::historical
 
       if (details->is_signature)
       {
-        const auto filled_this = fill_receipts_from_signature(
-          details, my_stores, target_seqno);
+        const auto filled_this =
+          fill_receipts_from_signature(details, tracked_stores, target_seqno);
 
-        if (!filled_this && my_stores.find(target_seqno) != my_stores.end())
+        if (
+          !filled_this &&
+          tracked_stores.find(target_seqno) != tracked_stores.end())
         {
           throw std::logic_error(fmt::format(
             "Unexpected: Found a signature at {}, and contiguous range "

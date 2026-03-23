@@ -6,7 +6,6 @@
 #include "node/historical_queries/store_details.h"
 
 #include <cassert>
-#include <set>
 #include <unordered_map>
 
 namespace ccf::historical
@@ -48,9 +47,6 @@ namespace ccf::historical
       auto it = store_to_requests_.find(seq);
       if (it == store_to_requests_.end())
       {
-        // Seqno was not ref-counted — this can happen when a supporting
-        // seqno overlaps with my_stores, or when a request is torn down
-        // after partial setup. Safe to skip.
         return;
       }
 
@@ -78,23 +74,6 @@ namespace ccf::historical
     void remove_refs_for(CompoundHandle handle, const auto& stores_map)
     {
       for (const auto& [seq, _] : stores_map)
-      {
-        remove_ref(seq, handle);
-      }
-    }
-
-    void add_refs_for_set(CompoundHandle handle, const std::set<SeqNo>& seqnos)
-    {
-      for (auto seq : seqnos)
-      {
-        add_ref(seq, handle);
-      }
-    }
-
-    void remove_refs_for_set(
-      CompoundHandle handle, const std::set<SeqNo>& seqnos)
-    {
-      for (auto seq : seqnos)
       {
         remove_ref(seq, handle);
       }
