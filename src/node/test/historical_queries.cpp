@@ -2004,7 +2004,7 @@ TEST_CASE("adjust_ranges")
       const std::shared_ptr<ccf::LedgerSecrets>& secrets,
       const ringbuffer::WriterPtr& host_writer) :
       StateCacheImpl(store, secrets, host_writer),
-      request(all_stores)
+      request(entry_store)
     {}
 
     std::pair<SeqNoSet, SeqNoSet> adjust_ranges(const SeqNoSet& seqnos)

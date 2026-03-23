@@ -8,6 +8,7 @@
 #include "ds/ccf_assert.h"
 #include "kv/store.h"
 #include "node/encryptor.h"
+#include "node/historical_queries/entry_store.h"
 #include "node/history.h"
 #include "node/ledger_secrets.h"
 #include "node/rpc/node_interface.h"
@@ -24,41 +25,6 @@
 #else
 #  define HISTORICAL_LOG(...)
 #endif
-
-namespace ccf::historical
-{
-  enum class RequestNamespace : uint8_t
-  {
-    Application,
-    System,
-  };
-
-  using CompoundHandle = std::pair<RequestNamespace, RequestHandle>;
-};
-
-FMT_BEGIN_NAMESPACE
-template <>
-struct formatter<ccf::historical::CompoundHandle>
-{
-  template <typename ParseContext>
-  constexpr auto parse(ParseContext& ctx)
-  {
-    return ctx.begin();
-  }
-
-  template <typename FormatContext>
-  auto format(
-    const ccf::historical::CompoundHandle& p, FormatContext& ctx) const
-  {
-    return format_to(
-      ctx.out(),
-      "[{}|{}]",
-      std::get<0>(p) == ccf::historical::RequestNamespace::Application ? "APP" :
-                                                                         "SYS",
-      std::get<1>(p));
-  }
-};
-FMT_END_NAMESPACE
 
 namespace ccf::historical
 {
@@ -103,12 +69,6 @@ namespace ccf::historical
     // whether to keep all the writes so that we can build a diff later
     bool track_deletes_on_missing_keys_v = false;
 
-    enum class StoreStage : uint8_t
-    {
-      Fetching,
-      Trusted,
-    };
-
     using LedgerEntry = std::vector<uint8_t>;
 
     void update_earliest_known_ledger_secret()
@@ -136,49 +96,7 @@ namespace ccf::historical
       }
     }
 
-    struct StoreDetails
-    {
-      std::chrono::milliseconds time_until_fetch = {};
-      StoreStage current_stage = StoreStage::Fetching;
-      ccf::crypto::Sha256Hash entry_digest;
-      ccf::ClaimsDigest claims_digest;
-      ccf::kv::StorePtr store = nullptr;
-      bool is_signature = false;
-      TxReceiptImplPtr receipt = nullptr;
-      ccf::TxID transaction_id;
-      bool has_commit_evidence = false;
-
-      ccf::crypto::HashBytes get_commit_nonce()
-      {
-        if (store != nullptr)
-        {
-          auto e = store->get_encryptor();
-          return e->get_commit_nonce(
-            {transaction_id.view, transaction_id.seqno}, true);
-        }
-
-        throw std::logic_error("Store pointer not set");
-      }
-
-      std::optional<std::string> get_commit_evidence()
-      {
-        if (has_commit_evidence)
-        {
-          return fmt::format(
-            "ce:{}.{}:{}",
-            transaction_id.view,
-            transaction_id.seqno,
-            ds::to_hex(get_commit_nonce()));
-        }
-
-        return std::nullopt;
-      }
-    };
-    using StoreDetailsPtr = std::shared_ptr<StoreDetails>;
     using RequestedStores = std::map<ccf::SeqNo, StoreDetailsPtr>;
-
-    using WeakStoreDetailsPtr = std::weak_ptr<StoreDetails>;
-    using AllRequestedStores = std::map<ccf::SeqNo, WeakStoreDetailsPtr>;
 
     struct VersionedSecret
     {
@@ -199,7 +117,7 @@ namespace ccf::historical
 
     struct Request
     {
-      AllRequestedStores& all_stores;
+      EntryStore& entry_store;
 
       RequestedStores my_stores;
       std::chrono::milliseconds time_to_expiry{};
@@ -214,12 +132,12 @@ namespace ccf::historical
       // Only set when recovering ledger secrets
       std::optional<ccf::SeqNo> awaiting_ledger_secrets = std::nullopt;
 
-      Request(AllRequestedStores& all_stores_) : all_stores(all_stores_) {}
+      Request(EntryStore& entry_store_) : entry_store(entry_store_) {}
 
       [[nodiscard]] StoreDetailsPtr get_store_details(ccf::SeqNo seqno) const
       {
-        auto it = all_stores.find(seqno);
-        if (it != all_stores.end())
+        auto it = entry_store.all_stores.find(seqno);
+        if (it != entry_store.all_stores.end())
         {
           return it->second.lock();
         }
@@ -289,14 +207,16 @@ namespace ccf::historical
               }
               else
               {
-                auto all_it = all_stores.find(*new_it);
-                auto details =
-                  all_it == all_stores.end() ? nullptr : all_it->second.lock();
+                auto all_it = entry_store.all_stores.find(*new_it);
+                auto details = all_it == entry_store.all_stores.end() ?
+                  nullptr :
+                  all_it->second.lock();
                 if (details == nullptr)
                 {
                   HISTORICAL_LOG("{} is newly requested", *new_it);
                   details = std::make_shared<StoreDetails>();
-                  all_stores.insert_or_assign(all_it, *new_it, details);
+                  entry_store.all_stores.insert_or_assign(
+                    all_it, *new_it, details);
                 }
                 added.push_back(*new_it);
                 prev_it = my_stores.insert_or_assign(prev_it, *new_it, details);
@@ -375,15 +295,17 @@ namespace ccf::historical
             auto next_seqno = new_seqno + 1;
             while (true)
             {
-              auto all_it = all_stores.find(next_seqno);
-              auto details =
-                all_it == all_stores.end() ? nullptr : all_it->second.lock();
+              auto all_it = entry_store.all_stores.find(next_seqno);
+              auto details = all_it == entry_store.all_stores.end() ?
+                nullptr :
+                all_it->second.lock();
               if (details == nullptr)
               {
                 HISTORICAL_LOG(
                   "Looking for new supporting signature at {}", next_seqno);
                 details = std::make_shared<StoreDetails>();
-                all_stores.insert_or_assign(all_it, next_seqno, details);
+                entry_store.all_stores.insert_or_assign(
+                  all_it, next_seqno, details);
               }
 
               if (details->store == nullptr)
@@ -507,10 +429,9 @@ namespace ccf::historical
     // Track all things currently requested by external callers
     std::map<CompoundHandle, Request> requests;
 
-    // A map containing (weak pointers to) _all_ of the stores for active
-    // requests, allowing distinct requests for the same seqnos to share the
-    // same underlying state (and benefit from faster lookup)
-    AllRequestedStores all_stores;
+    // Owns the global entry store (fetched/in-flight ledger entries),
+    // their weak-pointer sharing map, and ref-counted size tracking.
+    EntryStore entry_store;
 
     ExpiryDuration default_expiry_duration = std::chrono::seconds(1800);
 
@@ -519,68 +440,9 @@ namespace ccf::historical
     std::list<CompoundHandle> lru_requests;
     std::map<CompoundHandle, std::list<CompoundHandle>::iterator> lru_lookup;
 
-    // To maintain the estimated size consumed by all requests. Gets updated
-    // when ledger entries are fetched, and when requests are dropped.
-    std::unordered_map<SeqNo, std::set<CompoundHandle>> store_to_requests;
-    std::unordered_map<ccf::SeqNo, size_t> raw_store_sizes;
-
     CacheSize soft_store_cache_limit{std::numeric_limits<size_t>::max()};
     CacheSize soft_store_cache_limit_raw =
       soft_store_cache_limit / soft_to_raw_ratio;
-    CacheSize estimated_store_cache_size{0};
-
-    void add_request_ref(SeqNo seq, CompoundHandle handle)
-    {
-      auto it = store_to_requests.find(seq);
-
-      if (it == store_to_requests.end())
-      {
-        store_to_requests.insert({seq, {handle}});
-        auto size = raw_store_sizes.find(seq);
-        if (size != raw_store_sizes.end())
-        {
-          estimated_store_cache_size += size->second;
-        }
-      }
-      else
-      {
-        it->second.insert(handle);
-      }
-    }
-
-    void add_request_refs(CompoundHandle handle)
-    {
-      for (const auto& [seq, _] : requests.at(handle).my_stores)
-      {
-        add_request_ref(seq, handle);
-      }
-    }
-
-    void remove_request_ref(SeqNo seq, CompoundHandle handle)
-    {
-      auto it = store_to_requests.find(seq);
-      assert(it != store_to_requests.end());
-
-      it->second.erase(handle);
-      if (it->second.empty())
-      {
-        store_to_requests.erase(it);
-        auto size = raw_store_sizes.find(seq);
-        if (size != raw_store_sizes.end())
-        {
-          estimated_store_cache_size -= size->second;
-          raw_store_sizes.erase(size);
-        }
-      }
-    }
-
-    void remove_request_refs(CompoundHandle handle)
-    {
-      for (const auto& [seq, _] : requests.at(handle).my_stores)
-      {
-        remove_request_ref(seq, handle);
-      }
-    }
 
     void lru_promote(CompoundHandle handle)
     {
@@ -593,13 +455,13 @@ namespace ccf::historical
       else
       {
         lru_lookup[handle] = lru_requests.insert(lru_requests.begin(), handle);
-        add_request_refs(handle);
+        entry_store.add_refs_for(handle, requests.at(handle).my_stores);
       }
     }
 
     void lru_shrink_to_fit(size_t threshold)
     {
-      while (estimated_store_cache_size > threshold)
+      while (entry_store.estimated_size() > threshold)
       {
         if (lru_requests.empty())
         {
@@ -611,11 +473,11 @@ namespace ccf::historical
         const auto handle = lru_requests.back();
         LOG_DEBUG_FMT(
           "Cache size shrinking (reached {} / {}). Dropping {}",
-          estimated_store_cache_size,
+          entry_store.estimated_size(),
           threshold,
           handle);
 
-        remove_request_refs(handle);
+        entry_store.remove_refs_for(handle, requests.at(handle).my_stores);
         lru_lookup.erase(handle);
 
         requests.erase(handle);
@@ -628,20 +490,10 @@ namespace ccf::historical
       auto it = lru_lookup.find(handle);
       if (it != lru_lookup.end())
       {
-        remove_request_refs(handle);
+        entry_store.remove_refs_for(handle, requests.at(handle).my_stores);
         lru_requests.erase(it->second);
         lru_lookup.erase(it);
       }
-    }
-
-    void update_store_raw_size(SeqNo seq, size_t new_size)
-    {
-      auto& stored_size = raw_store_sizes[seq];
-      assert(!stored_size || stored_size == new_size);
-
-      estimated_store_cache_size -= stored_size;
-      estimated_store_cache_size += new_size;
-      stored_size = new_size;
     }
 
     void fetch_entry_at(ccf::SeqNo seqno)
@@ -696,13 +548,14 @@ namespace ccf::historical
           seqno,
           earliest_ledger_secret_seqno);
 
-        auto it = all_stores.find(seqno_to_fetch);
-        auto details = it == all_stores.end() ? nullptr : it->second.lock();
+        auto it = entry_store.all_stores.find(seqno_to_fetch);
+        auto details =
+          it == entry_store.all_stores.end() ? nullptr : it->second.lock();
         if (details == nullptr)
         {
           LOG_TRACE_FMT("Requesting older secret at {} now", seqno_to_fetch);
           details = std::make_shared<StoreDetails>();
-          all_stores.insert_or_assign(it, seqno_to_fetch, details);
+          entry_store.all_stores.insert_or_assign(it, seqno_to_fetch, details);
           fetch_entry_at(seqno_to_fetch);
         }
 
@@ -786,14 +639,16 @@ namespace ccf::historical
             while (my_stores_it != request.my_stores.end())
             {
               auto [store_seqno, _] = *my_stores_it;
-              auto it = all_stores.find(store_seqno);
-              auto store_details =
-                it == all_stores.end() ? nullptr : it->second.lock();
+              auto it = entry_store.all_stores.find(store_seqno);
+              auto store_details = it == entry_store.all_stores.end() ?
+                nullptr :
+                it->second.lock();
 
               if (store_details == nullptr)
               {
                 store_details = std::make_shared<StoreDetails>();
-                all_stores.insert_or_assign(it, store_seqno, store_details);
+                entry_store.all_stores.insert_or_assign(
+                  it, store_seqno, store_details);
               }
 
               my_stores_it->second = store_details;
@@ -922,7 +777,7 @@ namespace ccf::historical
       if (it == requests.end())
       {
         // This is a new handle - insert a newly created Request for it
-        it = requests.emplace_hint(it, handle, Request(all_stores));
+        it = requests.emplace_hint(it, handle, Request(entry_store));
         HISTORICAL_LOG("First time I've seen handle {}", handle);
       }
 
@@ -945,11 +800,11 @@ namespace ccf::historical
 
       for (auto seq : removed)
       {
-        remove_request_ref(seq, handle);
+        entry_store.remove_ref(seq, handle);
       }
       for (auto seq : added)
       {
-        add_request_ref(seq, handle);
+        entry_store.add_ref(seq, handle);
       }
 
       // If the earliest target entry cannot be deserialised with the earliest
@@ -1182,8 +1037,9 @@ namespace ccf::historical
     bool handle_ledger_entry(ccf::SeqNo seqno, const uint8_t* data, size_t size)
     {
       std::lock_guard<ccf::pal::Mutex> guard(requests_lock);
-      const auto it = all_stores.find(seqno);
-      auto details = it == all_stores.end() ? nullptr : it->second.lock();
+      const auto it = entry_store.all_stores.find(seqno);
+      auto details =
+        it == entry_store.all_stores.end() ? nullptr : it->second.lock();
       if (details == nullptr || details->current_stage != StoreStage::Fetching)
       {
         // Unexpected entry, we already have it or weren't asking for it -
@@ -1280,7 +1136,7 @@ namespace ccf::historical
         std::move(claims_digest),
         has_commit_evidence);
 
-      update_store_raw_size(seqno, size);
+      entry_store.update_raw_size(seqno, size);
       return true;
     }
 
@@ -1343,12 +1199,12 @@ namespace ccf::historical
         // forget about it and drop any requests which were looking for it -
         // don't have a mechanism for remembering this failure and reporting it
         // to users.
-        const auto fetches_it = all_stores.find(seqno);
-        if (fetches_it != all_stores.end())
+        const auto fetches_it = entry_store.all_stores.find(seqno);
+        if (fetches_it != entry_store.all_stores.end())
         {
           delete_all_interested_requests(seqno);
 
-          all_stores.erase(fetches_it);
+          entry_store.all_stores.erase(fetches_it);
         }
       }
     }
@@ -1423,7 +1279,7 @@ namespace ccf::historical
     size_t get_estimated_store_cache_size()
     {
       std::lock_guard<ccf::pal::Mutex> guard(requests_lock);
-      return estimated_store_cache_size;
+      return entry_store.estimated_size();
     }
 
     void tick(const std::chrono::milliseconds& elapsed_ms)
@@ -1453,15 +1309,15 @@ namespace ccf::historical
       lru_shrink_to_fit(soft_store_cache_limit_raw);
 
       {
-        auto it = all_stores.begin();
+        auto it = entry_store.all_stores.begin();
         std::optional<std::pair<ccf::SeqNo, ccf::SeqNo>> range_to_request =
           std::nullopt;
-        while (it != all_stores.end())
+        while (it != entry_store.all_stores.end())
         {
           auto details = it->second.lock();
           if (details == nullptr)
           {
-            it = all_stores.erase(it);
+            it = entry_store.all_stores.erase(it);
           }
           else
           {
