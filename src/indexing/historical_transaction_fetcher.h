@@ -4,7 +4,7 @@
 
 #include "ds/internal_logger.h"
 #include "indexing/transaction_fetcher_interface.h"
-#include "node/historical_queries.h"
+#include "node/historical_queries/historical_queries.h"
 
 namespace ccf::indexing
 {

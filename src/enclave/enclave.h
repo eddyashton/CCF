@@ -17,7 +17,7 @@
 #include "js/interpreter_cache.h"
 #include "kv/ledger_chunker.h"
 #include "node/commit_callback_subsystem.h"
-#include "node/historical_queries.h"
+#include "node/historical_queries/historical_queries.h"
 #include "node/network_state.h"
 #include "node/node_state.h"
 #include "node/node_types.h"

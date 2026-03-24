@@ -9,7 +9,7 @@
 #include "consensus/aft/raft_types.h"
 #include "kv/kv_types.h"
 #include "node/cose_common.h"
-#include "node/historical_queries.h"
+#include "node/historical_queries/historical_queries.h"
 #include "node/identity.h"
 #include "node/tx_receipt_impl.h"
 #include "service/tables/previous_service_identity.h"

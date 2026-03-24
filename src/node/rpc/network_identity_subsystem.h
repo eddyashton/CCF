@@ -4,7 +4,7 @@
 
 #include "ccf/network_identity_interface.h"
 #include "ccf/service/tables/service.h"
-#include "node/historical_queries.h"
+#include "node/historical_queries/historical_queries.h"
 #include "node/identity.h"
 #include "node/rpc/node_interface.h"
 #include "service/internal_tables_access.h"
