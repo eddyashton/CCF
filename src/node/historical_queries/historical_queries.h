@@ -32,7 +32,7 @@ namespace ccf::historical
   static constexpr auto slow_fetch_threshold = std::chrono::milliseconds(1000);
   static constexpr size_t soft_to_raw_ratio{5};
 
-  class StateCacheImpl
+  class StateCacheCore
   {
   protected:
     ccf::kv::Store& source_store;
@@ -91,11 +91,11 @@ namespace ccf::historical
 
     struct Request
     {
-      EntryStore& entry_store;
+      LedgerEntryTracker& entry_store;
 
       // Single map of ALL entries this request is interested in.
       // Each entry is either user-requested or supporting (for receipts).
-      TrackedStores tracked_stores;
+      TrackedEntries tracked_stores;
       std::chrono::milliseconds time_to_expiry{};
 
       bool include_receipts = false;
@@ -103,7 +103,7 @@ namespace ccf::historical
       // Only set when recovering ledger secrets
       std::optional<ccf::SeqNo> awaiting_ledger_secrets = std::nullopt;
 
-      Request(EntryStore& entry_store_) : entry_store(entry_store_) {}
+      Request(LedgerEntryTracker& entry_store_) : entry_store(entry_store_) {}
 
       [[nodiscard]] StoreDetailsPtr get_store_details(ccf::SeqNo seqno) const
       {
@@ -224,7 +224,7 @@ namespace ccf::historical
 
     // Owns the global entry store (fetched/in-flight ledger entries),
     // their weak-pointer sharing map, and ref-counted size tracking.
-    EntryStore entry_store;
+    LedgerEntryTracker entry_store;
 
     ExpiryDuration default_expiry_duration = std::chrono::seconds(1800);
 
@@ -669,7 +669,7 @@ namespace ccf::historical
     }
 
   public:
-    StateCacheImpl(
+    StateCacheCore(
       ccf::kv::Store& store,
       const std::shared_ptr<ccf::LedgerSecrets>& secrets,
       ringbuffer::WriterPtr host_writer) :

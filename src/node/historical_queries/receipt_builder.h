@@ -21,7 +21,7 @@ namespace ccf::historical
     bool user_requested = false;
   };
 
-  using TrackedStores = std::map<ccf::SeqNo, TrackedEntry>;
+  using TrackedEntries = std::map<ccf::SeqNo, TrackedEntry>;
 
   // Result of attempting to build receipts for a set of requested seqnos.
   struct ReceiptBuildResult
@@ -67,7 +67,7 @@ namespace ccf::historical
   // Mutates StoreDetails::receipt and ::transaction_id on covered entries.
   static bool fill_receipts_from_signature(
     const StoreDetailsPtr& sig_details,
-    const TrackedStores& tracked_stores,
+    const TrackedEntries& tracked_stores,
     std::optional<ccf::SeqNo> should_fill = std::nullopt)
   {
     const auto sig = get_signature(sig_details->store);
@@ -138,7 +138,7 @@ namespace ccf::historical
   static ReceiptBuildResult build_receipt_for_seqno(
     ccf::SeqNo target_seqno,
     const AllRequestedStores& all_stores,
-    const TrackedStores& tracked_stores)
+    const TrackedEntries& tracked_stores)
   {
     ReceiptBuildResult result;
 

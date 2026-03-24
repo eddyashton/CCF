@@ -11,11 +11,11 @@ namespace ccf::indexing
   class HistoricalTransactionFetcher : public TransactionFetcher
   {
   private:
-    std::shared_ptr<ccf::historical::StateCacheImpl> historical_cache;
+    std::shared_ptr<ccf::historical::StateCacheCore> historical_cache;
 
   public:
     HistoricalTransactionFetcher(
-      const std::shared_ptr<ccf::historical::StateCacheImpl>& sc) :
+      const std::shared_ptr<ccf::historical::StateCacheCore>& sc) :
       historical_cache(sc)
     {}
 

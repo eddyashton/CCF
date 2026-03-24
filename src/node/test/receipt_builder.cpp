@@ -35,7 +35,7 @@ static StoreDetailsPtr make_fetching_details()
 // Helper: insert a StoreDetails into both all_stores and tracked_stores
 static void insert_entry(
   AllRequestedStores& all,
-  TrackedStores& tracked,
+  TrackedEntries& tracked,
   ccf::SeqNo seq,
   StoreDetailsPtr details,
   bool user_requested = true)
@@ -47,7 +47,7 @@ static void insert_entry(
 TEST_CASE("build_receipt_for_seqno: target not yet fetched")
 {
   AllRequestedStores all;
-  TrackedStores tracked;
+  TrackedEntries tracked;
 
   auto details = make_fetching_details();
   insert_entry(all, tracked, 10, details);
@@ -59,7 +59,7 @@ TEST_CASE("build_receipt_for_seqno: target not yet fetched")
 TEST_CASE("build_receipt_for_seqno: target not in all_stores")
 {
   AllRequestedStores all;
-  TrackedStores tracked;
+  TrackedEntries tracked;
 
   auto result = build_receipt_for_seqno(10, all, tracked);
   REQUIRE(result.supporting_seqnos.empty());
@@ -68,7 +68,7 @@ TEST_CASE("build_receipt_for_seqno: target not in all_stores")
 TEST_CASE("build_receipt_for_seqno: gap immediately after target")
 {
   AllRequestedStores all;
-  TrackedStores tracked;
+  TrackedEntries tracked;
 
   auto d10 = make_fetched_details(false);
   insert_entry(all, tracked, 10, d10);
@@ -82,7 +82,7 @@ TEST_CASE("build_receipt_for_seqno: gap immediately after target")
 TEST_CASE("build_receipt_for_seqno: fetching entry treated as gap")
 {
   AllRequestedStores all;
-  TrackedStores tracked;
+  TrackedEntries tracked;
 
   auto d10 = make_fetched_details(false);
   insert_entry(all, tracked, 10, d10);
@@ -98,7 +98,7 @@ TEST_CASE("build_receipt_for_seqno: fetching entry treated as gap")
 TEST_CASE("build_receipt_for_seqno: contiguous data then gap")
 {
   AllRequestedStores all;
-  TrackedStores tracked;
+  TrackedEntries tracked;
 
   auto d10 = make_fetched_details(false);
   auto d11 = make_fetched_details(false);
@@ -116,7 +116,7 @@ TEST_CASE("build_receipt_for_seqno: contiguous data then gap")
 TEST_CASE("build_receipt_for_seqno: target is signature — no supporting needed")
 {
   AllRequestedStores all;
-  TrackedStores tracked;
+  TrackedEntries tracked;
 
   // A signature entry. fill_receipts_from_signature will be called but
   // will return false (no real sig data in our mock). That's fine —
@@ -132,7 +132,7 @@ TEST_CASE("build_receipt_for_seqno: target is signature — no supporting needed
 TEST_CASE("build_receipt_for_seqno: finds signature after data entries")
 {
   AllRequestedStores all;
-  TrackedStores tracked;
+  TrackedEntries tracked;
 
   auto d10 = make_fetched_details(false);
   auto d11 = make_fetched_details(false);
@@ -158,7 +158,7 @@ TEST_CASE("build_receipt_for_seqno: finds signature after data entries")
 TEST_CASE("build_receipt_for_seqno: only scans all_stores, not tracked_stores")
 {
   AllRequestedStores all;
-  TrackedStores tracked;
+  TrackedEntries tracked;
 
   auto d10 = make_fetched_details(false);
   insert_entry(all, tracked, 10, d10);
@@ -177,7 +177,7 @@ TEST_CASE("build_receipt_for_seqno: only scans all_stores, not tracked_stores")
 TEST_CASE("build_receipt_for_seqno: expired weak pointer treated as gap")
 {
   AllRequestedStores all;
-  TrackedStores tracked;
+  TrackedEntries tracked;
 
   auto d10 = make_fetched_details(false);
   insert_entry(all, tracked, 10, d10);
@@ -197,7 +197,7 @@ TEST_CASE("build_receipt_for_seqno: expired weak pointer treated as gap")
 TEST_CASE("build_receipt_for_seqno: multiple calls extend chain")
 {
   AllRequestedStores all;
-  TrackedStores tracked;
+  TrackedEntries tracked;
 
   auto d10 = make_fetched_details(false);
   insert_entry(all, tracked, 10, d10);

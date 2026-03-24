@@ -75,11 +75,11 @@ namespace ccf
 
         const auto system_handle = make_system_handle(i);
         auto* cache_impl =
-          dynamic_cast<ccf::historical::StateCacheImpl*>(&state_cache);
+          dynamic_cast<ccf::historical::StateCacheCore*>(&state_cache);
         if (cache_impl == nullptr)
         {
           throw std::logic_error(
-            "StateCacheImpl required to access cache as "
+            "StateCacheCore required to access cache as "
             "RequestNamespace::System");
         }
 

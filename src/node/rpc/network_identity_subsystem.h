@@ -109,7 +109,7 @@ namespace ccf
   protected:
     AbstractNodeState& node_state;
     const std::unique_ptr<NetworkIdentity>& network_identity;
-    std::shared_ptr<historical::StateCacheImpl> historical_cache;
+    std::shared_ptr<historical::StateCacheCore> historical_cache;
     std::map<SeqNo, CoseEndorsement> endorsements;
     std::map<SeqNo, ccf::crypto::ECPublicKeyPtr> trusted_keys;
     std::optional<TxID> current_service_from;
@@ -121,7 +121,7 @@ namespace ccf
     NetworkIdentitySubsystem(
       AbstractNodeState& node_state_,
       const std::unique_ptr<NetworkIdentity>& network_identity_,
-      std::shared_ptr<ccf::historical::StateCacheImpl> historical_cache_) :
+      std::shared_ptr<ccf::historical::StateCacheCore> historical_cache_) :
       node_state(node_state_),
       network_identity(network_identity_),
       historical_cache(std::move(historical_cache_))

@@ -13,9 +13,9 @@ static const CompoundHandle HANDLE_A = {RequestNamespace::Application, 1};
 static const CompoundHandle HANDLE_B = {RequestNamespace::Application, 2};
 static const CompoundHandle HANDLE_C = {RequestNamespace::System, 1};
 
-TEST_CASE("EntryStore: basic add/remove ref")
+TEST_CASE("LedgerEntryTracker: basic add/remove ref")
 {
-  EntryStore store;
+  LedgerEntryTracker store;
 
   REQUIRE(store.estimated_size() == 0);
 
@@ -68,9 +68,9 @@ TEST_CASE("EntryStore: basic add/remove ref")
   }
 }
 
-TEST_CASE("EntryStore: multiple handles sharing a seqno")
+TEST_CASE("LedgerEntryTracker: multiple handles sharing a seqno")
 {
-  EntryStore store;
+  LedgerEntryTracker store;
 
   // Production order: add_ref first, then update_raw_size
   store.add_ref(10, HANDLE_A);
@@ -105,9 +105,9 @@ TEST_CASE("EntryStore: multiple handles sharing a seqno")
   }
 }
 
-TEST_CASE("EntryStore: multiple seqnos")
+TEST_CASE("LedgerEntryTracker: multiple seqnos")
 {
-  EntryStore store;
+  LedgerEntryTracker store;
 
   // Production order: add refs first, then sizes arrive
   store.add_ref(10, HANDLE_A);
@@ -132,9 +132,9 @@ TEST_CASE("EntryStore: multiple seqnos")
     REQUIRE(store.estimated_size() == 0);
   }
 
-  SUBCASE("add_refs_for works with TrackedStores map")
+  SUBCASE("add_refs_for works with TrackedEntries map")
   {
-    TrackedStores tracked;
+    TrackedEntries tracked;
     tracked[10] = {nullptr, true};
     tracked[20] = {nullptr, true};
 
@@ -148,7 +148,7 @@ TEST_CASE("EntryStore: multiple seqnos")
 
   SUBCASE("remove_refs_for removes all refs for a handle")
   {
-    TrackedStores tracked;
+    TrackedEntries tracked;
     tracked[10] = {nullptr, true};
     tracked[20] = {nullptr, true};
 
@@ -158,9 +158,9 @@ TEST_CASE("EntryStore: multiple seqnos")
   }
 }
 
-TEST_CASE("EntryStore: update_raw_size is idempotent for same size")
+TEST_CASE("LedgerEntryTracker: update_raw_size is idempotent for same size")
 {
-  EntryStore store;
+  LedgerEntryTracker store;
 
   store.add_ref(10, HANDLE_A);
   store.update_raw_size(10, 100);
@@ -171,9 +171,9 @@ TEST_CASE("EntryStore: update_raw_size is idempotent for same size")
   REQUIRE(store.estimated_size() == 100);
 }
 
-TEST_CASE("EntryStore: cross-namespace handles are distinct")
+TEST_CASE("LedgerEntryTracker: cross-namespace handles are distinct")
 {
-  EntryStore store;
+  LedgerEntryTracker store;
 
   // HANDLE_A is Application/1, HANDLE_C is System/1
   store.add_ref(10, HANDLE_A);
@@ -188,9 +188,9 @@ TEST_CASE("EntryStore: cross-namespace handles are distinct")
   REQUIRE(store.estimated_size() == 0);
 }
 
-TEST_CASE("EntryStore: size accounting after remove and re-add")
+TEST_CASE("LedgerEntryTracker: size accounting after remove and re-add")
 {
-  EntryStore store;
+  LedgerEntryTracker store;
 
   store.add_ref(10, HANDLE_A);
   store.update_raw_size(10, 100);

@@ -12,11 +12,11 @@ namespace ccf::historical
 {
   // Owns the global store of fetched/in-flight ledger entries and the
   // ref-counting / size-tracking bookkeeping that was previously spread
-  // across StateCacheImpl.  All cache-size mutations go through this class
+  // across StateCacheCore.  All cache-size mutations go through this class
   // so that the invariant
   //   estimated_size == sum(raw_size for entries with ref_count > 0)
   // is maintained in exactly one place.
-  class EntryStore
+  class LedgerEntryTracker
   {
   public:
     // Weak-pointer map of *all* entries across all requests.  Distinct

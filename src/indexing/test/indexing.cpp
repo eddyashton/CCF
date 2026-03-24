@@ -311,7 +311,7 @@ TEST_CASE_TEMPLATE(
   kv_store.set_encryptor(std::make_shared<ccf::NodeEncryptor>(ledger_secrets));
 
   auto stub_writer = std::make_shared<StubWriter>();
-  auto cache = std::make_shared<ccf::historical::StateCacheImpl>(
+  auto cache = std::make_shared<ccf::historical::StateCacheCore>(
     kv_store, ledger_secrets, stub_writer);
 
   auto fetcher =
@@ -459,7 +459,7 @@ TEST_CASE(
   kv_store.set_encryptor(std::make_shared<ccf::NodeEncryptor>(ledger_secrets));
 
   auto stub_writer = std::make_shared<StubWriter>();
-  auto cache = std::make_shared<ccf::historical::StateCacheImpl>(
+  auto cache = std::make_shared<ccf::historical::StateCacheCore>(
     kv_store, ledger_secrets, stub_writer);
 
   auto fetcher =
@@ -723,7 +723,7 @@ TEST_CASE(
   kv_store.set_encryptor(encryptor);
 
   auto stub_writer = std::make_shared<StubWriter>();
-  auto cache = std::make_shared<ccf::historical::StateCacheImpl>(
+  auto cache = std::make_shared<ccf::historical::StateCacheCore>(
     kv_store, ledger_secrets, stub_writer);
 
   auto fetcher = std::make_shared<MockTransactionFetcher>(encryptor);

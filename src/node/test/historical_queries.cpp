@@ -302,7 +302,7 @@ MerkleProofData decode_merkle_proof(const std::vector<uint8_t>& encoded)
   return data;
 }
 
-TEST_CASE("StateCache point queries")
+TEST_CASE("AppFacingStateCache point queries")
 {
   auto state = create_and_init_state();
   auto& kv_store = *state.kv_store;
@@ -326,7 +326,7 @@ TEST_CASE("StateCache point queries")
 
   // Now we actually get to the historical queries
   auto stub_writer = std::make_shared<StubWriter>();
-  ccf::historical::StateCache cache(
+  ccf::historical::AppFacingStateCache cache(
     kv_store, state.ledger_secrets, stub_writer);
 
   static const ccf::historical::RequestHandle default_handle = 0;
@@ -575,7 +575,7 @@ TEST_CASE("StateCache point queries")
   }
 }
 
-TEST_CASE("StateCache get store vs get state")
+TEST_CASE("AppFacingStateCache get store vs get state")
 {
   auto state = create_and_init_state();
   auto& kv_store = *state.kv_store;
@@ -596,7 +596,7 @@ TEST_CASE("StateCache get store vs get state")
 
   // Now we actually get to the historical queries
   auto stub_writer = std::make_shared<StubWriter>();
-  ccf::historical::StateCache cache(
+  ccf::historical::AppFacingStateCache cache(
     kv_store, state.ledger_secrets, stub_writer);
 
   static const ccf::historical::RequestHandle default_handle = 0;
@@ -786,7 +786,7 @@ TEST_CASE("StateCache get store vs get state")
   }
 }
 
-TEST_CASE("StateCache range queries")
+TEST_CASE("AppFacingStateCache range queries")
 {
   auto state = create_and_init_state();
   auto& kv_store = *state.kv_store;
@@ -806,7 +806,7 @@ TEST_CASE("StateCache range queries")
 
   const auto end_seqno = kv_store.current_version();
 
-  ccf::historical::StateCache cache(
+  ccf::historical::AppFacingStateCache cache(
     kv_store, state.ledger_secrets, std::make_shared<StubWriter>());
   auto ledger = construct_host_ledger(state.kv_store->get_consensus());
 
@@ -936,7 +936,7 @@ TEST_CASE("Incremental progress")
   const auto end_seqno = kv_store.current_version();
 
   auto stub_writer = std::make_shared<StubWriter>();
-  ccf::historical::StateCache cache(
+  ccf::historical::AppFacingStateCache cache(
     kv_store, state.ledger_secrets, stub_writer);
   auto ledger = construct_host_ledger(state.kv_store->get_consensus());
 
@@ -1014,7 +1014,7 @@ TEST_CASE("Incremental progress")
   }
 }
 
-TEST_CASE("StateCache soft zero limit with increasing")
+TEST_CASE("AppFacingStateCache soft zero limit with increasing")
 {
   // Try get two states. Shouldn't be able to retrieve anything with 0 cache
   // limit. After increasing to the size of first state only that one is
@@ -1036,7 +1036,7 @@ TEST_CASE("StateCache soft zero limit with increasing")
   REQUIRE(ledger.size() == seq_high);
 
   auto stub_writer = std::make_shared<StubWriter>();
-  ccf::historical::StateCache cache(
+  ccf::historical::AppFacingStateCache cache(
     kv_store, state.ledger_secrets, stub_writer);
 
   cache.set_soft_cache_limit(0);
@@ -1080,7 +1080,7 @@ TEST_CASE("StateCache soft zero limit with increasing")
   REQUIRE(!cache.get_state_at(1, seq_high));
 }
 
-TEST_CASE("StateCache dropping state explicitly")
+TEST_CASE("AppFacingStateCache dropping state explicitly")
 {
   // Adding two states to the cache (limit is hit). Drop state2 and add state3.
   // State1 should remain available, as well as state3, state2 was force-evicted
@@ -1102,7 +1102,7 @@ TEST_CASE("StateCache dropping state explicitly")
   REQUIRE(ledger.size() == seq_high);
 
   auto stub_writer = std::make_shared<StubWriter>();
-  ccf::historical::StateCache cache(
+  ccf::historical::AppFacingStateCache cache(
     kv_store, state.ledger_secrets, stub_writer);
 
   REQUIRE(!cache.get_state_at(0, seq_low));
@@ -1142,7 +1142,7 @@ TEST_CASE("StateCache dropping state explicitly")
   REQUIRE(cache.get_state_at(2, seq_high));
 }
 
-TEST_CASE("StateCache sparse queries")
+TEST_CASE("AppFacingStateCache sparse queries")
 {
   auto state = create_and_init_state();
   auto& kv_store = *state.kv_store;
@@ -1162,7 +1162,7 @@ TEST_CASE("StateCache sparse queries")
 
   const auto end_seqno = kv_store.current_version();
 
-  ccf::historical::StateCache cache(
+  ccf::historical::AppFacingStateCache cache(
     kv_store, state.ledger_secrets, std::make_shared<StubWriter>());
   auto ledger = construct_host_ledger(state.kv_store->get_consensus());
 
@@ -1274,7 +1274,7 @@ TEST_CASE("StateCache sparse queries")
   }
 }
 
-TEST_CASE("StateCache concurrent access")
+TEST_CASE("AppFacingStateCache concurrent access")
 {
   auto state = create_and_init_state();
   auto& kv_store = *state.kv_store;
@@ -1300,7 +1300,7 @@ TEST_CASE("StateCache concurrent access")
   };
 
   auto writer = std::make_shared<StubWriter>();
-  ccf::historical::StateCache cache(kv_store, state.ledger_secrets, writer);
+  ccf::historical::AppFacingStateCache cache(kv_store, state.ledger_secrets, writer);
 
   std::atomic<bool> finished = false;
   std::thread host_thread([&]() {
@@ -1820,7 +1820,7 @@ TEST_CASE("Recover historical ledger secrets")
 
   // Now we actually get to the historical queries
   auto writer = std::make_shared<StubWriter>();
-  ccf::historical::StateCache cache(
+  ccf::historical::AppFacingStateCache cache(
     *recovered_state.kv_store, recovered_state.ledger_secrets, writer);
   constexpr ccf::historical::RequestHandle default_handle = 42;
 
@@ -1904,7 +1904,7 @@ TEST_CASE("Valid merkle proof from receipts")
   REQUIRE(ledger.size() == sigseq);
 
   auto writer = std::make_shared<StubWriter>();
-  ccf::historical::StateCache cache(kv_store, state.ledger_secrets, writer);
+  ccf::historical::AppFacingStateCache cache(kv_store, state.ledger_secrets, writer);
 
   const auto target = sigseq - 1;
   REQUIRE(cache.get_state_at(target, target) == nullptr);
@@ -1962,7 +1962,7 @@ TEST_CASE("Cache size estimation")
   auto ledger = construct_host_ledger(state.kv_store->get_consensus());
 
   auto stub_writer = std::make_shared<StubWriter>();
-  ccf::historical::StateCacheImpl cache(
+  ccf::historical::StateCacheCore cache(
     kv_store, state.ledger_secrets, stub_writer);
 
   cache.set_soft_cache_limit(0);
@@ -1995,7 +1995,7 @@ TEST_CASE("adjust_ranges")
 {
   using SeqNoSet = std::set<ccf::SeqNo>;
 
-  struct AdjustRangesAccessor : public ccf::historical::StateCacheImpl
+  struct AdjustRangesAccessor : public ccf::historical::StateCacheCore
   {
     Request request;
 
@@ -2003,7 +2003,7 @@ TEST_CASE("adjust_ranges")
       ccf::kv::Store& store,
       const std::shared_ptr<ccf::LedgerSecrets>& secrets,
       const ringbuffer::WriterPtr& host_writer) :
-      StateCacheImpl(store, secrets, host_writer),
+      StateCacheCore(store, secrets, host_writer),
       request(entry_store)
     {}
 
