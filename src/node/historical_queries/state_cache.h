@@ -146,5 +146,10 @@ namespace ccf::historical
     {
       return StateCacheCore::drop_cached_states(make_compound_handle(handle));
     }
+
+    size_t get_estimated_store_cache_size() override
+    {
+      return StateCacheCore::get_estimated_store_cache_size();
+    }
   };
 }

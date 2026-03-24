@@ -23,6 +23,7 @@
 
 #ifdef ENABLE_HISTORICAL_VERBOSE_LOGGING
 #  define HISTORICAL_LOG(...) LOG_INFO_FMT(__VA_ARGS__)
+#  include <ranges>
 #else
 #  define HISTORICAL_LOG(...)
 #endif
@@ -30,7 +31,6 @@
 namespace ccf::historical
 {
   static constexpr auto slow_fetch_threshold = std::chrono::milliseconds(1000);
-  static constexpr size_t soft_to_raw_ratio{5};
 
   class StateCacheCore
   {
@@ -234,8 +234,6 @@ namespace ccf::historical
     std::map<CompoundHandle, std::list<CompoundHandle>::iterator> lru_lookup;
 
     CacheSize soft_store_cache_limit{std::numeric_limits<size_t>::max()};
-    CacheSize soft_store_cache_limit_raw =
-      soft_store_cache_limit / soft_to_raw_ratio;
 
     void lru_promote(CompoundHandle handle)
     {
@@ -805,7 +803,6 @@ namespace ccf::historical
     void set_soft_cache_limit(CacheSize cache_limit)
     {
       soft_store_cache_limit = cache_limit;
-      soft_store_cache_limit_raw = soft_store_cache_limit / soft_to_raw_ratio;
     }
 
     void track_deletes_on_missing_keys(bool track)
@@ -1098,7 +1095,7 @@ namespace ccf::historical
         }
       }
 
-      lru_shrink_to_fit(soft_store_cache_limit_raw);
+      lru_shrink_to_fit(soft_store_cache_limit);
 
       {
         auto it = entry_store.all_stores.begin();

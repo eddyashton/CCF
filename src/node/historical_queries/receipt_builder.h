@@ -150,6 +150,11 @@ namespace ccf::historical
       return result;
     }
 
+    if (target_details->receipt != nullptr)
+    {
+      return result;
+    }
+
     if (target_details->is_signature)
     {
       fill_receipts_from_signature(target_details, tracked_stores);
