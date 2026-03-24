@@ -5,7 +5,7 @@
 // Uncomment this to aid debugging
 // #define ENABLE_HISTORICAL_VERBOSE_LOGGING
 
-#include "node/historical_queries/historical_queries.h"
+#include "node/historical_queries/state_cache.h"
 
 #include "ccf/crypto/rsa_key_pair.h"
 #include "ccf/pal/locking.h"
