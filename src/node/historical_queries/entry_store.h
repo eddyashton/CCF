@@ -94,6 +94,21 @@ namespace ccf::historical
       return estimated_size_;
     }
 
+    // Get an existing StoreDetails from all_stores, or create a fresh one.
+    // Ensures weak pointer in all_stores stays alive via the returned
+    // shared_ptr.
+    StoreDetailsPtr get_or_create(SeqNo seq)
+    {
+      auto it = all_stores.find(seq);
+      auto details = it == all_stores.end() ? nullptr : it->second.lock();
+      if (details == nullptr)
+      {
+        details = std::make_shared<StoreDetails>();
+        all_stores.insert_or_assign(it, seq, details);
+      }
+      return details;
+    }
+
   private:
     // Maps seqno -> set of handles that reference it
     std::unordered_map<SeqNo, std::set<CompoundHandle>> store_to_requests_;

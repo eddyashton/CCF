@@ -2,6 +2,7 @@
 // Licensed under the Apache 2.0 License.
 
 #include "node/historical_queries/entry_store.h"
+
 #include "node/historical_queries/receipt_builder.h"
 
 #include <doctest/doctest.h>

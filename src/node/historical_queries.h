@@ -140,101 +140,78 @@ namespace ccf::historical
 
         std::set<SeqNo> new_user_set(new_seqnos.begin(), new_seqnos.end());
 
-        // Clear user_requested flags — will be re-set below for entries
-        // still in the new request.
-        for (auto& [seq, entry] : tracked_stores)
+        // Remove tracked entries that are no longer needed.
+        // Keep supporting entries with fetched data when receipts are
+        // requested — they may be part of a receipt chain.
         {
-          entry.user_requested = false;
-        }
+          auto it = tracked_stores.begin();
+          while (it != tracked_stores.end())
+          {
+            const bool still_wanted = new_user_set.count(it->first) > 0;
+            const bool has_data = it->second.details != nullptr &&
+              it->second.details->store != nullptr;
 
-        // Remove entries that are no longer user-requested.
-        // Supporting entries with fetched data are kept (lazy deletion) —
-        // they may still be useful for receipt construction and will be
-        // cleaned up when the whole request is dropped.
-        auto it = tracked_stores.begin();
-        while (it != tracked_stores.end())
-        {
-          const bool still_wanted =
-            new_user_set.find(it->first) != new_user_set.end();
-          const bool has_data = it->second.details != nullptr &&
-            it->second.details->store != nullptr;
-
-          if (!still_wanted && !(should_include_receipts && has_data))
-          {
-            removed.push_back(it->first);
-            it = tracked_stores.erase(it);
-          }
-          else
-          {
-            ++it;
-          }
-        }
-
-        // Add/update user-requested entries
-        bool any_too_early = false;
-        for (auto seq : new_seqnos)
-        {
-          auto existing = tracked_stores.find(seq);
-          if (existing != tracked_stores.end())
-          {
-            existing->second.user_requested = true;
-            continue;
-          }
-
-          // New entry
-          StoreDetailsPtr details = nullptr;
-          if (seq < earliest_ledger_secret_seqno || any_too_early)
-          {
-            any_too_early = true;
-          }
-          else
-          {
-            auto all_it = entry_store.all_stores.find(seq);
-            details = all_it == entry_store.all_stores.end() ?
-              nullptr :
-              all_it->second.lock();
-            if (details == nullptr)
+            if (!still_wanted && !(should_include_receipts && has_data))
             {
-              HISTORICAL_LOG("{} is newly requested", seq);
-              details = std::make_shared<StoreDetails>();
-              entry_store.all_stores.insert_or_assign(all_it, seq, details);
+              removed.push_back(it->first);
+              it = tracked_stores.erase(it);
+            }
+            else
+            {
+              it->second.user_requested = still_wanted;
+              ++it;
             }
           }
-          added.push_back(seq);
-          tracked_stores[seq] = {details, true};
+        }
+
+        // Add new user-requested entries. If the seqno is earlier than
+        // the earliest known ledger secret, store it with a nullptr
+        // details (will be populated once secrets are recovered).
+        {
+          bool any_too_early = false;
+          for (auto seq : new_seqnos)
+          {
+            if (tracked_stores.count(seq) > 0)
+            {
+              continue; // Already tracked — flag was set above
+            }
+
+            StoreDetailsPtr details = nullptr;
+            if (!(seq < earliest_ledger_secret_seqno || any_too_early))
+            {
+              details = entry_store.get_or_create(seq);
+            }
+            else
+            {
+              any_too_early = true;
+            }
+
+            tracked_stores[seq] = {details, true};
+            added.push_back(seq);
+          }
         }
 
         include_receipts = should_include_receipts;
 
-        // Always rebuild supporting entries — even if the user-requested
-        // set didn't change, previously-unfetched entries may now have data,
-        // allowing the receipt chain to extend further.
+        // Build receipts and discover supporting entries.
         if (should_include_receipts)
         {
           for (auto seqno : new_seqnos)
           {
             auto build_result = build_receipt_for_seqno(
               seqno, entry_store.all_stores, tracked_stores);
+
             for (auto seq : build_result.supporting_seqnos)
             {
-              if (tracked_stores.find(seq) == tracked_stores.end())
+              if (tracked_stores.count(seq) == 0)
               {
-                auto all_it = entry_store.all_stores.find(seq);
-                StoreDetailsPtr details =
-                  all_it == entry_store.all_stores.end() ?
-                  nullptr :
-                  all_it->second.lock();
-                if (details == nullptr)
-                {
-                  details = std::make_shared<StoreDetails>();
-                  entry_store.all_stores.insert_or_assign(all_it, seq, details);
-                }
-                tracked_stores[seq] = {details, false};
+                tracked_stores[seq] = {entry_store.get_or_create(seq), false};
                 added.push_back(seq);
               }
             }
           }
         }
+
         return {removed, added};
       }
     };
@@ -370,8 +347,7 @@ namespace ccf::historical
         if (details == nullptr)
         {
           LOG_TRACE_FMT("Requesting older secret at {} now", seqno_to_fetch);
-          details = std::make_shared<StoreDetails>();
-          entry_store.all_stores.insert_or_assign(it, seqno_to_fetch, details);
+          details = entry_store.get_or_create(seqno_to_fetch);
           fetch_entry_at(seqno_to_fetch);
         }
 
@@ -453,27 +429,11 @@ namespace ccf::historical
             // they'll be requested on the next tick.
             for (auto& [store_seqno, entry] : request.tracked_stores)
             {
-              if (!entry.user_requested)
+              if (!entry.user_requested || entry.details != nullptr)
               {
                 continue;
               }
-              if (entry.details != nullptr)
-              {
-                continue;
-              }
-              auto sit = entry_store.all_stores.find(store_seqno);
-              auto store_details = sit == entry_store.all_stores.end() ?
-                nullptr :
-                sit->second.lock();
-
-              if (store_details == nullptr)
-              {
-                store_details = std::make_shared<StoreDetails>();
-                entry_store.all_stores.insert_or_assign(
-                  sit, store_seqno, store_details);
-              }
-
-              entry.details = store_details;
+              entry.details = entry_store.get_or_create(store_seqno);
             }
           }
 
@@ -488,30 +448,17 @@ namespace ccf::historical
             request.tracked_stores.find(seqno) != request.tracked_stores.end();
           if (seqno_in_this_request)
           {
-            // Re-run the receipt builder for this seqno now that we have
-            // its data. Collect any new supporting seqnos.
+            // Run the builder to discover gaps and ensure supporting
+            // entries are tracked so the host will fetch them.
             auto build_result = build_receipt_for_seqno(
               seqno, entry_store.all_stores, request.tracked_stores);
 
             for (auto seq : build_result.supporting_seqnos)
             {
-              if (
-                request.tracked_stores.find(seq) ==
-                request.tracked_stores.end())
+              if (request.tracked_stores.count(seq) == 0)
               {
-                // Newly needed supporting entry
-                auto all_it = entry_store.all_stores.find(seq);
-                StoreDetailsPtr sup_details =
-                  all_it == entry_store.all_stores.end() ?
-                  nullptr :
-                  all_it->second.lock();
-                if (sup_details == nullptr)
-                {
-                  sup_details = std::make_shared<StoreDetails>();
-                  entry_store.all_stores.insert_or_assign(
-                    all_it, seq, sup_details);
-                }
-                request.tracked_stores[seq] = {sup_details, false};
+                request.tracked_stores[seq] = {
+                  entry_store.get_or_create(seq), false};
                 entry_store.add_ref(seq, handle);
               }
             }
