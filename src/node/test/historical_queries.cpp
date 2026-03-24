@@ -5,8 +5,6 @@
 // Uncomment this to aid debugging
 // #define ENABLE_HISTORICAL_VERBOSE_LOGGING
 
-#include "node/historical_queries/state_cache.h"
-
 #include "ccf/crypto/rsa_key_pair.h"
 #include "ccf/pal/locking.h"
 #include "ccf/receipt.h"
@@ -16,6 +14,7 @@
 #include "ds/test/stub_writer.h"
 #include "kv/test/null_encryptor.h"
 #include "kv/test/stub_consensus.h"
+#include "node/historical_queries/state_cache.h"
 #include "node/history.h"
 #include "node/share_manager.h"
 
@@ -1299,7 +1298,8 @@ TEST_CASE("AppFacingStateCache concurrent access")
   };
 
   auto writer = std::make_shared<StubWriter>();
-  ccf::historical::AppFacingStateCache cache(kv_store, state.ledger_secrets, writer);
+  ccf::historical::AppFacingStateCache cache(
+    kv_store, state.ledger_secrets, writer);
 
   std::atomic<bool> finished = false;
   std::thread host_thread([&]() {
@@ -1903,7 +1903,8 @@ TEST_CASE("Valid merkle proof from receipts")
   REQUIRE(ledger.size() == sigseq);
 
   auto writer = std::make_shared<StubWriter>();
-  ccf::historical::AppFacingStateCache cache(kv_store, state.ledger_secrets, writer);
+  ccf::historical::AppFacingStateCache cache(
+    kv_store, state.ledger_secrets, writer);
 
   const auto target = sigseq - 1;
   REQUIRE(cache.get_state_at(target, target) == nullptr);

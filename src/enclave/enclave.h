@@ -70,8 +70,8 @@ namespace ccf
 
     std::unique_ptr<NodeContext> context = nullptr;
 
-    std::shared_ptr<ccf::historical::AppFacingStateCache> historical_state_cache =
-      nullptr;
+    std::shared_ptr<ccf::historical::AppFacingStateCache>
+      historical_state_cache = nullptr;
     std::shared_ptr<ccf::indexing::Indexer> indexer = nullptr;
     std::shared_ptr<ccf::indexing::EnclaveLFSAccess> lfs_access = nullptr;
 
@@ -110,10 +110,11 @@ namespace ccf
       context = std::make_unique<NodeContext>(node->get_node_id());
 
       LOG_TRACE_FMT("Creating context subsystems");
-      historical_state_cache = std::make_shared<ccf::historical::AppFacingStateCache>(
-        *network.tables,
-        network.ledger_secrets,
-        writer_factory->create_writer_to_outside());
+      historical_state_cache =
+        std::make_shared<ccf::historical::AppFacingStateCache>(
+          *network.tables,
+          network.ledger_secrets,
+          writer_factory->create_writer_to_outside());
       context->install_subsystem(historical_state_cache);
 
       indexer = std::make_shared<ccf::indexing::Indexer>(
