@@ -1,0 +1,17 @@
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant B as Backup (nodeA.ccf.com)
+    participant P as Primary (nodeB.ccf.com)
+
+    U->>B: POST /copy/A/B
+    B->>B: Lookup endpoint
+    B->>B: Decide request should be redirected
+    B->>B: Build redirect response
+    B-->>U: 307 REDIRECT Location: nodeB.ccf.com/copy/A/B
+
+    U->>P: POST /copy/A/B
+    P->>P: Lookup endpoint
+    P->>P: Decide request can be executed
+    P->>P: Execute request
+    P-->>U: 200 OK "Copied {a} from {A} to {B}"

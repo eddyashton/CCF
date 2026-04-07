@@ -1,0 +1,35 @@
+sequenceDiagram
+    participant User
+    participant NetStack
+    participant Frontend
+    participant N2N
+    participant NodeB
+
+    User->>NetStack: POST /copy/A/B
+
+    rect rgba(191, 223, 255, 0.5)
+    note over NetStack,N2N: Inside CCF node A (Backup)
+    NetStack->>NetStack: TLS decrypt request
+    NetStack->>NetStack: HTTP parse request
+    NetStack->>+Frontend: Frontend Dispatch
+    note left of Frontend: Tx is created here
+    Frontend->>Frontend: is_open(tx)
+    Frontend->>Frontend: find_endpoint(tx, ctx)
+    Frontend->>Frontend: get_authenticated_identity(tx, ctx)
+    Frontend->>-Frontend: forward?
+    Frontend->>N2N: forward()
+    N2N->>N2N: Queue forwarded msg
+    N2N-->>Frontend: return
+    Frontend->>Frontend: ctx.pending_response = true
+    note left of Frontend: Tx is destroyed here
+    Frontend-->>NetStack: return
+    end
+
+    N2N->>NodeB: forwarded_cmd
+    NodeB-->>N2N: forwarded_response
+
+    N2N->>N2N: N2N Parse
+    N2N->>NetStack: reply_async(session, response)
+    NetStack->>NetStack: TLS encrypt response
+
+    NetStack-->>User: 200 OK "Copied {a} from {A} to {B}"

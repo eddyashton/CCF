@@ -1,0 +1,65 @@
+sequenceDiagram
+    participant User
+    participant NetStackA
+    participant FrontendA
+    participant N2NA
+    participant N2NB
+    participant FrontendB
+
+    participant App
+    participant KV
+
+    User->>NetStackA: POST /copy/A/B
+
+    rect rgba(191, 223, 255, 0.5)
+    note over NetStackA,N2NA: Inside CCF node A
+    NetStackA->>NetStackA: TLS decrypt request
+    NetStackA->>NetStackA: HTTP parse request
+    NetStackA->>+FrontendA: Frontend Dispatch
+    note left of FrontendA: Tx is created here
+    FrontendA->>FrontendA: is_open(tx)
+    FrontendA->>FrontendA: find_endpoint(tx, ctx)
+    FrontendA->>FrontendA: get_authenticated_identity(tx, ctx)
+    FrontendA->>-FrontendA: forward?
+    FrontendA->>N2NA: forward()
+    N2NA->>N2NA: Queue forwarded msg
+    N2NA-->>FrontendA: return
+    FrontendA->>FrontendA: ctx.pending_response = true
+    note left of FrontendA: Tx is destroyed here
+    FrontendA-->>NetStackA: return
+    end
+
+    N2NA->>N2NB: forwarded_cmd
+
+    rect rgba(191, 223, 255, 0.5)
+    note over N2NB,KV: Inside CCF node B
+    N2NB->>N2NB: N2N parse
+    N2NB->>+FrontendB: Frontend Dispatch
+    note left of FrontendB: Tx is created here
+    FrontendB->>FrontendB: is_open(tx)
+    FrontendB->>App: find_endpoint(tx, ctx)
+    App->>App: h = find_handler_for(tx, ctx)
+    App-->>FrontendB: return h
+    FrontendB->>FrontendB: get_authenticated_identity(tx, ctx)
+    FrontendB->>FrontendB: forward?
+    FrontendB->>App: execute_endpoint(tx, ctx, h)
+    App->>KV: tx.get(A)
+    KV-->>App: return a
+    App->>KV: tx.put(B, a)
+    KV-->>App: return
+    App->>App: ctx.set_response(OK, "Copied {a} from {A} to {B}")
+    App-->>FrontendB: return
+    FrontendB->>FrontendB: tx.commit()
+    FrontendB->>-FrontendB: response.set_header(TX_HEADER, tx.commit_id())
+    FrontendB-->>N2NB: return
+    note left of FrontendB: Tx is destroyed here
+    N2NB->>N2NB: HTTP serialise response
+    end
+
+    N2NB-->>N2NA: forwarded_response
+
+    N2NA->>N2NA: N2N Parse
+    N2NA->>NetStackA: reply_async(session, response)
+    NetStackA->>NetStackA: TLS encrypt response
+
+    NetStackA-->>User: 200 OK "Copied {a} from {A} to {B}"

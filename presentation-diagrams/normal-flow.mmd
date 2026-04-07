@@ -1,0 +1,38 @@
+sequenceDiagram
+    participant User
+    participant NetStack
+    participant Frontend
+    participant App
+    participant KV
+
+    User->>NetStack: POST /copy/A/B
+
+    rect rgba(191, 223, 255, 0.5)
+    note over NetStack,KV: Inside single CCF node
+    NetStack->>NetStack: TLS decrypt request
+    NetStack->>NetStack: HTTP parse request
+    NetStack->>+Frontend: Frontend Dispatch
+    note left of Frontend: Tx is created here
+    Frontend->>Frontend: is_open(tx)
+    Frontend->>App: find_endpoint(tx, ctx)
+    App->>App: h = find_handler_for(tx, ctx)
+    App-->>Frontend: return h
+    Frontend->>Frontend: get_authenticated_identity(tx, ctx)
+    Frontend->>Frontend: forward?
+    Frontend->>App: execute_endpoint(tx, ctx, h)
+    App->>KV: tx.get(A)
+    KV-->>App: return a
+    App->>KV: tx.put(B, a)
+    KV-->>App: return
+    App->>App: ctx.set_claims_digest(...)
+    App->>App: ctx.set_response(OK, "Copied {a} from {A} to {B}")
+    App-->>Frontend: return
+    Frontend->>Frontend: tx.commit()
+    Frontend->>-Frontend: response.set_header(TX_HEADER, tx.commit_id())
+    note left of Frontend: Tx is destroyed here
+    Frontend-->>NetStack: return
+    NetStack->>NetStack: HTTP serialise response
+    NetStack->>NetStack: TLS encrypt response
+    end
+
+    NetStack-->>User: 200 OK "Copied {a} from {A} to {B}"

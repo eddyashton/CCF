@@ -1,0 +1,35 @@
+sequenceDiagram
+    participant NodeA
+    participant N2N
+    participant Frontend
+    participant App
+    participant KV
+
+    NodeA->>N2N: forwarded_cmd
+
+    rect rgba(191, 223, 255, 0.5)
+    note over N2N,KV: Inside CCF node B (Primary)
+    N2N->>N2N: N2N parse
+    N2N->>+Frontend: Frontend Dispatch
+    note left of Frontend: Tx is created here
+    Frontend->>Frontend: is_open(tx)
+    Frontend->>App: find_endpoint(tx, ctx)
+    App->>App: h = find_handler_for(tx, ctx)
+    App-->>Frontend: return h
+    Frontend->>Frontend: get_authenticated_identity(tx, ctx)
+    Frontend->>Frontend: forward?
+    Frontend->>App: execute_endpoint(tx, ctx, h)
+    App->>KV: tx.get(A)
+    KV-->>App: return a
+    App->>KV: tx.put(B, a)
+    KV-->>App: return
+    App->>App: ctx.set_response(OK, "Copied {a}")
+    App-->>Frontend: return
+    Frontend->>Frontend: tx.commit()
+    Frontend->>-Frontend: response.set_header(TX_HEADER, tx.commit_id())
+    Frontend-->>N2N: return
+    note left of Frontend: Tx is destroyed here
+    N2N->>N2N: HTTP serialise response
+    end
+
+    N2N-->>NodeA: forwarded_response
