@@ -97,7 +97,7 @@ How a client request becomes a transaction
 
 <div class="columns"><div class="col">
 
-![Normal request flow](presentation-diagrams/normal-flow.svg)
+![Normal request flow](request_flow_presentation-diagrams/normal-flow.svg)
 
 </div><div class="col">
 
@@ -118,11 +118,11 @@ How a client request becomes a transaction
 
 <div class="columns3"><div class="col">
 
-![Node A](presentation-diagrams/forwarding-nodeA.svg)
+![Node A](request_flow_presentation-diagrams/forwarding-nodeA.svg)
 
 </div><div class="col">
 
-![Node B](presentation-diagrams/forwarding-nodeB.svg)
+![Node B](request_flow_presentation-diagrams/forwarding-nodeB.svg)
 
 </div><div class="col">
 
@@ -145,7 +145,7 @@ How a client request becomes a transaction
 
 <div class="columns"><div class="col">
 
-![Redirect direct](presentation-diagrams/redirect-direct.svg)
+![Redirect direct](request_flow_presentation-diagrams/redirect-direct.svg)
 
 </div><div class="col">
 
@@ -166,7 +166,7 @@ How a client request becomes a transaction
 
 <div class="columns"><div class="col">
 
-![Redirect via LB](presentation-diagrams/redirect-loadbalancer.svg)
+![Redirect via LB](request_flow_presentation-diagrams/redirect-loadbalancer.svg)
 
 </div><div class="col">
 

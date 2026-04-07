@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DIAGRAM_DIR="$SCRIPT_DIR/presentation-diagrams"
+DIAGRAM_DIR="$SCRIPT_DIR/request_flow_presentation-diagrams"
 
 # Render Mermaid diagrams to SVG
 echo "==> Rendering Mermaid diagrams..."
@@ -19,6 +19,6 @@ done
 
 # Build PPTX from slides
 echo "==> Building presentation PPTX..."
-npx @marp-team/marp-cli "$SCRIPT_DIR/presentation-slides.md" --pptx --allow-local-files
+npx @marp-team/marp-cli "$SCRIPT_DIR/request_flow_presentation-slides.md" --pptx --allow-local-files
 
-echo "==> Done: presentation-slides.pptx"
+echo "==> Done: request_flow_presentation-slides.pptx"
