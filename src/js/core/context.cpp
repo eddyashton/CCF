@@ -120,24 +120,20 @@ namespace ccf::js::core
     return it->second;
   }
 
-  JSWrappedValue Context::wrap(JSValue&& val) const
+  JSWrappedValue Context::take(JSValue val) const
   {
-    // NOLINTBEGIN(performance-move-const-arg)
-    // Retained to call distinct overload of JSWrappedValue constructor, which
-    // avoids DupValue
-    return {ctx, std::move(val)};
-    // NOLINTEND(performance-move-const-arg)
-  };
+    return JSWrappedValue::take(ctx, val);
+  }
 
-  JSWrappedValue Context::wrap(const JSValue& val) const
+  JSWrappedValue Context::copy(JSValue val) const
   {
-    return {ctx, val};
-  };
+    return JSWrappedValue::copy(ctx, val);
+  }
 
   JSValue Context::extract_string_array(
     JSValueConst& argv, std::vector<std::string>& out)
   {
-    auto args = wrap(argv);
+    auto args = copy(argv);
 
     if (JS_IsArray(ctx, argv) == 0)
     {
@@ -179,7 +175,7 @@ namespace ccf::js::core
 
   std::pair<std::string, std::optional<std::string>> Context::error_message()
   {
-    auto exception_val = wrap(JS_GetException(ctx));
+    auto exception_val = take(JS_GetException(ctx));
     std::optional<std::string> message;
     bool is_error = exception_val.is_error();
     if (!is_error && exception_val.is_obj())
@@ -207,25 +203,25 @@ namespace ccf::js::core
   JSWrappedValue Context::get_property(
     JSValue object, char const* property_name) const
   {
-    return wrap(JS_GetPropertyStr(ctx, object, property_name));
+    return take(JS_GetPropertyStr(ctx, object, property_name));
   }
 
   JSWrappedValue Context::get_global_obj() const
   {
-    return wrap(JS_GetGlobalObject(ctx));
+    return take(JS_GetGlobalObject(ctx));
   }
 
   JSWrappedValue Context::get_global_property(const char* s) const
   {
     auto g = Context::get_global_obj();
-    return wrap(JS_GetPropertyStr(ctx, g.val, s));
+    return take(JS_GetPropertyStr(ctx, g.val, s));
   }
 
   JSWrappedValue Context::get_or_create_global_property(
     const char* s, JSWrappedValue&& default_value) const
   {
     auto g = Context::get_global_obj();
-    auto val = wrap(JS_GetPropertyStr(ctx, g.val, s));
+    auto val = take(JS_GetPropertyStr(ctx, g.val, s));
     if (val.is_undefined())
     {
       val = default_value;
@@ -241,7 +237,7 @@ namespace ccf::js::core
     size_t* pbyte_length,
     size_t* pbytes_per_element) const
   {
-    return wrap(JS_GetTypedArrayBuffer(
+    return take(JS_GetTypedArrayBuffer(
       ctx, obj.val, pbyte_offset, pbyte_length, pbytes_per_element));
   }
 
@@ -267,7 +263,7 @@ namespace ccf::js::core
     const std::string& func,
     const std::string& path)
   {
-    auto eval_val = wrap(JS_EvalFunction(ctx, module.val));
+    auto eval_val = take(JS_EvalFunction(ctx, module.val));
 
     if (eval_val.is_exception())
     {
@@ -293,7 +289,7 @@ namespace ccf::js::core
       JS_FreeAtom(ctx, export_name_atom);
       if (export_name.value_or("") == func)
       {
-        auto export_func = wrap(JS_GetModuleExportEntry(ctx, module_def, i));
+        auto export_func = take(JS_GetModuleExportEntry(ctx, module_def, i));
         if (JS_IsFunction(ctx, export_func.val) == 0)
         {
           throw std::runtime_error(fmt::format(
@@ -309,48 +305,49 @@ namespace ccf::js::core
 
   JSWrappedValue Context::null() const
   {
-    return wrap(ccf::js::core::constants::Null);
+    return take(ccf::js::core::constants::Null);
   }
 
   JSWrappedValue Context::undefined() const
   {
-    return wrap(ccf::js::core::constants::Undefined);
+    return take(ccf::js::core::constants::Undefined);
   }
 
   JSWrappedValue Context::new_obj() const
   {
-    return wrap(JS_NewObject(ctx));
+    return take(JS_NewObject(ctx));
   }
 
   JSWrappedValue Context::new_obj_class(JSClassID class_id) const
   {
-    return wrap(JS_NewObjectClass(ctx, class_id));
+    return take(JS_NewObjectClass(ctx, class_id));
   }
 
   JSWrappedValue Context::new_array() const
   {
-    return wrap(JS_NewArray(ctx));
+    return take(JS_NewArray(ctx));
   }
 
   JSWrappedValue Context::new_array_buffer_copy(
     const uint8_t* buf, size_t buf_len) const
   {
-    return wrap(JS_NewArrayBufferCopy(ctx, buf, buf_len));
+    return take(JS_NewArrayBufferCopy(ctx, buf, buf_len));
   }
 
   JSWrappedValue Context::new_array_buffer_copy(
     const char* buf, size_t buf_len) const
   {
-    return {
+    return JSWrappedValue::take(
       ctx,
       JS_NewArrayBufferCopy(
-        ctx, reinterpret_cast<const uint8_t*>(buf), buf_len)};
+        ctx, reinterpret_cast<const uint8_t*>(buf), buf_len));
   }
 
   JSWrappedValue Context::new_array_buffer_copy(
     std::span<const uint8_t> data) const
   {
-    return {ctx, JS_NewArrayBufferCopy(ctx, data.data(), data.size())};
+    return JSWrappedValue::take(
+      ctx, JS_NewArrayBufferCopy(ctx, data.data(), data.size()));
   }
 
   JSWrappedValue Context::new_string(const std::string_view& str) const
@@ -360,13 +357,13 @@ namespace ccf::js::core
 
   JSWrappedValue Context::new_string_len(const char* buf, size_t buf_len) const
   {
-    return wrap(JS_NewStringLen(ctx, buf, buf_len));
+    return take(JS_NewStringLen(ctx, buf, buf_len));
   }
 
   JSWrappedValue Context::new_string_len(
     const std::span<const uint8_t> buf) const
   {
-    return wrap(JS_NewStringLen(
+    return take(JS_NewStringLen(
       ctx, reinterpret_cast<const char*>(buf.data()), buf.size()));
   }
 
@@ -374,7 +371,7 @@ namespace ccf::js::core
   {
     va_list ap;
     va_start(ap, fmt);
-    auto r = wrap(JS_ThrowTypeError(ctx, fmt, ap));
+    auto r = take(JS_ThrowTypeError(ctx, fmt, ap));
     va_end(ap);
     return r;
   }
@@ -383,7 +380,7 @@ namespace ccf::js::core
   {
     va_list ap;
     va_start(ap, fmt);
-    auto r = wrap(JS_ThrowInternalError(ctx, fmt, ap));
+    auto r = take(JS_ThrowInternalError(ctx, fmt, ap));
     va_end(ap);
     return r;
   }
@@ -393,26 +390,26 @@ namespace ccf::js::core
 // "compound literals are a C99-specific feature"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wc99-extensions"
-    return wrap((JSValue){(JSValueUnion){.int32 = val}, tag});
+    return take((JSValue){(JSValueUnion){.int32 = val}, tag});
 #pragma clang diagnostic pop
   }
 
   JSWrappedValue Context::new_c_function(
     JSCFunction* func, const char* name, int length) const
   {
-    return wrap(JS_NewCFunction(ctx, func, name, length));
+    return take(JS_NewCFunction(ctx, func, name, length));
   }
 
   JSWrappedValue Context::new_getter_c_function(
     JSCFunction* func, const char* name, size_t arg_count) const
   {
-    return wrap(JS_NewCFunction2(
+    return take(JS_NewCFunction2(
       ctx, func, name, arg_count, JS_CFUNC_getter, JS_CFUNC_getter_magic));
   }
 
   JSWrappedValue Context::duplicate_value(JSValueConst original) const
   {
-    return wrap(JS_DupValue(ctx, original));
+    return take(JS_DupValue(ctx, original));
   }
 
   JSWrappedValue Context::eval(
@@ -421,13 +418,13 @@ namespace ccf::js::core
     const char* filename,
     int eval_flags) const
   {
-    return wrap(JS_Eval(ctx, input, input_len, filename, eval_flags));
+    return take(JS_Eval(ctx, input, input_len, filename, eval_flags));
   }
 
   JSWrappedValue Context::read_object(
     const uint8_t* buf, size_t buf_len, int flags) const
   {
-    return wrap(JS_ReadObject(ctx, buf, buf_len, flags));
+    return take(JS_ReadObject(ctx, buf, buf_len, flags));
   }
 
   namespace
@@ -485,7 +482,7 @@ namespace ccf::js::core
       argvn.push_back(a.val);
     }
 
-    return wrap(JS_Call(
+    return take(JS_Call(
       ctx,
       f.val,
       ccf::js::core::constants::Undefined,
@@ -495,7 +492,7 @@ namespace ccf::js::core
 
   JSWrappedValue Context::json_stringify(const JSWrappedValue& obj) const
   {
-    return wrap(JS_JSONStringify(
+    return take(JS_JSONStringify(
       ctx,
       obj.val,
       ccf::js::core::constants::Null,
@@ -505,13 +502,13 @@ namespace ccf::js::core
   JSWrappedValue Context::parse_json(const nlohmann::json& j) const
   {
     const auto buf = j.dump();
-    return wrap(JS_ParseJSON(ctx, buf.data(), buf.size(), "<json>"));
+    return take(JS_ParseJSON(ctx, buf.data(), buf.size(), "<json>"));
   }
 
   JSWrappedValue Context::parse_json(
     const char* buf, size_t buf_len, const char* filename) const
   {
-    return wrap(JS_ParseJSON(ctx, buf, buf_len, filename));
+    return take(JS_ParseJSON(ctx, buf, buf_len, filename));
   }
 
   std::optional<std::string> Context::to_str(const JSWrappedValue& x) const

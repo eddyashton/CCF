@@ -33,7 +33,7 @@ namespace ccf::js::extensions
         }
         if ((JS_IsError(ctx, argv[i]) == 0) && (JS_IsObject(argv[i]) != 0))
         {
-          auto rval = jsctx.json_stringify(jsctx.wrap(argv[i]));
+          auto rval = jsctx.json_stringify(jsctx.copy(argv[i]));
           str = jsctx.to_str(rval);
         }
         else

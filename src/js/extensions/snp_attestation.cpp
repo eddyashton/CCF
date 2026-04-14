@@ -164,7 +164,7 @@ namespace ccf::js::extensions
 
       {
         auto platform_version =
-          jsctx.wrap(make_js_tcb_version(jsctx, attestation.platform_version));
+          jsctx.take(make_js_tcb_version(jsctx, attestation.platform_version));
         JS_CHECK_EXC(platform_version);
         JS_CHECK_SET(a.set("platform_version", std::move(platform_version)));
       }
@@ -245,7 +245,7 @@ namespace ccf::js::extensions
 
       {
         auto reported_tcb =
-          jsctx.wrap(make_js_tcb_version(jsctx, attestation.reported_tcb));
+          jsctx.take(make_js_tcb_version(jsctx, attestation.reported_tcb));
         JS_CHECK_EXC(reported_tcb);
         JS_CHECK_SET(a.set("reported_tcb", std::move(reported_tcb)));
       }
@@ -263,7 +263,7 @@ namespace ccf::js::extensions
 
       {
         auto committed_tcb =
-          jsctx.wrap(make_js_tcb_version(jsctx, attestation.committed_tcb));
+          jsctx.take(make_js_tcb_version(jsctx, attestation.committed_tcb));
         JS_CHECK_EXC(committed_tcb);
         JS_CHECK_SET(a.set("committed_tcb", std::move(committed_tcb)));
       }
@@ -280,7 +280,7 @@ namespace ccf::js::extensions
 
       {
         auto launch_tcb =
-          jsctx.wrap(make_js_tcb_version(jsctx, attestation.launch_tcb));
+          jsctx.take(make_js_tcb_version(jsctx, attestation.launch_tcb));
         JS_CHECK_EXC(launch_tcb);
         JS_CHECK_SET(a.set("launch_tcb", std::move(launch_tcb)));
       }

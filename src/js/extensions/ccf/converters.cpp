@@ -89,7 +89,7 @@ namespace ccf::js::extensions
           ctx, "Passed %d arguments, but expected 1", argc);
       }
 
-      auto str = jsctx.json_stringify(jsctx.wrap(argv[0]));
+      auto str = jsctx.json_stringify(jsctx.copy(argv[0]));
       JS_CHECK_EXC(str);
 
       return js_str_to_buf(ctx, ccf::js::core::constants::Null, 1, &str.val);

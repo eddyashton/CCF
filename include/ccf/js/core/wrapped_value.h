@@ -15,11 +15,14 @@ namespace ccf::js::core
     JSValue val;
 
     JSWrappedValue();
-    JSWrappedValue(JSContext* ctx, JSValue&& val);
-    JSWrappedValue(JSContext* ctx, const JSValue& value);
     JSWrappedValue(const JSWrappedValue& other);
     JSWrappedValue(JSWrappedValue&& other) noexcept;
     ~JSWrappedValue();
+
+    /// Takes ownership of one refcount on val (no JS_DupValue)
+    [[nodiscard]] static JSWrappedValue take(JSContext* ctx, JSValue val);
+    /// Acquires a new refcount on val (calls JS_DupValue)
+    [[nodiscard]] static JSWrappedValue copy(JSContext* ctx, JSValue val);
 
     JSWrappedValue& operator=(const JSWrappedValue& other);
 

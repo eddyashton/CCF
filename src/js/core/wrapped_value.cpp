@@ -12,15 +12,21 @@ namespace ccf::js::core
     val(ccf::js::core::constants::Null)
   {}
 
-  JSWrappedValue::JSWrappedValue(JSContext* ctx, JSValue&& val) :
-    ctx(ctx),
-    val(val)
-  {}
+  JSWrappedValue JSWrappedValue::take(JSContext* ctx, JSValue val)
+  {
+    JSWrappedValue r;
+    r.ctx = ctx;
+    r.val = val;
+    return r;
+  }
 
-  JSWrappedValue::JSWrappedValue(JSContext* ctx, const JSValue& value) :
-    ctx(ctx),
-    val(JS_DupValue(ctx, value))
-  {}
+  JSWrappedValue JSWrappedValue::copy(JSContext* ctx, JSValue val)
+  {
+    JSWrappedValue r;
+    r.ctx = ctx;
+    r.val = JS_DupValue(ctx, val);
+    return r;
+  }
 
   JSWrappedValue::JSWrappedValue(const JSWrappedValue& other) :
     ctx(other.ctx),
@@ -46,6 +52,10 @@ namespace ccf::js::core
   {
     if (this != &other)
     {
+      if ((ctx != nullptr) && (JS_VALUE_GET_TAG(val) != JS_TAG_MODULE))
+      {
+        JS_FreeValue(ctx, val);
+      }
       ctx = other.ctx;
       val = JS_DupValue(ctx, other.val);
     }
@@ -54,7 +64,7 @@ namespace ccf::js::core
 
   JSWrappedValue JSWrappedValue::operator[](const char* prop) const
   {
-    return {ctx, JS_GetPropertyStr(ctx, val, prop)};
+    return take(ctx, JS_GetPropertyStr(ctx, val, prop));
   }
 
   JSWrappedValue JSWrappedValue::operator[](const std::string& prop) const
@@ -64,7 +74,7 @@ namespace ccf::js::core
 
   JSWrappedValue JSWrappedValue::operator[](uint32_t i) const
   {
-    return {ctx, JS_GetPropertyUint32(ctx, val, i)};
+    return take(ctx, JS_GetPropertyUint32(ctx, val, i));
   }
 
   int JSWrappedValue::set(const char* prop, JSWrappedValue&& value) const

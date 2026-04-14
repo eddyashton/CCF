@@ -135,7 +135,7 @@ namespace ccf::js::extensions
         return JS_ThrowTypeError(ctx, "issuer argument is not a string");
       }
 
-      auto metadata_val = jsctx.json_stringify(jsctx.wrap(argv[1]));
+      auto metadata_val = jsctx.json_stringify(jsctx.copy(argv[1]));
       if (metadata_val.is_exception())
       {
         return JS_ThrowTypeError(ctx, "metadata argument is not a JSON object");
@@ -147,7 +147,7 @@ namespace ccf::js::extensions
           ctx, "Failed to convert metadata JSON to string");
       }
 
-      auto jwks_val = jsctx.json_stringify(jsctx.wrap(argv[2]));
+      auto jwks_val = jsctx.json_stringify(jsctx.copy(argv[2]));
       if (jwks_val.is_exception())
       {
         return JS_ThrowTypeError(ctx, "jwks argument is not a JSON object");

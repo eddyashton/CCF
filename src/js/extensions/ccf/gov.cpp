@@ -28,7 +28,7 @@ namespace ccf::js::extensions
           ctx, "Passed %d arguments, but expected 1", argc);
       }
 
-      auto arg = jsctx.wrap(argv[0]);
+      auto arg = jsctx.copy(argv[0]);
       if (!arg.is_str())
       {
         return JS_ThrowTypeError(ctx, "constitution is not a string");

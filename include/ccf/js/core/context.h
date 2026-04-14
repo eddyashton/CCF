@@ -92,9 +92,11 @@ namespace ccf::js::core
     virtual std::optional<JSWrappedValue> get_module(
       std::string_view module_name);
 
-    // Construct RAII wrapper around raw QuickJS value
-    [[nodiscard]] JSWrappedValue wrap(JSValue&& val) const;
-    [[nodiscard]] JSWrappedValue wrap(const JSValue& val) const;
+    // Construct RAII wrapper around raw QuickJS value, taking ownership (no
+    // JS_DupValue)
+    [[nodiscard]] JSWrappedValue take(JSValue val) const;
+    // Construct RAII wrapper, acquiring a new refcount (calls JS_DupValue)
+    [[nodiscard]] JSWrappedValue copy(JSValue val) const;
 
     // If the first argument is a string-array, populates the second, and
     // returns undefined. Otherwise returns a JS error value.

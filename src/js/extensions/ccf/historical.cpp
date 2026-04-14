@@ -410,7 +410,7 @@ namespace ccf::js::extensions
   { \
     if ((val) != 1) \
     { \
-      return ctx.wrap(ccf::js::core::constants::Exception); \
+      return ctx.take(ccf::js::core::constants::Exception); \
     } \
   } while (0)
 
@@ -425,7 +425,7 @@ namespace ccf::js::extensions
 
     // NB: ccf_receipt_to_js returns a JSValue (unwrapped), due to its use of
     // macros. So we must rewrap it here, immediately after returning
-    auto js_receipt = ctx.wrap(ccf_receipt_to_js(ctx, state->receipt));
+    auto js_receipt = ctx.take(ccf_receipt_to_js(ctx, state->receipt));
     WRAPPED_CHECK_EXC(js_receipt);
     WRAPPED_CHECK_SET(js_state.set("receipt", std::move(js_receipt)));
 

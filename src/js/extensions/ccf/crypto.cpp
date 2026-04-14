@@ -492,7 +492,8 @@ namespace ccf::js::extensions
       js::core::Context& jsctx =
         *reinterpret_cast<js::core::Context*>(JS_GetContextOpaque(ctx));
 
-      auto jwk_str = jsctx.to_str(jsctx.json_stringify(jsctx.wrap(argv[0])));
+      auto jwk_str =
+        jsctx.to_str(jsctx.json_stringify(jsctx.copy(argv[0])));
       if (!jwk_str.has_value())
       {
         return ccf::js::core::constants::Exception;

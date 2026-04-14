@@ -279,8 +279,10 @@ namespace ccf::js::extensions::kvhelpers
         ctx, "Passed %d arguments, but expected 1", argc);
     }
 
-    js::core::JSWrappedValue func(ctx, argv[0]);
-    js::core::JSWrappedValue obj(ctx, this_val);
+    js::core::JSWrappedValue func =
+      js::core::JSWrappedValue::copy(ctx, argv[0]);
+    js::core::JSWrappedValue obj =
+      js::core::JSWrappedValue::copy(ctx, this_val);
 
     if (!JS_IsFunction(ctx, func.val))
     {
