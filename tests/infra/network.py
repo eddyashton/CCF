@@ -564,7 +564,7 @@ class Network:
             ), f"Could not copy governance {fragment} to {self.common_dir}"
         # It is more convenient to create a symlink in the common directory than generate
         # certs and keys in the top directory and move them across
-        cmd = ["ln", "-s"]
+        cmd = ["cp", "-r"]
         cmd += [self.key_generator, self.common_dir]
         assert (
             infra.proc.ccall(*cmd).returncode == 0
