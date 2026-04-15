@@ -4,7 +4,7 @@
  * Mimics the write → complete → commit → rotate cycle from CCF's Ledger
  * class (src/host/ledger.h), producing the same syscall pattern on CIFS.
  *
- * Logs any operation exceeding --threshold-ms (default 50ms).
+ * Logs any operation exceeding --threshold-ms (default 10ms).
  *
  * Build: cc -O2 -o ccf_like ccf_like.c
  * Usage: ./ccf_like --dir /mnt/azure-fs/bench --chunks 20
@@ -37,7 +37,7 @@ static double wall_sec(void)
     return ts.tv_sec + ts.tv_nsec / 1e9;
 }
 
-static double g_threshold_ms = 50.0;
+static double g_threshold_ms = 10.0;
 
 #define TIMED(label, fname, file_pos, chunk_idx, code)                     \
     do                                                                     \
@@ -192,7 +192,7 @@ static void usage(const char* prog)
         "  --chunks N        Number of chunk rotations (default: 20)\n"
         "  --chunk-size N    Bytes per chunk (default: 3800000)\n"
         "  --write-size N    Bytes per entry write (default: 283)\n"
-        "  --threshold-ms N  Log ops slower than this (default: 50)\n"
+        "  --threshold-ms N  Log ops slower than this (default: 10)\n"
         , prog);
     exit(1);
 }
@@ -204,8 +204,6 @@ int main(int argc, char** argv)
     size_t chunk_size = 3800000;
     size_t write_size = 283;
     size_t ae_batch = 20;       /* AppendEntries batch size — flush interval */
-    size_t burst_size = 80;     /* writes per burst (CCF p50 ~82) */
-    int burst_gap_us = 6000;    /* us pause between bursts (CCF p50 ~6ms) */
 
     for (int i = 1; i < argc; i++)
     {
@@ -282,16 +280,6 @@ int main(int argc, char** argv)
             file_pos += write_size;
             entry_count++;
             total_writes++;
-
-            /*
-             * Simulate event loop idle time between write bursts.
-             * Real CCF processes network I/O, consensus, and crypto between
-             * ledger write bursts. Measured p50 ~82 writes/burst, ~6ms gap.
-             */
-            if (burst_gap_us > 0 && entry_count % burst_size == 0)
-            {
-                usleep(burst_gap_us);
-            }
         }
 
         /*
