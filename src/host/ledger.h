@@ -645,6 +645,16 @@ namespace asynchost
       // ledger is open
       return !recovery;
     }
+
+    std::string get_name() const
+    {
+      return file_name;
+    }
+
+    size_t get_size() const
+    {
+      return total_len;
+    }
   };
 
   class Ledger
@@ -1297,10 +1307,17 @@ namespace asynchost
 
     size_t write_entry(const uint8_t* data, size_t size, bool committable)
     {
-      TimeBoundLogger log_if_slow(fmt::format(
+      TimeBoundLogger llog_if_slow(fmt::format(
         "Writing ledger entry - {} bytes, committable={}", size, committable));
 
-      std::unique_lock<ccf::pal::Mutex> guard(state_lock);
+          auto lock_start = std::chrono::steady_clock::now();
+    std::unique_lock<ccf::pal::Mutex> guard(state_lock);
+    auto lock_dur = std::chrono::steady_clock::now() - lock_start;
+    if (lock_dur > std::chrono::milliseconds(100))
+    {
+        LOG_FAIL_FMT("state_lock acquisition took {}ms in write_entry",
+            std::chrono::duration_cast<std::chrono::milliseconds>(lock_dur).count());
+    }
 
       auto header =
         serialized::peek<ccf::kv::SerialisedEntryHeader>(data, size);
@@ -1314,6 +1331,8 @@ namespace asynchost
         auto file = get_latest_file();
         if (file != nullptr)
         {
+          TimeBoundLogger log_if_slow(
+            fmt::format("Completing prior chunk", file->get_name()));
           file->complete();
           LOG_DEBUG_FMT("Ledger chunk completed at {}", file->get_last_idx());
         }
@@ -1333,7 +1352,12 @@ namespace asynchost
           "flags");
       }
 
-      auto file = get_latest_file();
+      std::shared_ptr<LedgerFile> file = nullptr;
+      {
+        TimeBoundLogger log_if_slow(fmt::format("get_latest_file()"));
+        file = get_latest_file();
+      }
+
       if (file == nullptr)
       {
         // If no file is currently open for writing, create a new one
@@ -1353,8 +1377,15 @@ namespace asynchost
         }
         files.emplace_back(file);
       }
-      auto [last_idx_, has_truncated] =
-        file->write_entry(data, size, committable);
+      std::tuple<size_t, bool> write_result;
+      {
+        TimeBoundLogger log_if_slow(fmt::format(
+          "write_entry() to file {}, previous size was {}",
+          file->get_name(),
+          file->get_size()));
+        write_result = file->write_entry(data, size, committable);
+      }
+      auto [last_idx_, has_truncated] = write_result;
       last_idx = last_idx_;
 
       if (has_truncated)
@@ -1362,6 +1393,8 @@ namespace asynchost
         // If a divergence was detected when writing the entry, delete all
         // further ledger files to cleanly continue
         LOG_INFO_FMT("Found divergent ledger entry at {}", last_idx);
+        TimeBoundLogger log_if_slow(
+          fmt::format("Deleting files after {}", last_idx));
         delete_ledger_files_after_idx(last_idx);
         use_existing_files = false;
       }
@@ -1381,6 +1414,8 @@ namespace asynchost
 
       if (committable && force_chunk_after)
       {
+        TimeBoundLogger log_if_slow(
+          fmt::format("Completing chunk named {}", file->get_name()));
         file->complete();
         LOG_DEBUG_FMT("Ledger chunk completed at {}", last_idx);
       }
@@ -1543,6 +1578,7 @@ namespace asynchost
     {
       auto* data = static_cast<AsyncLedgerGet*>(req->data);
 
+      TimeBoundLogger log_if_slow(fmt::format("on_ledger_get_async(from={}, to={}, max_size={})", data->from_idx, data->to_idx, data->max_size));
       data->read_result = data->ledger->read_entries_range(
         data->from_idx, data->to_idx, true, data->max_size);
     }
