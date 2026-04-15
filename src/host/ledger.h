@@ -112,6 +112,9 @@ namespace asynchost
       start_idx(start_idx),
       recovery(recovery)
     {
+      using TClock = std::chrono::steady_clock;
+      auto t_start = TClock::now();
+
       if (recovery)
       {
         file_name =
@@ -119,6 +122,8 @@ namespace asynchost
       }
 
       auto file_path = dir / file_name;
+      auto t_path = TClock::now();
+
       if (fs::exists(file_path))
       {
         throw std::logic_error(fmt::format(
@@ -127,6 +132,8 @@ namespace asynchost
           file_name,
           dir));
       }
+      auto t_exists = TClock::now();
+
       // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
       file = fopen(file_path.c_str(), "w+b");
       if (file == nullptr)
@@ -136,10 +143,28 @@ namespace asynchost
           file_path,
           std::strerror(errno))); // NOLINT(concurrency-mt-unsafe)
       }
+      auto t_fopen = TClock::now();
 
       // Header reserved for the offset to the position table
       fseeko(file, sizeof(positions_offset_header_t), SEEK_SET);
       total_len = sizeof(positions_offset_header_t);
+
+      auto us = [](TClock::duration d) {
+        return std::chrono::duration_cast<std::chrono::microseconds>(d)
+          .count();
+      };
+      auto total_us = us(t_fopen - t_start);
+      if (total_us > 50'000)
+      {
+        LOG_FAIL_FMT(
+          "LedgerFile::new PROFILE {} ({}us total): "
+          "path={}us exists_check={}us fopen={}us",
+          file_name,
+          total_us,
+          us(t_path - t_start),
+          us(t_exists - t_path),
+          us(t_fopen - t_exists));
+      }
     }
 
     // Used when recovering an existing ledger file
@@ -531,12 +556,17 @@ namespace asynchost
       {
         return;
       }
+
+      using TClock = std::chrono::steady_clock;
+      auto t_start = TClock::now();
+
       // It may happen (e.g. during recovery) that the incomplete ledger gets
       // truncated on the primary, so we have to make sure that whenever we
       // complete the file it doesn't contain anything past the last_idx, which
       // can happen on the follower unless explicitly truncated before
       // completion.
       truncate(get_last_idx(), /* remove_file_if_empty = */ false);
+      auto t_truncate = TClock::now();
 
       fseeko(file, total_len, SEEK_SET);
       size_t table_offset = ftello(file);
@@ -550,6 +580,7 @@ namespace asynchost
       {
         throw std::logic_error("Failed to write positions table to ledger");
       }
+      auto t_write_positions = TClock::now();
 
       // Write positions table offset at start of file
       if (fseeko(file, 0, SEEK_SET) != 0)
@@ -561,12 +592,34 @@ namespace asynchost
       {
         throw std::logic_error("Failed to write positions table to ledger");
       }
+      auto t_write_header = TClock::now();
 
       if (fflush(file) != 0)
       {
         throw std::logic_error(fmt::format(
           "Failed to flush ledger file: {}",
           std::strerror(errno))); // NOLINT(concurrency-mt-unsafe)
+      }
+      auto t_flush = TClock::now();
+
+      auto us = [](TClock::duration d) {
+        return std::chrono::duration_cast<std::chrono::microseconds>(d)
+          .count();
+      };
+      auto total_us = us(t_flush - t_start);
+      if (total_us > 50'000)
+      {
+        LOG_FAIL_FMT(
+          "complete() PROFILE {} ({}us total): "
+          "truncate={}us write_positions={}us({} entries) "
+          "write_header={}us flush={}us",
+          file_name,
+          total_us,
+          us(t_truncate - t_start),
+          us(t_write_positions - t_truncate),
+          positions.size(),
+          us(t_write_header - t_write_positions),
+          us(t_flush - t_write_header));
       }
 
       LOG_TRACE_FMT("Completed ledger file {}", file_name);
@@ -609,6 +662,9 @@ namespace asynchost
         return false;
       }
 
+      using TClock = std::chrono::steady_clock;
+      auto t_start = TClock::now();
+
       // Files that are completed and committed are fsync'ed under lock
       // (acquired in LedgerFiles::commit()) to ensure that any file returned by
       // committed_ledger_path_with_idx() is complete and can be safely read and
@@ -619,6 +675,7 @@ namespace asynchost
           "Failed to flush ledger file: {}",
           std::strerror(errno))); // NOLINT(concurrency-mt-unsafe)
       }
+      auto t_fsync = TClock::now();
 
       auto committed_file_name = fmt::format(
         "{}_{}-{}{}",
@@ -637,9 +694,26 @@ namespace asynchost
       {
         return false;
       }
+      auto t_rename = TClock::now();
 
       committed = true;
       LOG_DEBUG_FMT("Committed ledger file {}", file_name);
+
+      auto us = [](TClock::duration d) {
+        return std::chrono::duration_cast<std::chrono::microseconds>(d)
+          .count();
+      };
+      auto total_us = us(t_rename - t_start);
+      if (total_us > 50'000)
+      {
+        LOG_FAIL_FMT(
+          "LedgerFile::commit PROFILE {} ({}us total): "
+          "fsync={}us rename={}us",
+          file_name,
+          total_us,
+          us(t_fsync - t_start),
+          us(t_rename - t_fsync));
+      }
 
       // Committed recovery files stay in the list of active files until the
       // ledger is open
@@ -1310,18 +1384,16 @@ namespace asynchost
       TimeBoundLogger llog_if_slow(fmt::format(
         "Writing ledger entry - {} bytes, committable={}", size, committable));
 
-          auto lock_start = std::chrono::steady_clock::now();
-    std::unique_lock<ccf::pal::Mutex> guard(state_lock);
-    auto lock_dur = std::chrono::steady_clock::now() - lock_start;
-    if (lock_dur > std::chrono::milliseconds(100))
-    {
-        LOG_FAIL_FMT("state_lock acquisition took {}ms in write_entry",
-            std::chrono::duration_cast<std::chrono::milliseconds>(lock_dur).count());
-    }
+      using TClock = std::chrono::steady_clock;
+      auto t_start = TClock::now();
+
+      std::unique_lock<ccf::pal::Mutex> guard(state_lock);
+      auto t_locked = TClock::now();
 
       auto header =
         serialized::peek<ccf::kv::SerialisedEntryHeader>(data, size);
 
+      bool did_complete_before = false;
       if ((header.flags & ccf::kv::EntryFlags::FORCE_LEDGER_CHUNK_BEFORE) != 0)
       {
         LOG_TRACE_FMT(
@@ -1331,12 +1403,12 @@ namespace asynchost
         auto file = get_latest_file();
         if (file != nullptr)
         {
-          TimeBoundLogger log_if_slow(
-            fmt::format("Completing prior chunk", file->get_name()));
+          did_complete_before = true;
           file->complete();
           LOG_DEBUG_FMT("Ledger chunk completed at {}", file->get_last_idx());
         }
       }
+      auto t_complete_before = TClock::now();
 
       bool force_chunk_after =
         (header.flags & ccf::kv::EntryFlags::FORCE_LEDGER_CHUNK_AFTER) != 0;
@@ -1352,12 +1424,11 @@ namespace asynchost
           "flags");
       }
 
-      std::shared_ptr<LedgerFile> file = nullptr;
-      {
-        TimeBoundLogger log_if_slow(fmt::format("get_latest_file()"));
-        file = get_latest_file();
-      }
+      auto file = get_latest_file();
+      auto t_get_latest = TClock::now();
 
+      bool created_new_file = false;
+      bool used_existing = false;
       if (file == nullptr)
       {
         // If no file is currently open for writing, create a new one
@@ -1367,6 +1438,7 @@ namespace asynchost
           // When recovering files from persistence, try to find one on disk
           // first
           file = get_existing_ledger_file_for_idx(start_idx);
+          used_existing = (file != nullptr);
         }
         if (file == nullptr)
         {
@@ -1374,27 +1446,22 @@ namespace asynchost
             start_idx > recovery_start_idx.value();
           file =
             std::make_shared<LedgerFile>(ledger_dir, start_idx, is_recovery);
+          created_new_file = true;
         }
         files.emplace_back(file);
       }
-      std::tuple<size_t, bool> write_result;
-      {
-        TimeBoundLogger log_if_slow(fmt::format(
-          "write_entry() to file {}, previous size was {}",
-          file->get_name(),
-          file->get_size()));
-        write_result = file->write_entry(data, size, committable);
-      }
-      auto [last_idx_, has_truncated] = write_result;
+      auto t_new_file = TClock::now();
+
+      auto [last_idx_, has_truncated] =
+        file->write_entry(data, size, committable);
       last_idx = last_idx_;
+      auto t_write = TClock::now();
 
       if (has_truncated)
       {
         // If a divergence was detected when writing the entry, delete all
         // further ledger files to cleanly continue
         LOG_INFO_FMT("Found divergent ledger entry at {}", last_idx);
-        TimeBoundLogger log_if_slow(
-          fmt::format("Deleting files after {}", last_idx));
         delete_ledger_files_after_idx(last_idx);
         use_existing_files = false;
       }
@@ -1412,12 +1479,42 @@ namespace asynchost
         committable,
         force_chunk_after);
 
+      bool did_complete_after = false;
       if (committable && force_chunk_after)
       {
-        TimeBoundLogger log_if_slow(
-          fmt::format("Completing chunk named {}", file->get_name()));
+        did_complete_after = true;
         file->complete();
         LOG_DEBUG_FMT("Ledger chunk completed at {}", last_idx);
+      }
+      auto t_complete_after = TClock::now();
+
+      auto us = [](TClock::duration d) {
+        return std::chrono::duration_cast<std::chrono::microseconds>(d)
+          .count();
+      };
+      auto total_us = us(t_complete_after - t_start);
+      if (total_us > 100'000)
+      {
+        LOG_FAIL_FMT(
+          "write_entry PROFILE idx={} ({}us total): "
+          "lock={}us complete_before={}us[{}] get_latest={}us "
+          "new_file={}us[new={},exist={}] write={}us "
+          "complete_after={}us[{}] "
+          "files_count={} chunk_size={}",
+          last_idx,
+          total_us,
+          us(t_locked - t_start),
+          us(t_complete_before - t_locked),
+          did_complete_before,
+          us(t_get_latest - t_complete_before),
+          us(t_new_file - t_get_latest),
+          created_new_file,
+          used_existing,
+          us(t_write - t_new_file),
+          us(t_complete_after - t_write),
+          did_complete_after,
+          files.size(),
+          file->get_size());
       }
 
       return last_idx;
