@@ -279,6 +279,37 @@ echo ""
 echo "=========================================="
 echo " Experiment complete: $RESULTS_DIR"
 echo "=========================================="
+
+# Stack per-mount runs into combined comparison images
+STACK_IMAGES="$SCRIPT_DIR/stack_images.py"
+if [[ -f "$STACK_IMAGES" ]]; then
+    echo ""
+    echo "Stacking per-mount run plots..."
+    for mount_key in "${MOUNT_LIST[@]}"; do
+        for test_type in run ccflike_run; do
+            # Determine prefix: "run" for CCF, "ccflike_run" for ccf_like
+            if [[ "$test_type" == "run" && "$SKIP_CCF" -eq 1 ]]; then continue; fi
+            if [[ "$test_type" == "ccflike_run" && "$SKIP_CCFLIKE" -eq 1 ]]; then continue; fi
+
+            for plot in trace_all_events trace_metadata_ops; do
+                inputs=()
+                for run in $(seq 1 "$RUNS"); do
+                    img="$RESULTS_DIR/${mount_key}_${test_type}${run}/${plot}.png"
+                    if [[ -f "$img" ]]; then
+                        inputs+=("$img")
+                    fi
+                done
+                if [[ ${#inputs[@]} -ge 2 ]]; then
+                    label="${mount_key}"
+                    [[ "$test_type" == "ccflike_run" ]] && label="${mount_key}_ccflike"
+                    out="$RESULTS_DIR/${label}_${plot}.png"
+                    python3 "$STACK_IMAGES" -o "$out" "${inputs[@]}"
+                fi
+            done
+        done
+    done
+fi
+
 echo ""
 echo "Results structure:"
 find "$RESULTS_DIR" -type f | sort | sed 's|^|  |'
