@@ -31,7 +31,6 @@ OP_LABELS = {
     "D": "getdents64",
     "T": "stat/newfstatat",
     "U": "ftruncate",
-    "M": "futex_wait",
     "S": "syscall_other",
 }
 
@@ -45,7 +44,6 @@ OP_COLORS = {
     "R": "#33691e",
     "T": "#4a148c",
     "D": "#e6a800",
-    "M": "#212121",
     "S": "#757575",
 }
 
@@ -59,7 +57,7 @@ OP_MARKERS = {
     "R": "d",
     "T": "v",
     "D": "*",
-    "M": "x",
+
     "S": "+",
 }
 

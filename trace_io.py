@@ -105,7 +105,7 @@ def convert_raw(raw_path, output_path, epoch_offset, mount_filter):
             except (ValueError, IndexError):
                 continue
 
-            if op not in ("W", "R", "F", "O", "C", "N", "M", "D", "S", "T", "U"):
+            if op not in ("W", "R", "F", "O", "C", "N", "D", "S", "T", "U"):
                 continue
 
             # ── fd→path map maintenance ──────────────────────────────
@@ -128,8 +128,6 @@ def convert_raw(raw_path, output_path, epoch_offset, mount_filter):
                 # stat-family: size carries syscall number (262 or 332), path in parts[7]
                 sc = {262: "newfstatat", 332: "statx"}.get(size, f"stat_{size}")
                 path = f"{sc}:{parts[7]}"
-            elif op == "M":
-                path = f"futex@{size}"  # size field carries the futex address
             elif op == "S":
                 # size field carries the syscall number
                 SYSCALL_NAMES = {
@@ -166,7 +164,7 @@ def convert_raw(raw_path, output_path, epoch_offset, mount_filter):
 
             # Mount filter: check raw filesystem path, not the decorated
             # display path (e.g. T events have "newfstatat:/path" prefix).
-            if mount_filter and op not in ("M", "S"):
+            if mount_filter and op not in ("S",):
                 raw_path_for_filter = path
                 if op == "T" and ":" in path:
                     raw_path_for_filter = path.split(":", 1)[1]
@@ -380,24 +378,6 @@ tracepoint:syscalls:sys_exit_statx / @sxstart[tid] / {{
     delete(@sxstart[tid]);
 }}
 
-/* Mutex contention via futex — FUTEX_WAIT variants, latency >100us.
-   op=0 FUTEX_WAIT, op=9 FUTEX_WAIT_BITSET, +128 for PRIVATE variants */
-tracepoint:syscalls:sys_enter_futex / {pred} && (args->op == 0 || args->op == 9 || args->op == 128 || args->op == 137) / {{
-    @mstart[tid] = nsecs;
-    @maddr[tid] = args->uaddr;
-}}
-
-tracepoint:syscalls:sys_exit_futex / @mstart[tid] / {{
-    $lat_us = (nsecs - @mstart[tid]) / 1000;
-    $ret = args->ret;
-    if ($lat_us > 100 && $ret == 0) {{
-        printf("%llu,%llu,%d,%d,0,M,%llu\\n",
-               nsecs, $lat_us, pid, tid, @maddr[tid]);
-    }}
-    delete(@mstart[tid]);
-    delete(@maddr[tid]);
-}}
-
 /* ftruncate — dedicated probe since raw_syscalls misses long calls */
 tracepoint:syscalls:sys_enter_ftruncate / {pred} / {{
     @ftstart[tid] = nsecs;
@@ -424,7 +404,6 @@ END {{
     clear(@rnold); clear(@rnnew); clear(@rnstart);
     clear(@stpath); clear(@ststart);
     clear(@sxpath); clear(@sxstart);
-    clear(@mstart); clear(@maddr);
     clear(@ftstart); clear(@ftfd); clear(@ftlen);
 {end_extra}
 }}
