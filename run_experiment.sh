@@ -137,7 +137,8 @@ run_ccf_test() {
 
     # Run the test (must run from build directory)
     pushd "$BUILD_DIR" > /dev/null
-    python3 "$SCRIPT_DIR/tests/infra/basicperf.py" \
+    source env/bin/activate
+    PYTHONPATH=/root/CCF/tests python3 "$SCRIPT_DIR/tests/infra/basicperf.py" \
         -b "." \
         -c "./submit" \
         --log-level info \
