@@ -17,6 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build"
 TRACE_IO="$SCRIPT_DIR/trace_io.py"
 CCF_LIKE="$SCRIPT_DIR/ccf_like.py"
+PLOT_TRACE="$SCRIPT_DIR/plot_trace_events.py"
 RESULTS_DIR="$SCRIPT_DIR/experiments/$(date +%Y%m%d_%H%M%S)"
 
 RUNS=3
@@ -81,6 +82,32 @@ reset_cifs_stats() {
     echo 0 > /proc/fs/cifs/Stats 2>/dev/null || true
 }
 
+plot_trace_outputs() {
+    local trace_csv="$1"
+
+    if [[ ! -f "$PLOT_TRACE" ]]; then
+        echo "  Plot script not found, skipping plots: $PLOT_TRACE"
+        return
+    fi
+
+    # Skip plotting when trace has no event rows beyond header/comments.
+    local event_rows
+    event_rows=$(awk -F, '!/^#/ && $1!="time_s" && NF>=7 {n++} END {print n+0}' "$trace_csv")
+    if [[ "$event_rows" -eq 0 ]]; then
+        echo "  Trace has no events, skipping plots: $trace_csv"
+        return
+    fi
+
+    local base="${trace_csv%.csv}"
+    local all_plot="${base}_all_events.png"
+    local meta_plot="${base}_metadata_ops.png"
+
+    echo "  Plotting all events..."
+    python3 "$PLOT_TRACE" "$trace_csv" -o "$all_plot"
+    echo "  Plotting metadata ops (O,C,F,N,U,T,D)..."
+    python3 "$PLOT_TRACE" "$trace_csv" --ops O,C,F,N,U,T,D -o "$meta_plot"
+}
+
 run_ccf_test() {
     local mount_key="$1"
     local run_num="$2"
@@ -133,6 +160,9 @@ run_ccf_test() {
 
     # Capture CIFS stats after test
     capture_cifs_stats "$run_dir/cifs_stats.txt"
+
+    # Generate trace visualisations.
+    plot_trace_outputs "$run_dir/trace.csv"
 
     # Copy node output logs (include pid in filename for trace correlation)
     for i in 0 1 2; do
@@ -204,6 +234,9 @@ run_ccflike_test() {
 
     # Stop trace
     kill "$trace_pid" 2>/dev/null; wait "$trace_pid" 2>/dev/null || true
+
+    # Generate trace visualisations.
+    plot_trace_outputs "$run_dir/trace.csv"
 
     echo "  ccf_like output:"
     cat "$run_dir/ccflike_output.log"
