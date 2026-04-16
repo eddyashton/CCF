@@ -78,6 +78,7 @@ def convert_raw(raw_path, output_path, epoch_offset, mount_filter):
     fd_paths = {}  # (pid, fd) -> path — maintained inline during the pass
     written = 0
     skipped_mount = 0
+    skipped_bogus = 0
     with open(raw_path) as rf, open(output_path, "w", newline="") as of:
         # Write epoch offset as a comment for consumers to reconstruct wallclock
         of.write(f"# epoch_offset={epoch_offset:.6f}\n")
@@ -181,12 +182,23 @@ def convert_raw(raw_path, output_path, epoch_offset, mount_filter):
                     skipped_mount += 1
                     continue
 
+            # Sanity filter: discard events with bogus latency.  This
+            # happens when a bpftrace exit probe fires with a stale or
+            # zero @start map value (e.g. enter was missed due to comm
+            # filter race).  60 seconds is well beyond any real syscall.
+            MAX_LAT_US = 60_000_000  # 60 s
+            if lat_us > MAX_LAT_US:
+                skipped_bogus += 1
+                continue
+
             time_s = epoch_offset + mono_ns / 1e9
             file_label = path if path else f"pid{pid}:fd{fd}"
             w.writerow([f"{time_s:.6f}", f"{lat_us:.1f}", op, size, pid, tid, file_label])
             written += 1
 
     parts_msg = [f"{written} events"]
+    if skipped_bogus:
+        parts_msg.append(f"{skipped_bogus} bogus latency")
     if skipped_mount:
         parts_msg.append(f"{skipped_mount} filtered by mount")
     print(f"Converted: {', '.join(parts_msg)}")
