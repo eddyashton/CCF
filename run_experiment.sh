@@ -84,6 +84,7 @@ reset_cifs_stats() {
 
 plot_trace_outputs() {
     local trace_csv="$1"
+    local title_prefix="${2:-}"
 
     if [[ ! -f "$PLOT_TRACE" ]]; then
         echo "  Plot script not found, skipping plots: $PLOT_TRACE"
@@ -102,10 +103,15 @@ plot_trace_outputs() {
     local all_plot="${base}_all_events.png"
     local meta_plot="${base}_metadata_ops.png"
 
+    local title_args=()
+    if [[ -n "$title_prefix" ]]; then
+        title_args+=(--title "${title_prefix}")
+    fi
+
     echo "  Plotting all events..."
-    python3 "$PLOT_TRACE" "$trace_csv" -o "$all_plot"
+    python3 "$PLOT_TRACE" "$trace_csv" -o "$all_plot" "${title_args[@]}"
     echo "  Plotting metadata ops (O,C,F,N,U,T,D)..."
-    python3 "$PLOT_TRACE" "$trace_csv" --ops O,C,F,N,U,T,D -o "$meta_plot"
+    python3 "$PLOT_TRACE" "$trace_csv" --ops O,C,F,N,U,T,D -o "$meta_plot" "${title_args[@]}"
 }
 
 run_ccf_test() {
@@ -163,7 +169,7 @@ run_ccf_test() {
     capture_cifs_stats "$run_dir/cifs_stats.txt"
 
     # Generate trace visualisations.
-    plot_trace_outputs "$run_dir/trace.csv"
+    plot_trace_outputs "$run_dir/trace.csv" "CCF basicperf — ${mount_key} (${mount_path}) — run ${run_num}"
 
     # Copy node output logs (include pid in filename for trace correlation)
     for i in 0 1 2; do
@@ -229,7 +235,7 @@ run_ccflike_test() {
         --chunk-size "$CCFLIKE_CHUNK_SIZE" \
         --write-size "$CCFLIKE_WRITE_SIZE" \
         --threshold-ms "$CCFLIKE_THRESHOLD" \
-        2>"$run_dir/ccflike_output.log" || true
+        > "$run_dir/ccflike_output.log" 2>&1 || true
 
     sleep 3  # let trace_io drain
 
@@ -237,7 +243,7 @@ run_ccflike_test() {
     kill "$trace_pid" 2>/dev/null; wait "$trace_pid" 2>/dev/null || true
 
     # Generate trace visualisations.
-    plot_trace_outputs "$run_dir/trace.csv"
+    plot_trace_outputs "$run_dir/trace.csv" "ccf_like — ${mount_key} (${mount_path}) — run ${run_num}"
 
     echo "  ccf_like output:"
     cat "$run_dir/ccflike_output.log"

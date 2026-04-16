@@ -68,35 +68,14 @@ def convert_raw(raw_path, output_path, epoch_offset, mount_filter):
     size: byte count for R/W, 0 for others
     path: present for O (openat) and N (rename old path)
     path2: present for N (rename new path), appended to path as "old -> new"
+
+    Uses a single chronological pass so the fd->path map is live when
+    resolving paths for fd-based events (W, R, F, U, C, D).  The previous
+    two-pass design removed mappings on close in the first pass, which meant
+    the second pass couldn't resolve paths for any fd that was opened and
+    closed within the trace — exactly the ccf_like case.
     """
-    # First pass: build fd->path map from openat lines
-    fd_paths = {}  # (pid, fd) -> path
-    with open(raw_path) as rf:
-        for line in rf:
-            line = line.strip()
-            if not line or line.startswith("Attaching"):
-                continue
-            parts = line.split(",", 8)
-            if len(parts) < 7:
-                continue
-            try:
-                op = parts[5]
-                if op == "O" and len(parts) >= 8:
-                    tgid = int(parts[3])  # bpftrace 'tid' = tgid
-                    fd = int(parts[4])
-                    path = parts[7]
-                    fd_paths[(tgid, fd)] = path
-                elif op == "C":
-                    tgid = int(parts[3])
-                    fd = int(parts[4])
-                    fd_paths.pop((tgid, fd), None)
-            except (ValueError, IndexError):
-                continue
-
-    if fd_paths:
-        print(f"Built fd->path map: {len(fd_paths)} entries")
-
-    # Second pass: convert all timed events
+    fd_paths = {}  # (pid, fd) -> path — maintained inline during the pass
     written = 0
     skipped_mount = 0
     with open(raw_path) as rf, open(output_path, "w", newline="") as of:
@@ -129,7 +108,18 @@ def convert_raw(raw_path, output_path, epoch_offset, mount_filter):
             if op not in ("W", "R", "F", "O", "C", "N", "M", "D", "S", "T", "U"):
                 continue
 
-            # Resolve path
+            # ── fd→path map maintenance ──────────────────────────────
+            # Invariant: openat adds BEFORE we resolve, close removes
+            # AFTER we resolve but BEFORE the mount filter.  This ensures:
+            #  - O events see their own path in the map
+            #  - C events can still resolve their path from the map
+            #  - Close ALWAYS clears the mapping even if the event is
+            #    subsequently dropped by the mount filter, preventing
+            #    stale mappings from contaminating later fd reuse
+            if op == "O" and len(parts) >= 8:
+                fd_paths[(pid, fd)] = parts[7]
+
+            # Resolve path from the map (or from inline fields for O/N/T/M/S)
             if op == "N" and len(parts) >= 9:
                 path = f"{parts[7]} -> {parts[8]}"
             elif op == "O" and len(parts) >= 8:
@@ -168,9 +158,30 @@ def convert_raw(raw_path, output_path, epoch_offset, mount_filter):
             else:
                 path = fd_paths.get((pid, fd), "")
 
-            if mount_filter and op not in ("M",) and not path.startswith(mount_filter):
-                skipped_mount += 1
-                continue
+            # Close clears the mapping AFTER resolving the path above but
+            # BEFORE the mount filter below.  This is critical: if the
+            # mount filter skips this event (continue), the pop still ran.
+            if op == "C":
+                fd_paths.pop((pid, fd), None)
+
+            # Mount filter: check raw filesystem path, not the decorated
+            # display path (e.g. T events have "newfstatat:/path" prefix).
+            if mount_filter and op not in ("M", "S"):
+                raw_path_for_filter = path
+                if op == "T" and ":" in path:
+                    raw_path_for_filter = path.split(":", 1)[1]
+                elif op == "N" and " -> " in path:
+                    # Pass if either old or new path matches
+                    raw_path_for_filter = path.split(" -> ")[0]
+                    new_path = path.split(" -> ")[1]
+                    if not (raw_path_for_filter.startswith(mount_filter) or
+                            new_path.startswith(mount_filter)):
+                        skipped_mount += 1
+                        continue
+                    raw_path_for_filter = mount_filter  # skip the generic check
+                if not raw_path_for_filter.startswith(mount_filter):
+                    skipped_mount += 1
+                    continue
 
             time_s = epoch_offset + mono_ns / 1e9
             file_label = path if path else f"pid{pid}:fd{fd}"

@@ -35,19 +35,32 @@ OP_LABELS = {
     "S": "syscall_other",
 }
 
-# Distinct colors for common op families.
 OP_COLORS = {
-    "U": "#d7301f",  # ftruncate (usually the long tail)
-    "N": "#fc8d59",  # rename
-    "F": "#91bfdb",  # fsync
-    "O": "#4575b4",  # open
-    "C": "#74add1",  # close
-    "W": "#1a9850",  # write
-    "R": "#66bd63",  # read
-    "T": "#756bb1",  # stat family
-    "D": "#fdae61",  # getdents
-    "M": "#636363",  # mutex/futex
-    "S": "#bdbdbd",  # generic syscall
+    "U": "#b80000",
+    "N": "#e65100",
+    "F": "#0050d0",
+    "O": "#7b1fa2",
+    "C": "#00838f",
+    "W": "#1b5e20",
+    "R": "#33691e",
+    "T": "#4a148c",
+    "D": "#e6a800",
+    "M": "#212121",
+    "S": "#757575",
+}
+
+OP_MARKERS = {
+    "U": "D",
+    "N": "^",
+    "F": "s",
+    "O": "p",
+    "C": "h",
+    "W": "o",
+    "R": "d",
+    "T": "v",
+    "D": "*",
+    "M": "x",
+    "S": "+",
 }
 
 
@@ -165,13 +178,13 @@ def main() -> int:
     parser.add_argument(
         "--point-size",
         type=float,
-        default=9.0,
+        default=14.0,
         help="Marker size",
     )
     parser.add_argument(
         "--alpha",
         type=float,
-        default=0.65,
+        default=0.85,
         help="Marker transparency",
     )
     parser.add_argument(
@@ -224,20 +237,34 @@ def main() -> int:
         xs = [x_vals[i] for i in range(len(events)) if op_vals[i] == op]
         ys = [y_vals_ms[i] for i in range(len(events)) if op_vals[i] == op]
         label = f"{op} ({OP_LABELS.get(op, 'unknown')}), n={len(xs)}"
-        ax.scatter(
-            xs,
-            ys,
+        marker = OP_MARKERS.get(op, "o")
+        # Unfilled markers (x, +) use edgecolors, not facecolors.
+        filled = marker not in ("x", "+", "|", "_")
+        scatter_kw = dict(
             s=args.point_size,
             alpha=args.alpha,
             label=label,
             c=OP_COLORS.get(op, "#444444"),
-            edgecolors="none",
+            marker=marker,
         )
+        if filled:
+            scatter_kw["edgecolors"] = "none"
+        ax.scatter(xs, ys, **scatter_kw)
 
     ax.set_xlabel("Epoch time (s)" if args.absolute_time else "Time since trace start (s)")
     ax.set_ylabel("Latency (ms)")
     if not args.linear_y:
-        ax.set_yscale("log")
+        y_min, y_max = min(y_vals_ms), max(y_vals_ms)
+        # Only use log scale when data spans more than ~1.5 orders of magnitude;
+        # otherwise the tick labels degrade into ugly "2.4 × 10²" form.
+        use_log = False
+        if y_min > 0 and y_max / y_min > 30:
+            use_log = True
+        elif y_min <= 0 and y_max > 0:
+            # Data includes zero/negative — wide range, log is appropriate
+            use_log = True
+        if use_log:
+            ax.set_yscale("log")
 
     title = args.title.strip()
     if not title:
