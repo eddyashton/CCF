@@ -10,6 +10,7 @@ import infra.logging_app as app
 import suite.test_requirements as reqs
 from datetime import datetime, timedelta
 from infra.checker import check_can_progress, check_does_not_progress
+from infra.log_capture import flush_info
 import pprint
 from infra.tx_status import TxStatus
 import time
@@ -22,6 +23,7 @@ from collections import defaultdict
 from ccf.tx_id import TxID
 import os
 from reconfiguration import test_ledger_invariants
+import threading
 
 from loguru import logger as LOG
 
@@ -264,7 +266,13 @@ def test_new_joiner_helps_liveness(network, args):
     with contextlib.ExitStack() as stack:
         # Add a new node, but partition them before trusting them
         new_node = network.create_node()
-        network.join_node(new_node, args.package, args, from_snapshot=False)
+        network.join_node(
+            new_node,
+            args.package,
+            args,
+            from_snapshot=False,
+            fetch_recent_snapshot=True,
+        )
         new_joiner_partition = [new_node]
         new_joiner_rules = stack.enter_context(
             network.partitioner.partition([primary, *backups], new_joiner_partition)
@@ -545,6 +553,75 @@ def test_forwarding_timeout(network, args):
     rules.drop()
 
     network.wait_for_primary_unanimity(min_view=view)
+
+
+@reqs.description(
+    "Respond-on-commit requests get an error response if the operation is lost in an election"
+)
+@reqs.at_least_n_nodes(3)
+def test_invalidated_blocking_calls(network, args):
+    for path in ["/app/log/blocking/private", "/app/log/blocking/private/receipt"]:
+        _test_invalidated_blocking_call(network, args, path)
+
+
+def _test_invalidated_blocking_call(network, args, blocking_path):
+    primary, backups = network.find_nodes()
+    key = 42
+    val_a = "Hello"
+
+    ready_to_go = threading.Event()
+    partition_created = threading.Event()
+
+    def blocking_send():
+        LOG.info(
+            f"Make a blocking respond-on-commit call to {blocking_path} on a partitioned primary"
+        )
+        with primary.client("user0") as c:
+            ready_to_go.set()
+            partition_created.wait()
+            r = c.post(blocking_path, {"id": key, "msg": val_a}, timeout=10)
+            assert r.status_code == http.HTTPStatus.INTERNAL_SERVER_ERROR
+            tx_id = r.headers[infra.clients.CCF_TX_ID_HEADER]
+            body = r.body.json()
+            assert (
+                body["error"]["message"]
+                == f"While waiting for TxID {tx_id} to commit, it was invalidated"
+            )
+
+    send_thread = threading.Thread(target=blocking_send, name="blocking")
+    send_thread.start()
+
+    with network.partitioner.partition(backups):
+        ready_to_go.wait()
+        partition_created.set()
+
+        new_primary, new_term = network.wait_for_new_primary(
+            old_primary=primary, nodes=backups
+        )
+
+        LOG.info(f"Polling for commit in {new_term}")
+        with new_primary.client() as c:
+            timeout = 3
+            end_time = time.time() + timeout
+            while True:
+                logs = []
+                r = c.get("/node/commit", log_capture=logs)
+                assert r.status_code == http.HTTPStatus.OK, r
+
+                commit_tx_id = TxID.from_str(r.body.json()["transaction_id"])
+                if commit_tx_id.view >= new_term:
+                    flush_info(logs)
+                    break
+
+                if time.time() > end_time:
+                    flush_info(logs)
+                    raise AssertionError(
+                        f"New primary made no commit progress after {timeout}s"
+                    )
+
+    LOG.info("Drop partition and wait for reunification")
+    send_thread.join()
+    network.wait_for_primary_unanimity()
 
 
 @reqs.description(
@@ -1028,7 +1105,7 @@ def run_ledger_chunk_bytes_check(const_args):
             c.wait_for_commit(r)
 
         # This explicitly checks that ledger chunks match on each node, which is the critical property
-        network.stop_all_nodes(accept_ledger_diff=False)
+        network.stop_all_nodes(check_file_invariants=True)
 
         # Confirm that at least one ledger chunk of each expected size was produced
         current, committeds = primary.get_ledger()
@@ -1099,6 +1176,7 @@ def run(args):
             test_isolate_and_reconnect_primary(network, args, iteration=n)
         test_election_reconfiguration(network, args)
         test_forwarding_timeout(network, args)
+        test_invalidated_blocking_calls(network, args)
         # HTTP2 doesn't support forwarding
         if not args.http2:
             test_session_consistency(network, args)

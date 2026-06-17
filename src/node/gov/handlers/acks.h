@@ -3,8 +3,10 @@
 #pragma once
 
 #include "ccf/base_endpoint_registry.h"
+#include "ccf/ds/json.h"
 #include "node/gov/api_version.h"
 #include "node/gov/handlers/helpers.h"
+#include "node/history.h"
 #include "node/share_manager.h"
 #include "service/internal_tables_access.h"
 
@@ -124,11 +126,11 @@ namespace ccf::gov::endpoints
             ack = ack_opt.value();
           }
 
-          // Get signature, containing merkle root state digest
-          auto sigs_handle =
-            ctx.tx.template ro<ccf::Signatures>(Tables::SIGNATURES);
-          auto sig = sigs_handle->get();
-          if (!sig.has_value())
+          // Get merkle root state digest from serialised merkle tree
+          auto tree_handle = ctx.tx.template ro<ccf::SerialisedMerkleTree>(
+            Tables::SERIALISED_MERKLE_TREE);
+          auto tree = tree_handle->get();
+          if (!tree.has_value())
           {
             detail::set_gov_error(
               ctx.rpc_ctx,
@@ -137,9 +139,10 @@ namespace ccf::gov::endpoints
               "Service has no signatures to ack yet - try again soon.");
             return;
           }
+          ccf::MerkleTreeHistory history(tree.value());
 
           // Write ack back to the KV
-          ack.state_digest = sig->root.hex_str();
+          ack.state_digest = history.get_root().hex_str();
           acks_handle->put(member_id, ack);
 
           auto body = nlohmann::json::object();
@@ -217,7 +220,7 @@ namespace ccf::gov::endpoints
 
           // Check signed digest matches expected digest in KV
           const auto expected_digest = ack->state_digest;
-          const auto signed_body = nlohmann::json::parse(cose_ident.content);
+          const auto signed_body = ccf::parse_json_safe(cose_ident.content);
           const auto actual_digest =
             signed_body["stateDigest"].template get<std::string>();
           if (expected_digest != actual_digest)
