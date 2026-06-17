@@ -5,9 +5,8 @@ add_executable(
   ${SUBMITTER_DIR}/submit.cpp
   ${SUBMITTER_DIR}/handle_arguments.h
   ${SUBMITTER_DIR}/parquet_data.h
-  ${CCF_DIR}/src/enclave/thread_local.cpp
 )
 
-target_link_libraries(submit PRIVATE http_parser ccfcrypto arrow parquet)
+target_link_libraries(submit PRIVATE http_parser ccfcrypto ccf_thread_local arrow parquet)
 
 install(TARGETS submit DESTINATION bin)
