@@ -18,6 +18,7 @@
 #include <charconv>
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>
+#include <regex>
 
 // Custom Endpoints
 #include "ccf/crypto/sha256.h"

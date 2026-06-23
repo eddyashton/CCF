@@ -6,15 +6,11 @@
 #include <cctype>
 #include <chrono>
 #include <ctime>
-#include <regex>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <unistd.h>
 #include <vector>
-
-#define FMT_HEADER_ONLY
-#include <fmt/format.h>
 
 /**
  * This file defines various type traits and utils that are not available in the

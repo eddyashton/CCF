@@ -14,6 +14,8 @@
 #include "node/signature_cache_interface.h"
 #include "node/tx_receipt_impl.h"
 
+#include <regex>
+
 namespace ccf::endpoints
 {
   namespace

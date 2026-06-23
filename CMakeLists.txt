@@ -428,25 +428,45 @@ if(CCF_RAFT_TRACING)
   add_compile_definitions(CCF_RAFT_TRACING)
 endif()
 
-add_library(
-  ccf_thread_local OBJECT ${CCF_DIR}/src/enclave/thread_local.cpp
-)
+add_library(ccf_thread_local OBJECT ${CCF_DIR}/src/enclave/thread_local.cpp)
 set_property(TARGET ccf_thread_local PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_compile_options(ccf_thread_local PRIVATE ${COMPILE_LIBCXX})
 add_san(ccf_thread_local)
-install(
-  TARGETS ccf_thread_local
-  EXPORT ccf
-)
+install(TARGETS ccf_thread_local EXPORT ccf)
 
-# Build common library for CCF enclaves
-set(
-  CCF_IMPL_SOURCE
-  ${CCF_DIR}/src/enclave/main.cpp
+# Sources which are shared between the ccf library and several test binaries.
+# Building them once as an object library (rather than recompiling them in each
+# consuming target) avoids redundant compilation. These remain
+# security-sensitive (attestation, recovery), so the object library applies the
+# same hardening and sanitiser options as the ccf static library.
+add_library(
+  ccf_node_impl
+  OBJECT
   ${CCF_DIR}/src/node/quote.cpp
   ${CCF_DIR}/src/node/uvm_endorsements.cpp
   ${CCF_DIR}/src/node/recovery_decision_protocol.cpp
 )
+set_property(TARGET ccf_node_impl PROPERTY POSITION_INDEPENDENT_CODE ON)
+target_compile_options(ccf_node_impl PRIVATE ${COMPILE_LIBCXX})
+target_link_libraries(
+  ccf_node_impl
+  PUBLIC
+    http_parser
+    ccf_js
+    ccf_endpoints
+    ccfcrypto
+    ccf_kv
+    ccf_tasks
+    nghttp2
+    curl
+    ccf_pal
+)
+add_san(ccf_node_impl)
+add_hardening(ccf_node_impl)
+install(TARGETS ccf_node_impl EXPORT ccf)
+
+# Build common library for CCF enclaves
+set(CCF_IMPL_SOURCE ${CCF_DIR}/src/enclave/main.cpp)
 
 add_ccf_static_library(
   ccf
@@ -464,6 +484,7 @@ add_ccf_static_library(
     ccf_pal
 )
 target_link_libraries(ccf PUBLIC ccf_thread_local)
+target_link_libraries(ccf PUBLIC ccf_node_impl)
 
 target_include_directories(
   ccf
@@ -765,7 +786,6 @@ if(BUILD_TESTS)
     add_unit_test(
       endorsements_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/test/endorsements.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/node/uvm_endorsements.cpp
     )
     set_property(
       TEST endorsements_test
@@ -774,7 +794,7 @@ if(BUILD_TESTS)
         ENVIRONMENT
           "TEST_ENDORSEMENTS_PATH=${CMAKE_CURRENT_SOURCE_DIR}/tests/uvm_endorsements"
     )
-    target_link_libraries(endorsements_test PRIVATE evercbor)
+    target_link_libraries(endorsements_test PRIVATE evercbor ccf_node_impl uv)
 
     add_unit_test(
       historical_queries_test
@@ -881,9 +901,6 @@ if(BUILD_TESTS)
     add_unit_test(
       frontend_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/rpc/test/frontend_test.cpp
-      ${CCF_DIR}/src/node/quote.cpp
-      ${CCF_DIR}/src/node/uvm_endorsements.cpp
-      ${CCF_DIR}/src/node/recovery_decision_protocol.cpp
     )
     target_link_libraries(
       frontend_test
@@ -897,6 +914,7 @@ if(BUILD_TESTS)
         ccf_tasks
         curl
         uv
+        ccf_node_impl
     )
 
     add_unit_test(
@@ -923,9 +941,6 @@ if(BUILD_TESTS)
     add_unit_test(
       node_frontend_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/rpc/test/node_frontend_test.cpp
-      ${CCF_DIR}/src/node/quote.cpp
-      ${CCF_DIR}/src/node/uvm_endorsements.cpp
-      ${CCF_DIR}/src/node/recovery_decision_protocol.cpp
     )
     target_link_libraries(
       node_frontend_test
@@ -939,14 +954,17 @@ if(BUILD_TESTS)
         uv
         curl
         ccf_tasks
+        ccf_node_impl
     )
 
     add_unit_test(
       internal_tables_access_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/node/rpc/test/internal_tables_access_test.cpp
-      ${CCF_DIR}/src/node/uvm_endorsements.cpp
     )
-    target_link_libraries(internal_tables_access_test PRIVATE ccfcrypto ccf_kv)
+    target_link_libraries(
+      internal_tables_access_test
+      PRIVATE ccfcrypto ccf_kv ccf_node_impl uv
+    )
 
     add_unit_test(
       merkle_test
@@ -954,22 +972,20 @@ if(BUILD_TESTS)
     )
 
     # Merkle Tree memory test
-    add_executable(
-      merkle_mem
-      src/node/test/merkle_mem.cpp
-    )
+    add_executable(merkle_mem src/node/test/merkle_mem.cpp)
     target_link_libraries(
       merkle_mem
-      PRIVATE ${CMAKE_THREAD_LIBS_INIT} ccfcrypto
-                         ccf_thread_local
+      PRIVATE ${CMAKE_THREAD_LIBS_INIT} ccfcrypto ccf_thread_local
     )
 
     # Raft driver and scenario test
     add_executable(
-      raft_driver ${CMAKE_CURRENT_SOURCE_DIR}/src/consensus/aft/test/driver.cpp
+      raft_driver
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/consensus/aft/test/driver.cpp
     )
     target_link_libraries(
-      raft_driver PRIVATE ccfcrypto ccf_tasks ccf_thread_local
+      raft_driver
+      PRIVATE ccfcrypto ccf_tasks ccf_thread_local
     )
     target_include_directories(raft_driver PRIVATE src/aft)
 
@@ -1015,11 +1031,7 @@ if(BUILD_TESTS)
       LINK_LIBS ccf_kv ccf_tasks
     )
 
-    add_picobench(
-      kv_bench
-      SRCS src/kv/test/kv_bench.cpp
-      LINK_LIBS ccf_kv
-    )
+    add_picobench(kv_bench SRCS src/kv/test/kv_bench.cpp LINK_LIBS ccf_kv)
     add_picobench(merkle_bench SRCS src/node/test/merkle_bench.cpp)
     add_picobench(hash_bench SRCS src/ds/test/hash_bench.cpp)
 

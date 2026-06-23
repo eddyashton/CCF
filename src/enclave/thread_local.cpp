@@ -2,6 +2,8 @@
 // Licensed under the Apache 2.0 License.
 #include "ccf/threading/thread_ids.h"
 
+#include <atomic>
+
 namespace ccf::threading
 {
   namespace

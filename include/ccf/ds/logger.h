@@ -10,6 +10,7 @@
 #include <fmt/chrono.h>
 #include <fmt/format.h>
 #include <fmt/ranges.h>
+#include <fmt/std.h>
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <optional>

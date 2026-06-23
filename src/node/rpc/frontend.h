@@ -26,6 +26,7 @@
 #define FMT_HEADER_ONLY
 
 #include <fmt/format.h>
+#include <regex>
 #include <utility>
 #include <vector>
 
