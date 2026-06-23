@@ -9,7 +9,6 @@
 
 #include <llhttp/llhttp.h>
 #include <nlohmann/json.hpp>
-#include <regex>
 #include <set>
 #include <string_view>
 #include <unordered_set>
@@ -65,8 +64,13 @@ namespace ccf::ds::openapi
     // match the regular expression: ^[a-zA-Z0-9\.\-_]+$
     // So here we replace any non-matching characters with _
     std::string result;
-    std::regex re("[^a-zA-Z0-9\\.\\-_]");
-    std::regex_replace(std::back_inserter(result), s.begin(), s.end(), re, "_");
+    result.reserve(s.size());
+    for (const char c : s)
+    {
+      const bool allowed = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+        (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_';
+      result.push_back(allowed ? c : '_');
+    }
     return result;
   }
 

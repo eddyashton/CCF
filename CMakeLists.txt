@@ -259,7 +259,11 @@ add_ccf_static_library(
 target_include_directories(ccf_launcher PRIVATE ${CCF_GENERATED_DIR})
 
 # HTTP parser
-add_library(http_parser "${HTTP_PARSER_SOURCES}")
+add_library(
+  http_parser
+  ${HTTP_PARSER_SOURCES}
+  ${CCF_DIR}/src/http/http_parser.cpp
+)
 set_property(TARGET http_parser PROPERTY POSITION_INDEPENDENT_CODE ON)
 add_hardening(http_parser)
 install(TARGETS http_parser EXPORT ccf DESTINATION lib)

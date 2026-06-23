@@ -11,10 +11,10 @@
 #include <cstdint>
 #include <curl/curl.h>
 #include <curl/multi.h>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <regex>
 #include <span>
 #include <stdexcept>
 #include <uv.h>
@@ -316,12 +316,17 @@ namespace ccf::curl
       header = ccf::nonstd::trim(header);
 
       // Ignore the http status line (e.g. "HTTP/1.1 200") which should be the
-      // first header
-      static const std::regex http_status_line_regex(R"(^HTTP\/[1-9]+.*)");
+      // first header. The status line is "HTTP/" followed by at least one
+      // digit in [1-9].
+      const auto is_http_status_line = [](std::string_view h) {
+        static constexpr std::string_view prefix = "HTTP/";
+        return h.size() > prefix.size() && h.starts_with(prefix) &&
+          h[prefix.size()] >= '1' && h[prefix.size()] <= '9';
+      };
       if (response->is_first_header)
       {
         response->is_first_header = false;
-        if (!std::regex_match(std::string(header), http_status_line_regex))
+        if (!is_http_status_line(header))
         {
           LOG_FAIL_FMT(
             "Expected HTTP status line as first header, got '{}'", header);
