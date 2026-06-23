@@ -26,6 +26,26 @@ function(add_san_test_properties name)
   endif()
 endfunction()
 
+# Unit tests are correctness checks, not performance-sensitive binaries, and the
+# -O2 backend (code generation/optimisation) dominates their compile time (a
+# heavy unit-test TU compiles roughly twice as fast at -O0 as at -O2, whereas
+# -O1 saves almost nothing). Building them without optimisation therefore
+# substantially shortens the build. The trade-off is slower test execution and
+# no coverage of optimisation-dependent bugs; the production binary is still
+# built optimised, and end-to-end tests exercise it at -O2. Set to OFF to build
+# tests with the project-wide optimisation level instead.
+option(
+  CCF_TEST_NO_OPTIMISATION
+  "Compile unit/test binaries at -O0 for faster builds"
+  ON
+)
+
+function(ccf_apply_test_optimisation name)
+  if(CCF_TEST_NO_OPTIMISATION)
+    target_compile_options(${name} PRIVATE -O0)
+  endif()
+endfunction()
+
 # Unit test wrapper
 function(add_unit_test name)
   add_executable(${name} ${ARGN})
@@ -36,6 +56,7 @@ function(add_unit_test name)
   enable_coverage(${name})
   target_link_libraries(${name} PRIVATE ccfcrypto ccf_thread_local -pthread)
   add_san(${name})
+  ccf_apply_test_optimisation(${name})
 
   add_test(NAME ${name} COMMAND ${name})
   set_property(TEST ${name} APPEND PROPERTY LABELS unit)
@@ -88,6 +109,7 @@ function(add_test_bin name)
   enable_coverage(${name})
   target_link_libraries(${name} PRIVATE ccfcrypto ccf_thread_local)
   add_san(${name})
+  ccf_apply_test_optimisation(${name})
 endfunction()
 
 # Helper for building end-to-end function tests using the python infrastructure.
@@ -253,16 +275,17 @@ function(add_picobench name)
     "SRCS;INCLUDE_DIRS;LINK_LIBS"
   )
 
-  add_executable(
-    ${name}
-    ${PARSED_ARGS_SRCS}
-  )
+  add_executable(${name} ${PARSED_ARGS_SRCS})
 
   target_include_directories(${name} PRIVATE src ${PARSED_ARGS_INCLUDE_DIRS})
 
   target_link_libraries(
     ${name}
-    PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${PARSED_ARGS_LINK_LIBS} ccfcrypto ccf_thread_local
+    PRIVATE
+      ${CMAKE_THREAD_LIBS_INIT}
+      ${PARSED_ARGS_LINK_LIBS}
+      ccfcrypto
+      ccf_thread_local
   )
 
   add_san(${name})
