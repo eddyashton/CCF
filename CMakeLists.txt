@@ -209,6 +209,28 @@ set(
   ${CCF_3RD_PARTY_EXPORTED_DIR}/llhttp/llhttp.c
 )
 
+# Headers which are parsed by nearly every C++ translation unit (the logging,
+# JSON, fmt and nlohmann machinery dominates frontend parse time). Precompiling
+# them once per library, rather than re-parsing them in every TU, is a large
+# build-time saving. Used via target_precompile_headers below.
+set(
+  CCF_PCH_HEADERS
+  "${CCF_DIR}/include/ccf/ds/logger.h"
+  "${CCF_DIR}/include/ccf/ds/json.h"
+  <algorithm>
+  <chrono>
+  <functional>
+  <map>
+  <memory>
+  <optional>
+  <set>
+  <string>
+  <string_view>
+  <unordered_map>
+  <unordered_set>
+  <vector>
+)
+
 include(${CCF_DIR}/cmake/cose_openssl.cmake)
 include(${CCF_DIR}/cmake/crypto.cmake)
 include(${CCF_DIR}/cmake/quickjs.cmake)
@@ -322,6 +344,24 @@ add_ccf_static_library(
     ${CCF_DIR}/src/tasks/worker.cpp
 )
 target_link_libraries(ccf_tasks PRIVATE ${CMAKE_DL_LIBS})
+
+# Precompile the ubiquitous headers for the larger multi-source libraries. These
+# libraries each contain many translation units that all pull in the logging and
+# JSON headers, so precompiling amortises that parse cost across the whole
+# library.
+option(CCF_USE_PCH "Use precompiled headers to speed up the build" ON)
+foreach(
+  pch_lib
+  ccfcrypto
+  ccf_js
+  ccf_endpoints
+  ccf_tasks
+  ccf_kv
+)
+  if(CCF_USE_PCH)
+    target_precompile_headers(${pch_lib} PRIVATE ${CCF_PCH_HEADERS})
+  endif()
+endforeach()
 
 # Common test args for Python scripts starting up CCF networks
 set(
