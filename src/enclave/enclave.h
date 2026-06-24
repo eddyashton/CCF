@@ -24,14 +24,12 @@
 #include "node/rpc/cosesigconfig_subsystem.h"
 #include "node/rpc/custom_protocol_subsystem.h"
 #include "node/rpc/forwarder.h"
+#include "node/rpc/frontend_factory.h"
 #include "node/rpc/gov_effects.h"
 #include "node/rpc/ledger_subsystem.h"
-#include "node/rpc/member_frontend.h"
 #include "node/rpc/network_identity_accessors_impl.h"
 #include "node/rpc/network_identity_subsystem.h"
-#include "node/rpc/node_frontend.h"
 #include "node/rpc/node_operation.h"
-#include "node/rpc/user_frontend.h"
 #include "node/signature_cache_subsystem.h"
 #include "rpc_map.h"
 #include "rpc_sessions.h"
@@ -167,14 +165,13 @@ namespace ccf
 
       LOG_TRACE_FMT("Creating RPC actors / ffi");
       rpc_map->register_frontend<ccf::ActorsType::members>(
-        std::make_unique<ccf::MemberRpcFrontend>(network, *context));
+        ccf::make_member_frontend(network, *context));
 
       rpc_map->register_frontend<ccf::ActorsType::users>(
-        std::make_unique<ccf::UserRpcFrontend>(
-          network, ccf::make_user_endpoints(*context), *context));
+        ccf::make_user_frontend(network, *context));
 
       rpc_map->register_frontend<ccf::ActorsType::nodes>(
-        std::make_unique<ccf::NodeRpcFrontend>(network, *context));
+        ccf::make_node_frontend(network, *context));
 
       LOG_TRACE_FMT("Initialize node");
       node->initialize(

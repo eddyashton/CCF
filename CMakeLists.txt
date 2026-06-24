@@ -509,8 +509,17 @@ add_san(ccf_node_impl)
 add_hardening(ccf_node_impl)
 install(TARGETS ccf_node_impl EXPORT ccf)
 
-# Build common library for CCF enclaves
-set(CCF_IMPL_SOURCE ${CCF_DIR}/src/enclave/main.cpp)
+# Build common library for CCF enclaves. The RPC frontend factories are
+# compiled here, alongside main.cpp, as separate translation units: this keeps
+# the (individually >20s) frontend instantiation out of the single enclave entry
+# TU and lets the frontends compile in parallel with it.
+set(
+  CCF_IMPL_SOURCE
+  ${CCF_DIR}/src/enclave/main.cpp
+  ${CCF_DIR}/src/node/rpc/member_frontend_factory.cpp
+  ${CCF_DIR}/src/node/rpc/node_frontend_factory.cpp
+  ${CCF_DIR}/src/node/rpc/user_frontend_factory.cpp
+)
 
 add_ccf_static_library(
   ccf
