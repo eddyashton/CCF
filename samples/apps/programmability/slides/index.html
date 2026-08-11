@@ -1,0 +1,661 @@
+<!doctype html>
+<!-- Copyright (c) Microsoft Corporation. All rights reserved. -->
+<!-- Licensed under the Apache 2.0 License. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#071b26" />
+    <title>CCF JavaScript Internals</title>
+    <link rel="stylesheet" href="styles.css?v=20260811-10" />
+  </head>
+  <body>
+    <main class="deck" aria-live="polite">
+      <section class="slide title-slide is-active" data-title="CCF JavaScript Internals">
+        <div class="title-mark" aria-hidden="true"><span>CCF</span><i>JS</i></div>
+        <div class="title-copy">
+          <p class="eyebrow">CCF ENGINEERING / DEEP DIVE</p>
+          <h1>CCF JavaScript<br /><em>internals</em></h1>
+          <p class="lede">Interpreter lifecycle, endpoint dispatch, native extensions, state reuse, and sandbox boundaries.</p>
+        </div>
+        <div class="title-footer">
+          <span>Reference application: samples/apps/programmability</span>
+          <span>11 August 2026 / QuickJS / DynamicJSEndpointRegistry / InterpreterCache</span>
+        </div>
+        <aside class="notes">
+          Scope the deep dive: JavaScript is not a sidecar or remote service. Each node embeds QuickJS in the process that executes C++ endpoints. The following slides trace interpreter construction, per-request capability binding, invocation, and cleanup.
+        </aside>
+      </section>
+
+      <section class="slide" data-title="Execution model">
+        <header class="slide-header">
+          <p class="eyebrow">01 / EXECUTION MODEL</p>
+          <h2>JavaScript execution within a CCF node</h2>
+        </header>
+        <div class="split model-split">
+          <div class="copy-stack">
+            <p class="statement">Each node embeds QuickJS and executes endpoint modules against the current CCF transaction.</p>
+            <div class="language-pair">
+              <div><strong>C++</strong><span>Compiled endpoint registries</span></div>
+              <div><strong>JS</strong><span>KV-backed ES modules in QuickJS</span></div>
+            </div>
+            <p class="aside-copy">The replicated unit is the KV transaction. JavaScript heap state is local to an interpreter context and is never replicated.</p>
+          </div>
+          <div class="node-diagram" aria-label="A CCF node containing C++ endpoint dispatch, QuickJS, and KV transaction access">
+            <div class="node-label">CCF NODE</div>
+            <div class="request-pill">HTTP request</div>
+            <div class="flow-arrow">down</div>
+            <div class="runtime-row"><span>C++ registry</span><b>dispatch</b><span>QuickJS context</span></div>
+            <div class="flow-arrow">down</div>
+            <div class="kv-bar"><b>ccf.kv</b><span>current transaction</span></div>
+            <div class="ledger-line"><span>commit</span><i></i><span>AFT + ledger</span></div>
+          </div>
+        </div>
+        <aside class="notes">
+          Each node can execute the same JavaScript application. The JS heap is local and ephemeral; durable shared state belongs in KV and is replicated by CCF. Read-only calls may run locally, while writes participate in the replicated state machine.
+        </aside>
+      </section>
+
+      <section class="slide" data-title="Sample application structure">
+        <header class="slide-header compact">
+          <p class="eyebrow">02 / SAMPLE APPLICATION</p>
+          <h2><code>programmability.cpp</code>: registry structure</h2>
+        </header>
+        <div class="literate-layout">
+          <div class="literate-prose">
+            <section>
+              <span class="prose-index">01</span>
+              <h3>One registry serves both endpoint types</h3>
+              <p><code>ProgrammabilityHandlers</code> derives from <code>DynamicJSEndpointRegistry</code>, then registers ordinary C++ handlers in the same constructor. Dynamic JS lookup runs before the base registry falls back to those native definitions.</p>
+            </section>
+            <section>
+              <span class="prose-index">02</span>
+              <h3>The application owns its JS storage</h3>
+              <p>The namespace argument assigns this registry a set of KV maps for endpoint metadata, source modules, compiled bytecode, runtime options, audit records, and the interpreter flush marker.</p>
+            </section>
+            <section>
+              <span class="prose-index">03</span>
+              <h3>The host can add narrower capabilities</h3>
+              <p>The override of <code>get_extensions()</code> is called for each invocation. Here it creates <code>MyExtension</code> with a read-only pointer to the current transaction.</p>
+            </section>
+          </div>
+          <div class="literate-code-column sample-code">
+            <article class="code-card">
+              <div class="code-path"><span>registry</span> programmability.cpp</div>
+              <pre><code><span class="kw">class</span> ProgrammabilityHandlers : <span class="kw">public</span>
+  ccf::js::<mark>DynamicJSEndpointRegistry</mark>
+{
+  ProgrammabilityHandlers(AbstractNodeContext&amp; context) :
+    DynamicJSEndpointRegistry(
+      context, CUSTOM_ENDPOINTS_NAMESPACE)
+  {
+    make_endpoint(
+      <span class="str">"/records/{key}"</span>, HTTP_PUT, put,
+      {ccf::user_cert_auth_policy})
+      .install();
+  }
+};</code></pre>
+            </article>
+            <article class="code-card">
+              <div class="code-path"><span>per invocation</span> programmability.cpp / get_extensions</div>
+              <pre><code>ccf::js::extensions::Extensions get_extensions(
+  <span class="kw">const</span> EndpointContext&amp; endpoint_ctx) <span class="kw">override</span>
+{
+  ccf::js::extensions::Extensions extensions;
+  extensions.push_back(
+    std::make_shared&lt;MyExtension&gt;(
+      <mark>&amp;endpoint_ctx.tx</mark>));
+  <span class="kw">return</span> extensions;
+}</code></pre>
+            </article>
+          </div>
+        </div>
+        <aside class="notes">
+          This sample differs from a governance-installed JS app: it combines native and JavaScript endpoints, owns the policy for bundle installation, and adds a custom host extension. The underlying registry and interpreter paths are shared with standard JS applications.
+        </aside>
+      </section>
+
+      <section class="slide" data-title="Registry initialization">
+        <header class="slide-header compact">
+          <p class="eyebrow">03 / INITIALIZATION</p>
+          <h2>Registry construction and interpreter factory</h2>
+        </header>
+        <div class="literate-layout">
+          <div class="literate-prose">
+            <section>
+              <span class="prose-index">01</span>
+              <h3>CCF asks the application for a registry</h3>
+              <p><code>make_user_endpoints()</code> is the application entry point. Each node constructs one <code>ProgrammabilityHandlers</code> instance during startup; this is registry setup, not interpreter creation.</p>
+            </section>
+            <section>
+              <span class="prose-index">02</span>
+              <h3>The registry uses a node-wide cache</h3>
+              <p>The base constructor retrieves <code>AbstractInterpreterCache</code> from the node context. Interpreters are requested lazily when a JS endpoint executes.</p>
+            </section>
+            <section>
+              <span class="prose-index">03</span>
+              <h3>The factory installs reusable extensions</h3>
+              <p>New contexts are <code>CommonContext</code> instances. Dependency-free APIs such as consensus and historical access are installed once here; transaction-bound extensions are added later for each request.</p>
+            </section>
+          </div>
+          <div class="literate-code-column initialization-code">
+            <article class="code-card">
+              <div class="code-path"><span>application entry</span> programmability.cpp</div>
+              <pre><code>std::unique_ptr&lt;EndpointRegistry&gt;
+<mark>make_user_endpoints</mark>(AbstractNodeContext&amp; context)
+{
+  <span class="kw">return</span> std::make_unique&lt;
+    programmabilityapp::ProgrammabilityHandlers&gt;(
+      context);
+}</code></pre>
+            </article>
+            <article class="code-card">
+              <div class="code-path"><span>context factory</span> src/js/registry.cpp</div>
+              <pre><code>interpreter_cache = context.get_subsystem&lt;
+  AbstractInterpreterCache&gt;();
+
+interpreter_cache-&gt;set_interpreter_factory(
+  [extensions](TxAccess access) {
+    <span class="kw">auto</span> interpreter =
+      std::make_shared&lt;<mark>CommonContext</mark>&gt;(access);
+
+    <span class="kw">for</span> (<span class="kw">const auto</span>&amp; extension : extensions)
+      interpreter-&gt;add_extension(extension);
+
+    <span class="kw">return</span> interpreter;
+  });</code></pre>
+            </article>
+          </div>
+        </div>
+        <aside class="notes">
+          Explain "setup" precisely: this call is CCF's app entry point. It constructs the endpoint registry; it does not eagerly create one interpreter per route. Interpreter contexts are acquired lazily during request execution from a node subsystem cache.
+        </aside>
+      </section>
+
+      <section class="slide" data-title="Installing endpoint bundles">
+        <header class="slide-header compact">
+          <p class="eyebrow">04 / APPLICATION UPDATE</p>
+          <h2>Installing a JavaScript endpoint bundle</h2>
+        </header>
+        <div class="literate-layout">
+          <div class="literate-prose">
+            <section>
+              <span class="prose-index">01</span>
+              <h3>The sample owns admission policy</h3>
+              <p><code>PUT /custom_endpoints</code> authenticates the caller, requires an application administrator, optionally verifies a COSE timestamp, and records the action for ledger audit.</p>
+            </section>
+            <section>
+              <span class="prose-index">02</span>
+              <h3>The bundle becomes replicated state</h3>
+              <p><code>install_custom_endpoints_v1()</code> replaces endpoint metadata and module source in namespaced KV maps. The transaction carries the same application definition to every node.</p>
+            </section>
+            <section>
+              <span class="prose-index">03</span>
+              <h3>Existing contexts are invalidated</h3>
+              <p>The installation writes the interpreter-flush map and regenerates QuickJS bytecode. A later cache lookup observes the new write version and discards contexts built for the old module graph.</p>
+            </section>
+          </div>
+          <div class="literate-code-column bundle-code">
+            <article class="code-card">
+              <div class="code-path"><span>admit + audit</span> programmability.cpp</div>
+              <pre><code><span class="kw">const auto</span> parsed_bundle =
+  parsed_content.get&lt;ccf::js::Bundle&gt;();
+
+record_action_for_audit_v1(
+  ctx.tx, format, user_id.value(), ...);
+
+result = <mark>install_custom_endpoints_v1</mark>(
+  ctx.tx, parsed_bundle);</code></pre>
+            </article>
+            <article class="code-card">
+              <div class="code-path"><span>persist + invalidate</span> src/js/registry.cpp</div>
+              <pre><code><span class="kw">auto</span>* modules =
+  tx.template rw&lt;ccf::Modules&gt;(modules_map);
+modules-&gt;clear();
+<span class="kw">for</span> (<span class="kw">const auto</span>&amp; moduledef : bundle.modules)
+{
+  modules-&gt;put(
+    normalised_module_path(moduledef.name),
+    moduledef.module);
+}
+
+<span class="kw">auto</span>* interpreter_flush = tx.template rw&lt;
+  ccf::InterpreterFlush&gt;(interpreter_flush_map);
+<mark>interpreter_flush-&gt;put(true)</mark>;</code></pre>
+            </article>
+          </div>
+        </div>
+        <aside class="notes">
+          Compare with governance's set_js_app: the bundle format and underlying runtime are the same, but this sample places the controlling authorization in application space. The sample records an audit trail and blocks replay because replacing executable code is a sensitive operation.
+        </aside>
+      </section>
+
+      <section class="slide" data-title="Per-request execution path">
+        <header class="slide-header compact">
+          <p class="eyebrow">05 / REQUEST EXECUTION</p>
+          <h2>Per-request execution sequence</h2>
+        </header>
+        <div class="literate-layout">
+          <div class="literate-prose">
+            <section>
+              <span class="prose-index">01</span>
+              <h3>Acquire the appropriate context</h3>
+              <p>The endpoint's transaction mode selects an application read-only or read-write context. Its reuse policy and the current flush marker determine whether the cache returns a warm context or constructs a fresh one.</p>
+            </section>
+            <section>
+              <span class="prose-index">02</span>
+              <h3>Install this invocation's capabilities</h3>
+              <p>CCF replaces the module loader, then attaches KV, RPC, request, and application-defined extensions. These objects contain pointers to the current transaction and RPC context.</p>
+            </section>
+            <section>
+              <span class="prose-index">03</span>
+              <h3>Call one export, then detach</h3>
+              <p>The registry resolves the configured ES-module export, creates its request object, applies runtime limits around <code>JS_Call</code>, and removes every request-local extension before interpreting the result.</p>
+            </section>
+          </div>
+          <div class="literate-code-column execution-code">
+            <article class="code-card">
+              <div class="code-path"><span>acquire</span> src/js/registry.cpp / do_execute_request</div>
+              <pre><code><span class="kw">const auto</span> rw_access =
+  endpoint-&gt;properties.mode == Mode::ReadWrite ?
+  TxAccess::APP_RW : TxAccess::APP_RO;
+
+<span class="kw">auto</span> interpreter = interpreter_cache-&gt;
+  <mark>get_interpreter</mark>(
+    rw_access, reuse_policy, flush_marker);
+<span class="kw">auto</span>&amp; ctx = *interpreter;
+
+std::lock_guard&lt;ccf::pal::Mutex&gt;
+  guard(ctx.lock);</code></pre>
+            </article>
+            <article class="code-card">
+              <div class="code-path"><span>bind + invoke + detach</span> src/js/registry.cpp</div>
+              <pre><code><span class="kw">for</span> (<span class="kw">const auto</span>&amp; extension : local_extensions)
+  <mark>ctx.add_extension(extension)</mark>;
+
+<span class="kw">auto</span> export_func = ctx.get_exported_function(
+  *module_val, props.js_function, props.js_module);
+
+<span class="kw">auto</span> val = <mark>ctx.call_with_rt_options</mark>(
+  export_func, {request}, options, ...);
+
+<span class="kw">for</span> (<span class="kw">const auto</span>&amp; extension : local_extensions)
+  <mark>ctx.remove_extension(extension)</mark>;</code></pre>
+            </article>
+          </div>
+        </div>
+        <aside class="notes">
+          Walk the sequence in order. The same Context object may survive, but its authority is refreshed per call. The context mutex serializes use because cached interpreters may be reused across threads. The module loader is also replaced for the current transaction.
+        </aside>
+      </section>
+
+      <section class="slide" data-title="Context and request lifetime">
+        <header class="slide-header compact">
+          <p class="eyebrow">06 / OBJECT LIFETIME</p>
+          <h2>Interpreter context vs. request-scoped state</h2>
+        </header>
+        <div class="literate-layout">
+          <div class="literate-prose">
+            <section>
+              <span class="prose-index">01</span>
+              <h3>A cached context retains JavaScript state</h3>
+              <p>The QuickJS runtime, global object, evaluated module graph, and any mutable globals can survive the request. CCF locks the context because a cached instance may be selected by requests on different threads.</p>
+            </section>
+            <section>
+              <span class="prose-index">02</span>
+              <h3>Authority is attached for one invocation</h3>
+              <p><code>KvExtension</code>, <code>RpcExtension</code>, <code>RequestExtension</code>, and application extensions contain pointers into the current endpoint context. They are created after the context is acquired.</p>
+            </section>
+            <section>
+              <span class="prose-index">03</span>
+              <h3>Extension lookup enforces the lifetime</h3>
+              <p>After the call, CCF removes each extension instance from the context. A JS function object may still exist, but its native callback can no longer retrieve the removed capability or its stale transaction pointer.</p>
+            </section>
+          </div>
+          <div class="literate-code-column lifetime-code">
+            <article class="code-card">
+              <div class="code-path"><span>request-local objects</span> src/js/registry.cpp</div>
+              <pre><code>ccf::js::extensions::Extensions local_extensions =
+  get_extensions(endpoint_ctx);
+
+local_extensions.emplace_back(
+  std::make_shared&lt;KvExtension&gt;(
+    <mark>&amp;endpoint_ctx.tx</mark>, namespace_restriction));
+
+local_extensions.emplace_back(
+  std::make_shared&lt;RpcExtension&gt;(
+    <mark>endpoint_ctx.rpc_ctx.get()</mark>));</code></pre>
+            </article>
+            <article class="code-card">
+              <div class="code-path"><span>bounded lifetime</span> src/js/registry.cpp</div>
+              <pre><code><span class="kw">for</span> (<span class="kw">const auto</span>&amp; extension : local_extensions)
+  <mark>ctx.add_extension(extension)</mark>;
+
+<span class="kw">auto</span> val = ctx.call_with_rt_options(
+  export_func, {request}, options, ...);
+
+<span class="kw">for</span> (<span class="kw">const auto</span>&amp; extension : local_extensions)
+  <mark>ctx.remove_extension(extension)</mark>;</code></pre>
+            </article>
+          </div>
+        </div>
+        <aside class="notes">
+          Capabilities are ordinary C++ extension instances held by the Context. Their JS-visible properties may remain on globals, but after removal a host callback cannot resolve that extension instance. This prevents an old callback from carrying a stale transaction pointer into the next request.
+        </aside>
+      </section>
+
+      <section class="slide" data-title="Registering a native extension">
+        <header class="slide-header compact">
+          <p class="eyebrow">07 / NATIVE EXTENSIONS</p>
+          <h2>Registering <code>MyExtension</code></h2>
+        </header>
+        <div class="literate-layout">
+          <div class="literate-prose">
+            <section>
+              <span class="prose-index">01</span>
+              <h3>The extension object carries host state</h3>
+              <p><code>MyExtension</code> implements CCF's <code>ExtensionInterface</code>. Its only state is a <code>ReadOnlyTx*</code>, which deliberately limits this API to reads from the current transaction.</p>
+            </section>
+            <section>
+              <span class="prose-index">02</span>
+              <h3><code>install()</code> defines the JS surface</h3>
+              <p>The extension creates one global namespace, <code>my_object</code>, and publishes a constant plus the native <code>hasRole</code> function. The explicit namespace avoids adding unrelated names directly to the global object.</p>
+            </section>
+            <section>
+              <span class="prose-index">03</span>
+              <h3>The callback and capability are separate</h3>
+              <p>The function object stores a C callback, name, and arity. It does not capture the transaction pointer. At call time the callback retrieves the currently installed <code>MyExtension</code> from the CCF context.</p>
+            </section>
+          </div>
+          <div class="literate-code-column extension-code">
+            <article class="code-card">
+              <div class="code-path"><span>capability object</span> programmability.cpp</div>
+              <pre><code><span class="kw">class</span> MyExtension : <span class="kw">public</span>
+  ccf::js::extensions::ExtensionInterface
+{
+<span class="kw">public</span>:
+  ccf::kv::<mark>ReadOnlyTx*</mark> tx;
+
+  MyExtension(ccf::kv::ReadOnlyTx* t) : tx(t) {}
+
+  <span class="kw">void</span> install(
+    ccf::js::core::Context&amp; ctx) <span class="kw">override</span>;
+};</code></pre>
+            </article>
+            <article class="code-card">
+              <div class="code-path"><span>JavaScript surface</span> programmability.cpp / MyExtension::install</div>
+              <pre><code><span class="kw">auto</span> my_global_object =
+  ctx.get_or_create_global_property(
+    <span class="str">"my_object"</span>, ctx.new_obj());
+
+my_global_object.set(
+  <span class="str">"hasRole"</span>,
+  ctx.new_c_function(
+    <mark>js_has_role_permitting_action</mark>,
+    <span class="str">"hasRole"</span>, 2));</code></pre>
+            </article>
+          </div>
+        </div>
+        <aside class="notes">
+          "Custom commands" means native functions installed into the JS global environment. The sample nests them under my_object. In production, prefer a cohesive namespace and an intentionally small interface. Read-only Tx is a meaningful type-level restriction here.
+        </aside>
+      </section>
+
+      <section class="slide" data-title="Implementing a QuickJS callback">
+        <header class="slide-header compact">
+          <p class="eyebrow">08 / QUICKJS C API</p>
+          <h2>Native callback implementation requirements</h2>
+        </header>
+        <div class="literate-layout">
+          <div class="literate-prose">
+            <section>
+              <span class="prose-index">01</span>
+              <h3>Validate before reading QuickJS values</h3>
+              <p>The callback first checks <code>argc</code>, recovers CCF's wrapper through the QuickJS opaque pointer, and verifies that <code>MyExtension</code> is installed for this invocation.</p>
+            </section>
+            <section>
+              <span class="prose-index">02</span>
+              <h3>Convert at the boundary</h3>
+              <p>Each JavaScript argument is converted through <code>Context::to_str()</code>. Conversion failure is returned as a JavaScript <code>TypeError</code>; native code never indexes unchecked arguments or assumes their type.</p>
+            </section>
+            <section>
+              <span class="prose-index">03</span>
+              <h3>Translate both results and failures</h3>
+              <p>C++ exceptions must not unwind through QuickJS. The callback catches them and creates a JS exception; on success it converts the native Boolean with <code>JS_NewBool</code>.</p>
+            </section>
+          </div>
+          <div class="literate-code-column callback-code">
+            <article class="code-card">
+              <div class="code-path"><span>validate + recover</span> programmability.cpp</div>
+              <pre><code><span class="kw">if</span> (argc != 2)
+  <span class="kw">return</span> JS_ThrowTypeError(ctx, ...);
+
+<span class="kw">auto</span>&amp; jsctx = *<span class="kw">reinterpret_cast</span>&lt;
+  ccf::js::core::Context*&gt;(
+    <mark>JS_GetContextOpaque(ctx)</mark>);
+
+<span class="kw">auto</span>* extension =
+  jsctx.get_extension&lt;MyExtension&gt;();
+<span class="kw">if</span> (extension == <span class="kw">nullptr</span>)
+  <span class="kw">return</span> JS_ThrowInternalError(ctx, ...);</code></pre>
+            </article>
+            <article class="code-card">
+              <div class="code-path"><span>convert + return</span> programmability.cpp</div>
+              <pre><code><span class="kw">auto</span> user_id = jsctx.to_str(argv[0]);
+<span class="kw">if</span> (!user_id.has_value())
+  <span class="kw">return</span> JS_ThrowTypeError(ctx, ...);
+
+<span class="kw">try</span>
+{
+  <span class="kw">const bool</span> permitted =
+    has_role_permitting_action(
+      *extension-&gt;tx, user_id.value(), ...);
+  <span class="kw">return</span> <mark>JS_NewBool</mark>(ctx, permitted);
+}
+<span class="kw">catch</span> (<span class="kw">const</span> std::exception&amp; exc)
+{
+  <span class="kw">return</span> JS_ThrowInternalError(ctx, ...);
+}</code></pre>
+            </article>
+          </div>
+        </div>
+        <aside class="notes">
+          The interpreter protects native code from ordinary JS memory access, but a custom callback runs with the full privilege of the host process. Argument checking, conversion failures, C++ exception containment, and capability checks are all part of the sandbox boundary.
+        </aside>
+      </section>
+
+      <section class="slide" data-title="Interpreter reuse policy">
+        <header class="slide-header compact">
+          <p class="eyebrow">09 / INTERPRETER CACHE</p>
+          <h2>Interpreter reuse policy and consequences</h2>
+        </header>
+        <div class="literate-layout">
+          <div class="literate-prose">
+            <section>
+              <span class="prose-index">01</span>
+              <h3>Reuse is selected by endpoint metadata</h3>
+              <p>Without an <code>interpreter_reuse</code> policy, every invocation receives a fresh context. A key-based policy opts the endpoint into the node-wide LRU.</p>
+            </section>
+            <section>
+              <span class="prose-index">02</span>
+              <h3>The effective key includes access mode</h3>
+              <p>CCF appends <code>(ro)</code> or <code>(rw)</code> to the configured key. A context constructed for read-only transaction access cannot later be reused for a read-write endpoint.</p>
+            </section>
+            <section>
+              <span class="prose-index">03</span>
+              <h3>Reuse changes observable semantics</h3>
+              <p>Module evaluation and allocation are amortized, but globals and heap objects persist, memory remains resident, and requests sharing a key serialize on the context mutex. Correctness must not depend on a fresh global state.</p>
+            </section>
+          </div>
+          <div class="literate-code-column cache-code">
+            <article class="code-card">
+              <div class="code-path"><span>cache key</span> src/js/interpreter_cache.h</div>
+              <pre><code><span class="kw">auto</span> key = interpreter_reuse-&gt;key;
+<span class="kw">if</span> (access == TxAccess::APP_RW)
+  key += <span class="str">" (rw)"</span>;
+<span class="kw">else if</span> (access == TxAccess::APP_RO)
+  key += <span class="str">" (ro)"</span>;
+
+<span class="kw">auto</span> it = lru.find(key);
+<span class="kw">if</span> (it == lru.end())
+  it = lru.insert(key, <mark>make_interpreter(access)</mark>);
+<span class="kw">else</span>
+  lru.promote(it);</code></pre>
+            </article>
+            <article class="code-card">
+              <div class="code-path"><span>fresh by default</span> src/js/interpreter_cache.h</div>
+              <pre><code><span class="kw">if</span> (interpreter_reuse.has_value())
+{
+  <span class="comment">// KeyBased lookup returns a cached context.</span>
+  <span class="kw">return</span> it-&gt;second;
+}
+
+<span class="comment">// No policy: construct but do not store.</span>
+<span class="kw">return</span> <mark>make_interpreter(access)</mark>;</code></pre>
+            </article>
+          </div>
+        </div>
+        <aside class="notes">
+          Reuse is opt-in through endpoint metadata. RO and RW contexts are separated. The mutex means reuse is cross-thread but not concurrently within one Context. Ask the audience: "Would this endpoint still be correct if globalThis.counter starts at 87?" If not, it should not rely on reuse.
+        </aside>
+      </section>
+
+      <section class="slide" data-title="Cache invalidation">
+        <header class="slide-header compact">
+          <p class="eyebrow">10 / CACHE INVALIDATION</p>
+          <h2>Cache invalidation after application updates</h2>
+        </header>
+        <div class="timeline">
+          <div class="time-point"><b>v41</b><span>bundle active</span></div>
+          <div class="time-cache"><span>cached contexts</span><strong>A</strong><strong>B</strong><strong>C</strong></div>
+          <div class="time-event"><i></i><strong>Install new bundle</strong><span>flush marker written at v58</span></div>
+          <div class="time-clear"><span>next lookup</span><strong>LRU.clear()</strong></div>
+          <div class="time-point fresh"><b>v58</b><span>new contexts only</span></div>
+        </div>
+        <article class="code-strip">
+          <div class="code-path"><span>invalidation</span> src/js/interpreter_cache.h</div>
+          <pre><code><span class="kw">if</span> (cache_build_marker != freshness_marker) {
+  <mark>lru.clear();</mark>
+  cache_build_marker = freshness_marker;
+}</code></pre>
+        </article>
+        <p class="bottom-thesis">A marker change clears the complete LRU, so no cached module graph survives an application update.</p>
+        <aside class="notes">
+          The registry reads the version of the previous write to an interpreter-flush KV value. Any action modifying the app should update it. The cache compares this freshness marker on lookup and clears the whole LRU if it changed. Broad invalidation is simpler and safer than dependency-level invalidation.
+        </aside>
+      </section>
+
+      <section class="slide" data-title="Runtime resource limits">
+        <header class="slide-header compact">
+          <p class="eyebrow">11 / RUNTIME LIMITS</p>
+          <h2>QuickJS resource limits and defaults</h2>
+        </header>
+        <div class="limit-board">
+          <div class="limit"><small>HEAP</small><strong>100 <span>MiB</span></strong><code>JS_SetMemoryLimit</code></div>
+          <div class="limit"><small>STACK</small><strong>1 <span>MiB</span></strong><code>JS_SetMaxStackSize</code></div>
+          <div class="limit"><small>EXECUTION</small><strong>5,000 <span>ms</span></strong><code>JS_SetInterruptHandler</code></div>
+          <div class="limit"><small>CACHE</small><strong>10 <span>contexts</span></strong><code>LRU max size</code></div>
+        </div>
+        <div class="limit-flow"><span>set options</span><i></i><strong>JS_Call</strong><i></i><span>clear interrupt + reset limits</span></div>
+        <div class="source-ribbon">Defaults <strong>include/ccf/service/tables/jsengine.h</strong><span>Enforcement: src/js/core/runtime.cpp + context.cpp</span></div>
+        <aside class="notes">
+          These are current defaults, configurable through runtime options. The timeout is implemented using QuickJS's interrupt handler and wall-clock elapsed time. Limits are applied immediately around the call; setup temporarily resets heap and stack constraints to safe initialization values.
+        </aside>
+      </section>
+
+      <section class="slide" data-title="Sandbox boundaries">
+        <header class="slide-header compact">
+          <p class="eyebrow">12 / SANDBOX BOUNDARIES</p>
+          <h2>Language, capability, and endpoint controls</h2>
+        </header>
+        <div class="rings">
+          <div class="ring ring-outer"><span>NODE PROCESS</span>
+            <div class="ring ring-runtime"><span>QUICKJS RUNTIME</span>
+              <div class="ring ring-app"><span>APPLICATION JS</span>
+                <strong>Only installed<br />host APIs</strong>
+              </div>
+            </div>
+          </div>
+          <div class="ring-labels">
+            <div><b>Language isolation</b><span>No Node.js, filesystem or network APIs by default.</span></div>
+            <div><b>KV policy</b><span>Namespace restriction returns READ_WRITE, READ_ONLY or ILLEGAL.</span></div>
+            <div><b>Endpoint policy</b><span>Authentication, forwarding mode and transaction mode remain host-owned.</span></div>
+          </div>
+        </div>
+        <aside class="notes">
+          Avoid claiming QuickJS alone is the sandbox. CCF's security posture is layered: embedded language isolation, explicit native extensions, KV namespace policy, endpoint authentication and transaction semantics, plus runtime resource bounds. There is no ambient Node.js capability set.
+        </aside>
+      </section>
+
+      <section class="slide" data-title="Determinism constraints">
+        <header class="slide-header compact">
+          <p class="eyebrow">13 / HOST API DESIGN</p>
+          <h2>Determinism constraints for host extensions</h2>
+        </header>
+        <div class="do-dont">
+          <div class="dont">
+            <small>AVOID AMBIENT AUTHORITY</small>
+            <div><b>x</b><span>wall-clock time</span></div>
+            <div><b>x</b><span>host filesystem</span></div>
+            <div><b>x</b><span>outbound network</span></div>
+            <div><b>x</b><span>process-global mutable state</span></div>
+          </div>
+          <div class="do">
+            <small>PREFER EXPLICIT INPUTS</small>
+            <div><b>+</b><span>request + authenticated identity</span></div>
+            <div><b>+</b><span>transactional KV reads</span></div>
+            <div><b>+</b><span>CCF-provided deterministic APIs</span></div>
+            <div><b>+</b><span>response as plain data</span></div>
+          </div>
+        </div>
+        <blockquote>Review question: Is each observable input replicated, authorized, and valid for the endpoint's execution mode?</blockquote>
+        <aside class="notes">
+          This is a design review question, not an absolute ban. Some CCF APIs expose controlled nondeterminism or are suitable only for particular endpoint modes. The extension author owns the semantic contract. Also avoid leaking secrets through logs or detailed exception responses.
+        </aside>
+      </section>
+
+      <section class="slide" data-title="Implementation summary">
+        <header class="slide-header">
+          <p class="eyebrow">14 / IMPLEMENTATION SUMMARY</p>
+          <h2>Components and ownership boundaries</h2>
+        </header>
+        <div class="takeaways">
+          <div><b>01</b><strong>Node runtime</strong><span>QuickJS contexts execute KV-backed ES modules from the endpoint registry.</span></div>
+          <div><b>02</b><strong>Request binding</strong><span>Extensions attach the current Tx and RPC context, then are removed after invocation.</span></div>
+          <div><b>03</b><strong>Reuse policy</strong><span>Cached contexts retain globals and modules and serialize execution with a mutex.</span></div>
+          <div><b>04</b><strong>Sandbox policy</strong><span>Runtime limits, namespace restrictions, endpoint policy, and native APIs define the boundary.</span></div>
+        </div>
+        <div class="closing-path">Code entry points <strong>samples/apps/programmability/programmability.cpp</strong><span>and</span><strong>src/js/registry.cpp</strong></div>
+        <aside class="notes">
+          Summarize the ownership boundaries: the registry resolves endpoints, the cache owns reusable contexts, extensions bind host capabilities, and runtime options bound execution. Persistent application state belongs in KV rather than interpreter globals.
+        </aside>
+      </section>
+
+      <section class="slide end-slide" data-title="Discussion and code pointers">
+        <div class="end-grid" aria-hidden="true"></div>
+        <p class="eyebrow">DEEP DIVE</p>
+        <h2>Discussion</h2>
+        <p>Interpreter lifecycle / extensions / reuse policy / sandbox boundaries</p>
+        <div class="end-source">Code: samples/apps/programmability/programmability.cpp -> src/js/registry.cpp</div>
+        <aside class="notes">
+          Discussion prompts: When should an endpoint opt into interpreter reuse? Should two endpoints share a reuse key? Which host APIs would violate the intended sandbox? How should tests verify that extensions do not retain request authority?
+        </aside>
+      </section>
+    </main>
+
+    <nav class="controls" aria-label="Slideshow controls">
+      <button class="icon-button" id="previous" type="button" aria-label="Previous slide" title="Previous slide (Left arrow)">&larr;</button>
+      <button class="slide-count" id="overview" type="button" aria-label="Open slide overview" title="Overview (O)"><span id="current-number">1</span><i>/</i><span id="total-number">16</span></button>
+      <button class="icon-button" id="next" type="button" aria-label="Next slide" title="Next slide (Right arrow)">&rarr;</button>
+      <span class="control-divider"></span>
+      <button class="text-button" id="notes-toggle" type="button" aria-pressed="false" title="Speaker notes (N)">Notes</button>
+      <button class="icon-button fullscreen-button" id="fullscreen" type="button" aria-label="Enter fullscreen" title="Fullscreen (F)">&#x26f6;</button>
+    </nav>
+
+    <div class="progress" aria-hidden="true"><i id="progress-bar"></i></div>
+    <aside class="speaker-panel" id="speaker-panel" aria-label="Speaker notes"><div class="speaker-heading"><strong>Speaker notes</strong><button id="notes-close" type="button" aria-label="Close speaker notes">&times;</button></div><p id="speaker-text"></p></aside>
+    <div class="overview-panel" id="overview-panel" aria-hidden="true"><div class="overview-head"><strong>Slides</strong><span>Choose a slide or press O to close</span></div><div class="overview-grid" id="overview-grid"></div></div>
+
+    <script src="slides.js?v=20260811-6"></script>
+  </body>
+</html>
