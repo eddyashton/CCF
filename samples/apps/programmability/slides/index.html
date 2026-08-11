@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#071b26" />
     <title>CCF JavaScript Internals</title>
-    <link rel="stylesheet" href="styles.css?v=20260811-10" />
+    <link rel="stylesheet" href="styles.css?v=20260811-12" />
   </head>
   <body>
     <main class="deck" aria-live="polite">
@@ -32,23 +32,34 @@
           <p class="eyebrow">01 / EXECUTION MODEL</p>
           <h2>JavaScript execution within a CCF node</h2>
         </header>
-        <div class="split model-split">
-          <div class="copy-stack">
-            <p class="statement">Each node embeds QuickJS and executes endpoint modules against the current CCF transaction.</p>
-            <div class="language-pair">
-              <div><strong>C++</strong><span>Compiled endpoint registries</span></div>
-              <div><strong>JS</strong><span>KV-backed ES modules in QuickJS</span></div>
+        <div class="execution-model">
+          <div class="execution-model-main">
+            <div class="execution-steps">
+              <section><b>01</b><div><h3>Resolve the endpoint</h3><p>The C++ registry reads endpoint metadata from KV to select an ES module and exported function.</p></div></section>
+              <section><b>02</b><div><h3>Acquire a QuickJS context</h3><p>The interpreter cache returns a fresh context or a context selected by the endpoint's reuse policy.</p></div></section>
+              <section><b>03</b><div><h3>Bind this request</h3><p>CCF attaches the current transaction, RPC context, request object, and application extensions.</p></div></section>
+              <section><b>04</b><div><h3>Call JS and translate the result</h3><p>The export returns <code>{ statusCode, headers, body }</code>; CCF converts that object into the HTTP response.</p></div></section>
             </div>
-            <p class="aside-copy">The replicated unit is the KV transaction. JavaScript heap state is local to an interpreter context and is never replicated.</p>
+            <div class="execution-path" aria-label="Request execution path and replicated KV access">
+              <div class="request-lane">
+                <div class="sequence-box external"><small>INPUT</small><strong>HTTP request</strong></div>
+                <div class="sequence-arrow"><span>dispatch</span></div>
+                <div class="sequence-box native"><small>C++ HOST</small><strong>DynamicJSEndpointRegistry</strong><code>do_execute_request()</code></div>
+                <div class="sequence-arrow"><span>load + call</span></div>
+                <div class="sequence-box js"><small>QUICKJS</small><strong>Endpoint ES module</strong><code>export function content(request)</code></div>
+                <div class="sequence-arrow"><span>translate</span></div>
+                <div class="sequence-box external"><small>OUTPUT</small><strong>HTTP response</strong></div>
+              </div>
+              <div class="state-lane">
+                <div class="state-box"><small>REPLICATED KV</small><strong>Endpoint metadata</strong><strong>Module source / bytecode</strong><strong>Application state</strong></div>
+                <p>The registry loads code from KV. JavaScript reaches application maps only through the current transaction and installed host APIs.</p>
+              </div>
+            </div>
           </div>
-          <div class="node-diagram" aria-label="A CCF node containing C++ endpoint dispatch, QuickJS, and KV transaction access">
-            <div class="node-label">CCF NODE</div>
-            <div class="request-pill">HTTP request</div>
-            <div class="flow-arrow">down</div>
-            <div class="runtime-row"><span>C++ registry</span><b>dispatch</b><span>QuickJS context</span></div>
-            <div class="flow-arrow">down</div>
-            <div class="kv-bar"><b>ccf.kv</b><span>current transaction</span></div>
-            <div class="ledger-line"><span>commit</span><i></i><span>AFT + ledger</span></div>
+          <div class="execution-facts">
+            <div><b>Per node</b><span>C++ registry, QuickJS runtime, interpreter heap</span></div>
+            <div><b>Replicated</b><span>Committed KV writes via AFT and the ledger</span></div>
+            <div><b>Not replicated</b><span>JS globals and heap objects; read-only requests may execute locally</span></div>
           </div>
         </div>
         <aside class="notes">
@@ -182,7 +193,7 @@ interpreter_cache-&gt;set_interpreter_factory(
             <section>
               <span class="prose-index">01</span>
               <h3>The sample owns admission policy</h3>
-              <p><code>PUT /custom_endpoints</code> authenticates the caller, requires an application administrator, optionally verifies a COSE timestamp, and records the action for ledger audit.</p>
+              <p><code>PUT /custom_endpoints</code> authenticates an application administrator, optionally verifies a COSE timestamp, and records the action for ledger audit. Governance <code>set_js_app</code> uses the same bundle and runtime path; this sample moves admission into application space.</p>
             </section>
             <section>
               <span class="prose-index">02</span>
@@ -353,46 +364,47 @@ local_extensions.emplace_back(
           <div class="literate-prose">
             <section>
               <span class="prose-index">01</span>
-              <h3>The extension object carries host state</h3>
-              <p><code>MyExtension</code> implements CCF's <code>ExtensionInterface</code>. Its only state is a <code>ReadOnlyTx*</code>, which deliberately limits this API to reads from the current transaction.</p>
+              <h3>Create a request-scoped capability</h3>
+              <p><code>MyExtension</code> carries a <code>ReadOnlyTx*</code>. The registry creates one for each invocation, so the API can read only from that request's transaction.</p>
             </section>
             <section>
               <span class="prose-index">02</span>
-              <h3><code>install()</code> defines the JS surface</h3>
-              <p>The extension creates one global namespace, <code>my_object</code>, and publishes a constant plus the native <code>hasRole</code> function. The explicit namespace avoids adding unrelated names directly to the global object.</p>
+              <h3>This C++ makes an object visible in JS</h3>
+              <p><code>get_or_create_global_property("my_object", ...)</code> creates the global object. Two calls to <code>set()</code> publish <code>my_constant</code> and <code>hasRole</code> on it.</p>
             </section>
             <section>
               <span class="prose-index">03</span>
-              <h3>The callback and capability are separate</h3>
-              <p>The function object stores a C callback, name, and arity. It does not capture the transaction pointer. At call time the callback retrieves the currently installed <code>MyExtension</code> from the CCF context.</p>
+              <h3>JavaScript uses it like an ordinary global</h3>
+              <p>Endpoint code can read <code>my_object.my_constant</code> and call <code>my_object.hasRole(...)</code>. That function call crosses back into the C++ callback registered by <code>new_c_function()</code>.</p>
             </section>
           </div>
           <div class="literate-code-column extension-code">
             <article class="code-card">
-              <div class="code-path"><span>capability object</span> programmability.cpp</div>
-              <pre><code><span class="kw">class</span> MyExtension : <span class="kw">public</span>
-  ccf::js::extensions::ExtensionInterface
-{
-<span class="kw">public</span>:
-  ccf::kv::<mark>ReadOnlyTx*</mark> tx;
+              <div class="code-path"><span>C++ registration</span> programmability.cpp / MyExtension::install</div>
+              <pre><code><span class="kw">auto</span> api = ctx.get_or_create_global_property(
+  <mark><span class="str">"my_object"</span></mark>, ctx.new_obj());
 
-  MyExtension(ccf::kv::ReadOnlyTx* t) : tx(t) {}
+api.set(
+  <span class="str">"my_constant"</span>,
+  ctx.new_string(<span class="str">"Hello world"</span>));
 
-  <span class="kw">void</span> install(
-    ccf::js::core::Context&amp; ctx) <span class="kw">override</span>;
-};</code></pre>
-            </article>
-            <article class="code-card">
-              <div class="code-path"><span>JavaScript surface</span> programmability.cpp / MyExtension::install</div>
-              <pre><code><span class="kw">auto</span> my_global_object =
-  ctx.get_or_create_global_property(
-    <span class="str">"my_object"</span>, ctx.new_obj());
-
-my_global_object.set(
+api.set(
   <span class="str">"hasRole"</span>,
   ctx.new_c_function(
     <mark>js_has_role_permitting_action</mark>,
     <span class="str">"hasRole"</span>, 2));</code></pre>
+            </article>
+            <article class="code-card">
+              <div class="code-path"><span>JS caller</span> tests/programmability.py / TESTJS_ROLE</div>
+              <pre><code><span class="kw">export function</span> content(request) {
+  console.log(my_object.my_constant);
+
+  <span class="kw">const</span> permitted = <mark>my_object.hasRole(</mark>
+    request.caller.id,
+    action_name);
+
+  <span class="kw">return</span> { statusCode: permitted ? 200 : 403 };
+}</code></pre>
             </article>
           </div>
         </div>
@@ -410,24 +422,27 @@ my_global_object.set(
           <div class="literate-prose">
             <section>
               <span class="prose-index">01</span>
-              <h3>Validate before reading QuickJS values</h3>
-              <p>The callback first checks <code>argc</code>, recovers CCF's wrapper through the QuickJS opaque pointer, and verifies that <code>MyExtension</code> is installed for this invocation.</p>
+              <h3>The JS call enters the registered C function</h3>
+              <p><code>my_object.hasRole(...)</code> invokes <code>js_has_role_permitting_action</code>, the function pointer passed to <code>new_c_function()</code> on the previous slide.</p>
             </section>
             <section>
               <span class="prose-index">02</span>
-              <h3>Convert at the boundary</h3>
-              <p>Each JavaScript argument is converted through <code>Context::to_str()</code>. Conversion failure is returned as a JavaScript <code>TypeError</code>; native code never indexes unchecked arguments or assumes their type.</p>
+              <h3>Recover capability and convert arguments</h3>
+              <p>The callback checks <code>argc</code>, recovers CCF's <code>Context</code>, retrieves this request's <code>MyExtension</code>, and converts QuickJS values to C++ strings.</p>
             </section>
             <section>
               <span class="prose-index">03</span>
-              <h3>Translate both results and failures</h3>
-              <p>C++ exceptions must not unwind through QuickJS. The callback catches them and creates a JS exception; on success it converts the native Boolean with <code>JS_NewBool</code>.</p>
+              <h3>Call native logic, then translate back to JS</h3>
+              <p>The helper reads KV through <code>extension-&gt;tx</code>. Success becomes a JS Boolean; C++ exceptions become JS errors. This callback runs with native host privilege: QuickJS limits do not constrain defects here.</p>
             </section>
           </div>
           <div class="literate-code-column callback-code">
             <article class="code-card">
               <div class="code-path"><span>validate + recover</span> programmability.cpp</div>
-              <pre><code><span class="kw">if</span> (argc != 2)
+              <pre><code>JSValue <mark>js_has_role_permitting_action</mark>(
+  JSContext* ctx, ..., <span class="kw">int</span> argc, JSValueConst* argv)
+{
+<span class="kw">if</span> (argc != 2)
   <span class="kw">return</span> JS_ThrowTypeError(ctx, ...);
 
 <span class="kw">auto</span>&amp; jsctx = *<span class="kw">reinterpret_cast</span>&lt;
@@ -556,7 +571,7 @@ my_global_object.set(
           <div class="limit"><small>EXECUTION</small><strong>5,000 <span>ms</span></strong><code>JS_SetInterruptHandler</code></div>
           <div class="limit"><small>CACHE</small><strong>10 <span>contexts</span></strong><code>LRU max size</code></div>
         </div>
-        <div class="limit-flow"><span>set options</span><i></i><strong>JS_Call</strong><i></i><span>clear interrupt + reset limits</span></div>
+        <div class="limit-flow"><span>read runtime options from KV</span><i></i><strong>apply around JS_Call</strong><i></i><span>interrupt checks wall-clock timeout; reset after call</span></div>
         <div class="source-ribbon">Defaults <strong>include/ccf/service/tables/jsengine.h</strong><span>Enforcement: src/js/core/runtime.cpp + context.cpp</span></div>
         <aside class="notes">
           These are current defaults, configurable through runtime options. The timeout is implemented using QuickJS's interrupt handler and wall-clock elapsed time. Limits are applied immediately around the call; setup temporarily resets heap and stack constraints to safe initialization values.
@@ -608,7 +623,7 @@ my_global_object.set(
             <div><b>+</b><span>response as plain data</span></div>
           </div>
         </div>
-        <blockquote>Review question: Is each observable input replicated, authorized, and valid for the endpoint's execution mode?</blockquote>
+        <blockquote>Review question: Is each observable input replicated, authorized, and valid for the endpoint's execution mode?<small>Endpoint mode determines which controlled nondeterminism is acceptable. Exception details can expose sensitive data in logs or responses.</small></blockquote>
         <aside class="notes">
           This is a design review question, not an absolute ban. Some CCF APIs expose controlled nondeterminism or are suitable only for particular endpoint modes. The extension author owns the semantic contract. Also avoid leaking secrets through logs or detailed exception responses.
         </aside>
