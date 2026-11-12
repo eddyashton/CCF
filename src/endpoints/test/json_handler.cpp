@@ -86,6 +86,13 @@ namespace
 
   CCF_JSON_TYPE(WithCustomOutput, CCF_JSON_REQUIRED(leaf));
 
+  struct WithCharacters
+  {
+    std::vector<char> characters;
+  };
+
+  CCF_JSON_TYPE(WithCharacters, CCF_JSON_REQUIRED(characters));
+
   struct CustomTextOutput
   {
     std::string text;
@@ -250,6 +257,14 @@ TEST_CASE("make_success retains DOM overloads and scalar/custom wire formats")
           Json(std::array<char, 2>{'A', 'B'})},
          {ccf::make_success(std::array<char, 0>{}),
           Json(std::array<char, 0>{})},
+         {ccf::make_success(std::vector<char>{'A', 'B'}),
+          Json(std::vector<char>{'A', 'B'})},
+         {ccf::make_success(std::vector<char>{}), Json(std::vector<char>{})},
+         {ccf::make_success(WithCharacters{{'A', 'B'}}),
+          Json(WithCharacters{{'A', 'B'}})},
+         {ccf::make_success(WithCharacters{}), Json(WithCharacters{})},
+         {ccf::make_success(std::vector<std::vector<char>>{{'A', 'B'}, {}}),
+          Json(std::vector<std::vector<char>>{{'A', 'B'}, {}})},
          {ccf::make_success(std::pair<std::string, int>{"key", 7}),
           Json(std::pair<std::string, int>{"key", 7})},
          {ccf::make_success(std::vector<std::pair<int, int>>{{1, 7}, {2, 8}}),
