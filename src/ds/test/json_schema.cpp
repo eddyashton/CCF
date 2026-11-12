@@ -3,15 +3,300 @@
 #include "host/json_schema.h"
 
 #include "ccf/ds/json.h"
+#include "ccf/json.h"
 #include "ccf/node/configuration.h"
 #include "host/config_schema.h"
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <algorithm>
+#include <array>
 #include <doctest/doctest.h>
 #include <limits>
+#include <map>
 #include <nlohmann/json.hpp>
+#include <optional>
+#include <string_view>
+#include <variant>
 #include <vector>
+
+namespace schema_samples
+{
+  struct Item
+  {
+    int32_t id;
+    std::string name;
+    std::optional<int32_t> number;
+  };
+
+  CCF_JSON_TYPE(Item, CCF_JSON_REQUIRED(id, name, number));
+
+  struct Envelope
+  {
+    Item entry;
+  };
+
+  DECLARE_JSON_TYPE(Envelope);
+  DECLARE_JSON_REQUIRED_FIELDS(Envelope, entry);
+
+  struct LegacyPrimitives
+  {
+    char character = 65;
+    std::pair<int32_t, std::string> pair = {1, "row"};
+  };
+
+  CCF_JSON_TYPE(LegacyPrimitives, CCF_JSON_REQUIRED(character, pair));
+
+  struct CharacterVectors
+  {
+    std::vector<char> characters;
+    std::vector<std::vector<char>> nested;
+    std::array<char, 2> fixed{'D', '\0'};
+    std::array<char, 0> empty_fixed{};
+  };
+
+  CCF_JSON_TYPE(
+    CharacterVectors,
+    CCF_JSON_REQUIRED(characters, nested, fixed, empty_fixed));
+
+  enum class ManualMode
+  {
+    Active
+  };
+
+  void to_json(nlohmann::json& j, ManualMode)
+  {
+    j = "manual-active";
+  }
+
+  void from_json(const nlohmann::json& j, ManualMode& value)
+  {
+    if (j != "manual-active")
+    {
+      throw ccf::JsonParseError("Unknown manual mode");
+    }
+    value = ManualMode::Active;
+  }
+
+  std::string schema_name(const ManualMode*)
+  {
+    return "ManualMode";
+  }
+
+  void fill_enum_schema(nlohmann::json& j, const ManualMode*)
+  {
+    j = {{"type", "string"}, {"enum", {"manual-active"}}};
+  }
+
+  struct ManualEnumEnvelope
+  {
+    ManualMode mode = ManualMode::Active;
+  };
+
+  CCF_JSON_TYPE(ManualEnumEnvelope, CCF_JSON_REQUIRED(mode));
+
+  struct SerializerValue
+  {
+    int number = 7;
+  };
+
+  using SerializerPointer = std::shared_ptr<SerializerValue>;
+
+  std::string schema_name(const SerializerPointer*)
+  {
+    return "SerializerPointer";
+  }
+
+  void fill_json_schema(nlohmann::json& j, const SerializerPointer*)
+  {
+    j = {
+      {"anyOf",
+       nlohmann::json::array(
+         {{{"type", "integer"}, {"minimum", 0}}, {{"type", "null"}}})}};
+  }
+}
+
+namespace nlohmann
+{
+  template <>
+  struct adl_serializer<schema_samples::SerializerPointer>
+  {
+    using Pointer = schema_samples::SerializerPointer;
+
+    static void to_json(json& j, const Pointer& value)
+    {
+      j = value ? json(value->number) : json(nullptr);
+    }
+
+    static void from_json(const json& j, Pointer& value)
+    {
+      if (j.is_null())
+      {
+        value.reset();
+      }
+      else
+      {
+        value = std::make_shared<schema_samples::SerializerValue>(
+          schema_samples::SerializerValue{j.get<int>()});
+      }
+    }
+  };
+}
+
+namespace schema_samples
+{
+  struct SerializerEnvelope
+  {
+    SerializerPointer leaf;
+  };
+
+  CCF_JSON_TYPE(SerializerEnvelope, CCF_JSON_REQUIRED(leaf));
+}
+
+TEST_CASE("Schema naming preserves explicit nullable serializer contracts")
+{
+  using schema_samples::SerializerEnvelope;
+  using schema_samples::SerializerPointer;
+  using schema_samples::SerializerValue;
+  const auto schema = ccf::ds::json::build_schema<SerializerEnvelope>();
+  const SerializerEnvelope value{std::make_shared<SerializerValue>()};
+  const auto wire = ccf::json::write(value);
+  CHECK(nlohmann::json::parse(wire).at("leaf") == 7);
+  CHECK(ccf::json::read<SerializerEnvelope>(wire).leaf->number == 7);
+  CHECK_FALSE(
+    json::validate_json(nlohmann::json::parse(wire), schema).has_value());
+  CHECK_FALSE(json::validate_json({{"leaf", nullptr}}, schema).has_value());
+  CHECK(json::validate_json({{"leaf", -1}}, schema).has_value());
+  CHECK(ccf::json::write(SerializerPointer{}) == "null");
+  CHECK_FALSE(ccf::json::read<SerializerPointer>("null"));
+  CHECK_NOTHROW(ccf::json::schema<SerializerPointer>());
+}
+
+TEST_CASE("Typed schemas retain manual enum schema hooks")
+{
+  const auto schema =
+    ccf::ds::json::build_schema<schema_samples::ManualEnumEnvelope>();
+  const auto value = nlohmann::json::parse(
+    ccf::json::write(schema_samples::ManualEnumEnvelope{}));
+  CHECK_FALSE(json::validate_json(value, schema).has_value());
+  CHECK(json::validate_json({{"mode", "wrong"}}, schema).has_value());
+  CHECK_NOTHROW(ccf::json::schema<schema_samples::ManualMode>());
+}
+
+TEST_CASE("Schemas follow legacy character and pair wire shapes")
+{
+  const auto character = ccf::ds::json::build_schema<char>();
+  const auto native_character = ccf::json::schema<char>();
+  CHECK(character.at("type") == "integer");
+  CHECK(native_character.at("type") == character.at("type"));
+  const auto pair = ccf::json::schema<std::pair<int32_t, std::string>>();
+  CHECK(pair.at("type") == "array");
+  CHECK(pair.at("prefixItems").size() == 2);
+  const auto pairs =
+    ccf::json::schema<std::vector<std::pair<int32_t, int32_t>>>();
+  CHECK(pairs.at("type") == "array");
+  const schema_samples::LegacyPrimitives value;
+  const auto wire = ccf::json::write(value);
+  CHECK(nlohmann::json::parse(wire).at("character").is_number_integer());
+  const auto record =
+    ccf::ds::json::build_schema<schema_samples::LegacyPrimitives>();
+  CHECK(record.at("properties").at("character").at("type") == "integer");
+  CHECK(record.at("properties").at("pair").at("prefixItems").size() == 2);
+}
+
+TEST_CASE("Character vector schemas retain numeric array wire contracts")
+{
+  using schema_samples::CharacterVectors;
+  const auto schema = ccf::ds::json::build_schema<CharacterVectors>();
+  const auto vector_schema = ccf::json::schema<std::vector<char>>();
+  for (const auto& value :
+       {CharacterVectors{}, CharacterVectors{{'A', 'B'}, {{'C'}, {}}}})
+  {
+    const auto instance = nlohmann::json::parse(ccf::json::write(value));
+    CHECK(instance == nlohmann::json(value));
+    CHECK_FALSE(json::validate_json(instance, schema).has_value());
+    CHECK_FALSE(json::validate_json(instance.at("characters"), vector_schema)
+                  .has_value());
+  }
+  auto invalid = nlohmann::json::parse(ccf::json::write(CharacterVectors{}));
+  invalid["characters"] = "AB";
+  CHECK(json::validate_json(invalid, schema).has_value());
+  invalid["characters"] = nlohmann::json::array();
+  invalid["nested"] = {"C"};
+  CHECK(json::validate_json(invalid, schema).has_value());
+  invalid["nested"] = nlohmann::json::array();
+  for (const auto& truncated :
+       {nlohmann::json::array(), nlohmann::json::array({68})})
+  {
+    invalid["fixed"] = truncated;
+    CHECK(json::validate_json(invalid, schema).has_value());
+    CHECK_THROWS(ccf::json::read<CharacterVectors>(invalid.dump()));
+  }
+
+  const auto bytes = ccf::json::schema<std::vector<uint8_t>>();
+  const auto encoded =
+    nlohmann::json::parse(ccf::json::write(std::vector<uint8_t>{'A', 'B'}));
+  CHECK(encoded == "QUI=");
+  CHECK_FALSE(json::validate_json(encoded, bytes).has_value());
+  CHECK(
+    json::validate_json(nlohmann::json::array({65, 66}), bytes).has_value());
+}
+
+template <>
+struct glz::json_schema<schema_samples::Item>
+{
+  glz::schema id{
+    .description = "Record identifier",
+    .minimum = int64_t{1},
+    .maximum = int64_t{10}};
+  glz::schema name{
+    .minLength = uint64_t{1}, .maxLength = uint64_t{8}, .pattern = "^[A-Z]+$"};
+};
+
+TEST_CASE("Rich schemas remain precise when embedded in CCF containers")
+{
+  using Json = nlohmann::json;
+  using schema_samples::Item;
+  const auto item_schema = ccf::ds::json::build_schema<Item>();
+  const auto array_schema = ccf::ds::json::build_schema<std::vector<Item>>();
+  const auto map_schema =
+    ccf::ds::json::build_schema<std::map<std::string, Item>>();
+  const auto envelope_schema =
+    ccf::ds::json::build_schema<schema_samples::Envelope>();
+  CHECK(
+    ccf::json::schema<Item>().at("properties").at("id").at("description") ==
+    "Record identifier");
+
+  for (const auto& [wire, valid] :
+       std::vector<std::pair<std::string_view, bool>>{
+         {R"({"id":1,"name":"A","number":null})", true},
+         {R"({"id":10,"name":"ABCDEFGH","number":7})", true},
+         {R"({"id":2,"name":"AB"})", false},
+         {R"({"id":"2","name":"AB","number":null})", false},
+         {R"({"id":0,"name":"AB","number":null})", false},
+         {R"({"id":11,"name":"AB","number":null})", false},
+         {R"({"id":2,"name":"","number":null})", false},
+         {R"({"id":2,"name":"ABCDEFGHI","number":null})", false},
+         {R"({"id":2,"name":"lower","number":null})", false}})
+  {
+    INFO(wire);
+    const auto value = Json::parse(wire);
+    CHECK(json::validate_json(value, item_schema).has_value() != valid);
+    CHECK(
+      json::validate_json(Json::array({value}), array_schema).has_value() !=
+      valid);
+    const Json nested = {{"entry", value}};
+    CHECK(json::validate_json(nested, map_schema).has_value() != valid);
+    CHECK(json::validate_json(nested, envelope_schema).has_value() != valid);
+  }
+}
+
+TEST_CASE("Generated variants permit overlapping numeric alternatives")
+{
+  const auto schema = ccf::json::schema<std::variant<int32_t, double>>();
+  CHECK_FALSE(json::validate_json(1, schema).has_value());
+  CHECK_FALSE(json::validate_json(1.5, schema).has_value());
+  CHECK(json::validate_json("wrong type", schema).has_value());
+}
 
 TEST_CASE("host configuration unsigned integer bounds")
 {
@@ -377,7 +662,7 @@ TEST_CASE("schema generation")
 // inner (non-optional) type.
 struct RequiredOptional
 {
-  std::optional<size_t> maybe_present = std::nullopt;
+  std::optional<int32_t> maybe_present = std::nullopt;
 };
 
 DECLARE_JSON_TYPE(RequiredOptional);
@@ -393,24 +678,23 @@ TEST_CASE("schema generation for required optional field")
   REQUIRE(required_it->size() == 1);
   REQUIRE((*required_it)[0] == "maybe_present");
 
-  const auto& property = schema.at("properties").at("maybe_present");
-  REQUIRE(property.at("type") == "integer");
-  REQUIRE(property.at("nullable") == true);
-
   // A JSON null is accepted for this required-but-nullable field
   auto j = nlohmann::json::object();
   j["maybe_present"] = nullptr;
   const RequiredOptional parsed = j;
   REQUIRE(!parsed.maybe_present.has_value());
+  REQUIRE_FALSE(json::validate_json(j, schema).has_value());
 
   // As is a concrete value
   j["maybe_present"] = 7;
   const RequiredOptional parsed_value = j;
   REQUIRE(parsed_value.maybe_present == 7);
+  REQUIRE_FALSE(json::validate_json(j, schema).has_value());
 
   // But the field must still be present
   auto j_missing = nlohmann::json::object();
   REQUIRE_THROWS_AS(j_missing.get<RequiredOptional>(), ccf::JsonParseError);
+  REQUIRE(json::validate_json(j_missing, schema).has_value());
 }
 
 TEST_CASE_TEMPLATE("schema types, integer", T, size_t, ssize_t)
@@ -422,10 +706,11 @@ TEST_CASE_TEMPLATE("schema types, integer", T, size_t, ssize_t)
   REQUIRE(schema["items"].is_object());
 
   REQUIRE(schema["items"]["type"] == "array");
-  REQUIRE(schema["items"]["items"].is_array());
-  REQUIRE(schema["items"]["items"].size() == 2);
-  REQUIRE(schema["items"]["items"][0]["type"] == "integer");
-  REQUIRE(schema["items"]["items"][1]["type"] == "string");
+  REQUIRE(schema["items"]["prefixItems"].size() == 2);
+  REQUIRE(schema["items"]["minItems"] == 2);
+  REQUIRE(schema["items"]["maxItems"] == 2);
+  REQUIRE(schema["items"]["prefixItems"][0]["type"] == "integer");
+  REQUIRE(schema["items"]["prefixItems"][1]["type"] == "string");
 }
 
 TEST_CASE_TEMPLATE("schema types, floating point", T, float, double)
@@ -437,10 +722,11 @@ TEST_CASE_TEMPLATE("schema types, floating point", T, float, double)
   REQUIRE(schema["items"].is_object());
 
   REQUIRE(schema["items"]["type"] == "array");
-  REQUIRE(schema["items"]["items"].is_array());
-  REQUIRE(schema["items"]["items"].size() == 2);
-  REQUIRE(schema["items"]["items"][0]["type"] == "integer");
-  REQUIRE(schema["items"]["items"][1]["type"] == "number");
+  REQUIRE(schema["items"]["prefixItems"].size() == 2);
+  REQUIRE(schema["items"]["minItems"] == 2);
+  REQUIRE(schema["items"]["maxItems"] == 2);
+  REQUIRE(schema["items"]["prefixItems"][0]["type"] == "integer");
+  REQUIRE(schema["items"]["prefixItems"][1]["type"] == "number");
 }
 
 namespace custom
@@ -656,19 +942,27 @@ TEST_CASE("enum")
 
     const auto schema = ccf::ds::json::build_schema<EnumStruct>("EnumStruct");
 
-    const nlohmann::json expected{"one", "two", "three"};
-    REQUIRE(schema["properties"]["se"]["enum"] == expected);
+    for (const auto* label : {"one", "two", "three"})
+    {
+      REQUIRE_FALSE(
+        json::validate_json(nlohmann::json{{"se", label}}, schema).has_value());
+    }
+    REQUIRE(json::validate_json(nlohmann::json{{"se", "unknown"}}, schema)
+              .has_value());
   }
 
   {
     INFO("Required optional enum schema generation");
     const auto schema =
       ccf::ds::json::build_schema<RequiredOptionalEnum>("RequiredOptionalEnum");
-    const auto& property = schema["properties"]["maybe_enum"];
-
-    REQUIRE(property["nullable"] == true);
-    const nlohmann::json expected{"one", "two", "three", nullptr};
-    REQUIRE(property["enum"] == expected);
+    for (const auto& value :
+         nlohmann::json::array({"one", "two", "three", nullptr}))
+    {
+      REQUIRE_FALSE(
+        json::validate_json(nlohmann::json{{"maybe_enum", value}}, schema)
+          .has_value());
+    }
+    REQUIRE(json::validate_json(nlohmann::json::object(), schema).has_value());
   }
 
   {

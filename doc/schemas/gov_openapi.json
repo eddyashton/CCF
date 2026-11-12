@@ -16,7 +16,7 @@
       "BasicJoinPolicy": {
         "properties": {
           "measurements": {
-            "$ref": "#/components/schemas/string_array"
+            "$ref": "#/components/schemas/std__vector_std__string_"
           }
         },
         "required": [
@@ -43,13 +43,12 @@
         "type": "object"
       },
       "Cose": {
-        "format": "binary",
-        "type": "string"
+        "format": "binary"
       },
       "EncryptedRecoveryShare": {
         "properties": {
           "encryptedShare": {
-            "$ref": "#/components/schemas/string"
+            "type": "string"
           },
           "memberId": {
             "$ref": "#/components/schemas/MemberId"
@@ -64,10 +63,17 @@
       "Failure": {
         "properties": {
           "reason": {
-            "$ref": "#/components/schemas/string"
+            "type": "string"
           },
           "trace": {
-            "$ref": "#/components/schemas/string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -81,7 +87,7 @@
             "$ref": "#/components/schemas/TransactionId"
           },
           "view_history": {
-            "$ref": "#/components/schemas/TransactionId_array"
+            "$ref": "#/components/schemas/std__vector_ccf__TxID_"
           }
         },
         "required": [
@@ -109,9 +115,7 @@
       },
       "JavascriptApp": {
         "properties": {
-          "endpoints": {
-            "$ref": "#/components/schemas/json"
-          }
+          "endpoints": {}
         },
         "required": [
           "endpoints"
@@ -127,7 +131,7 @@
       "JavascriptModule": {
         "properties": {
           "moduleName": {
-            "$ref": "#/components/schemas/string"
+            "type": "string"
           }
         },
         "required": [
@@ -135,16 +139,10 @@
         ],
         "type": "object"
       },
-      "JavascriptModule_array": {
-        "items": {
-          "$ref": "#/components/schemas/JavascriptModule"
-        },
-        "type": "array"
-      },
       "JavascriptModules": {
         "properties": {
           "value": {
-            "$ref": "#/components/schemas/JavascriptModule_array"
+            "$ref": "#/components/schemas/std__vector_JavascriptModule_"
           }
         },
         "required": [
@@ -173,14 +171,12 @@
       },
       "Jwk": {
         "properties": {
-          "constraint": {
-            "$ref": "#/components/schemas/json"
-          },
+          "constraint": {},
           "issuer": {
-            "$ref": "#/components/schemas/string"
+            "type": "string"
           },
           "publicKey": {
-            "$ref": "#/components/schemas/string"
+            "type": "string"
           }
         },
         "required": [
@@ -193,13 +189,13 @@
       "JwkInfo": {
         "properties": {
           "caCertBundles": {
-            "$ref": "#/components/schemas/string_to_string"
+            "$ref": "#/components/schemas/std__map_std__basic_string_char___std__basic_string_char__"
           },
           "issuers": {
-            "$ref": "#/components/schemas/string_to_JwtIssuer"
+            "$ref": "#/components/schemas/std__map_std__basic_string_char___ccf__gov__endpoints__api__JwtIssuer_"
           },
           "keys": {
-            "$ref": "#/components/schemas/string_to_Jwk_array"
+            "$ref": "#/components/schemas/std__map_std__basic_string_char___std__vector_ccf__gov__endpoints__api__Jwk__"
           }
         },
         "required": [
@@ -209,19 +205,20 @@
         ],
         "type": "object"
       },
-      "Jwk_array": {
-        "items": {
-          "$ref": "#/components/schemas/Jwk"
-        },
-        "type": "array"
-      },
       "JwtIssuer": {
         "properties": {
           "autoRefresh": {
-            "$ref": "#/components/schemas/boolean"
+            "type": "boolean"
           },
           "caCertBundleName": {
-            "$ref": "#/components/schemas/string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -232,16 +229,28 @@
       "Member": {
         "properties": {
           "certificate": {
-            "$ref": "#/components/schemas/string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
-          "memberData": {
-            "$ref": "#/components/schemas/json"
-          },
+          "memberData": {},
           "memberId": {
             "$ref": "#/components/schemas/MemberId"
           },
           "publicEncryptionKey": {
-            "$ref": "#/components/schemas/string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "recoveryRole": {
             "$ref": "#/components/schemas/MemberRecoveryRole"
@@ -263,24 +272,6 @@
         "pattern": "^[a-f0-9]{64}$",
         "type": "string"
       },
-      "MemberId_array": {
-        "items": {
-          "$ref": "#/components/schemas/MemberId"
-        },
-        "type": "array"
-      },
-      "MemberId_to_Failure": {
-        "additionalProperties": {
-          "$ref": "#/components/schemas/Failure"
-        },
-        "type": "object"
-      },
-      "MemberId_to_boolean": {
-        "additionalProperties": {
-          "$ref": "#/components/schemas/boolean"
-        },
-        "type": "object"
-      },
       "MemberRecoveryRole": {
         "enum": [
           "NonParticipant",
@@ -296,16 +287,10 @@
         ],
         "type": "string"
       },
-      "Member_array": {
-        "items": {
-          "$ref": "#/components/schemas/Member"
-        },
-        "type": "array"
-      },
       "Members": {
         "properties": {
           "value": {
-            "$ref": "#/components/schemas/Member_array"
+            "$ref": "#/components/schemas/std__vector_Member_"
           }
         },
         "required": [
@@ -316,10 +301,17 @@
       "NetworkInterface": {
         "properties": {
           "protocol": {
-            "$ref": "#/components/schemas/string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "publishedAddress": {
-            "$ref": "#/components/schemas/string"
+            "type": "string"
           }
         },
         "required": [
@@ -330,22 +322,25 @@
       "Node": {
         "properties": {
           "certificate": {
-            "$ref": "#/components/schemas/string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
-          "nodeData": {
-            "$ref": "#/components/schemas/json"
-          },
+          "nodeData": {},
           "nodeId": {
             "$ref": "#/components/schemas/NodeId"
           },
-          "quoteInfo": {
-            "$ref": "#/components/schemas/json"
-          },
+          "quoteInfo": {},
           "retiredCommitted": {
-            "$ref": "#/components/schemas/boolean"
+            "type": "boolean"
           },
           "rpcInterfaces": {
-            "$ref": "#/components/schemas/string_to_NetworkInterface"
+            "$ref": "#/components/schemas/std__map_std__basic_string_char___ccf__gov__endpoints__api__NetworkInterface_"
           },
           "status": {
             "$ref": "#/components/schemas/NodeStatus"
@@ -374,16 +369,10 @@
         ],
         "type": "string"
       },
-      "Node_array": {
-        "items": {
-          "$ref": "#/components/schemas/Node"
-        },
-        "type": "array"
-      },
       "Nodes": {
         "properties": {
           "value": {
-            "$ref": "#/components/schemas/Node_array"
+            "$ref": "#/components/schemas/std__vector_Node_"
           }
         },
         "required": [
@@ -394,19 +383,35 @@
       "Proposal": {
         "properties": {
           "ballotCount": {
-            "$ref": "#/components/schemas/uint64"
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer"
           },
           "ballotSubmitters": {
-            "$ref": "#/components/schemas/MemberId_array"
+            "$ref": "#/components/schemas/std__vector_ccf__EntityId_ccf__MemberIdFormatter__"
           },
           "failure": {
-            "$ref": "#/components/schemas/Failure"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Failure"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "finalVotes": {
-            "$ref": "#/components/schemas/MemberId_to_boolean"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/std__unordered_map_ccf__EntityId_ccf__MemberIdFormatter___bool_"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "proposalId": {
-            "$ref": "#/components/schemas/string"
+            "type": "string"
           },
           "proposalState": {
             "$ref": "#/components/schemas/ProposalState"
@@ -415,7 +420,14 @@
             "$ref": "#/components/schemas/MemberId"
           },
           "voteFailures": {
-            "$ref": "#/components/schemas/MemberId_to_Failure"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/std__unordered_map_ccf__EntityId_ccf__MemberIdFormatter___ccf__jsgov__Failure_"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -430,7 +442,7 @@
       "ProposalList": {
         "properties": {
           "value": {
-            "$ref": "#/components/schemas/Proposal_array"
+            "$ref": "#/components/schemas/std__vector_Proposal_"
           }
         },
         "required": [
@@ -449,25 +461,23 @@
         ],
         "type": "string"
       },
-      "Proposal_array": {
-        "items": {
-          "$ref": "#/components/schemas/Proposal"
-        },
-        "type": "array"
-      },
       "RecoveryResponse": {
         "properties": {
           "fullKeySubmitted": {
-            "$ref": "#/components/schemas/boolean"
+            "type": "boolean"
           },
           "message": {
-            "$ref": "#/components/schemas/string"
+            "type": "string"
           },
           "recoveryThreshold": {
-            "$ref": "#/components/schemas/uint64"
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer"
           },
           "submittedCount": {
-            "$ref": "#/components/schemas/uint64"
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
@@ -481,16 +491,24 @@
       "ServiceConfiguration": {
         "properties": {
           "maximumNodeCertificateValidityDays": {
-            "$ref": "#/components/schemas/uint64"
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer"
           },
           "maximumServiceCertificateValidityDays": {
-            "$ref": "#/components/schemas/uint64"
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer"
           },
           "recentCoseProposalsWindowSize": {
-            "$ref": "#/components/schemas/uint64"
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer"
           },
           "recoveryThreshold": {
-            "$ref": "#/components/schemas/uint64"
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
@@ -504,26 +522,54 @@
       "ServiceInfo": {
         "properties": {
           "certificate": {
-            "$ref": "#/components/schemas/string"
+            "type": "string"
           },
           "configuration": {
-            "$ref": "#/components/schemas/ServiceConfiguration"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ServiceConfiguration"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "creationTransactionId": {
-            "$ref": "#/components/schemas/TransactionId"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TransactionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "pqCertificate": {
-            "$ref": "#/components/schemas/string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "previousServiceCreationTransactionId": {
-            "$ref": "#/components/schemas/TransactionId"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TransactionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "recoveryCount": {
-            "$ref": "#/components/schemas/uint64"
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer"
           },
-          "serviceData": {
-            "$ref": "#/components/schemas/json"
-          },
+          "serviceData": {},
           "status": {
             "$ref": "#/components/schemas/ServiceStatus"
           }
@@ -548,16 +594,16 @@
       "SnpJoinPolicy": {
         "properties": {
           "hostData": {
-            "$ref": "#/components/schemas/string_to_string"
+            "$ref": "#/components/schemas/std__map_std__basic_string_char___std__basic_string_char__"
           },
           "measurements": {
-            "$ref": "#/components/schemas/string_array"
+            "$ref": "#/components/schemas/std__vector_std__string_"
           },
           "tcbVersions": {
-            "$ref": "#/components/schemas/string_to_TcbVersionPolicy"
+            "$ref": "#/components/schemas/std__map_std__basic_string_char___ccf__pal__snp__TcbVersionPolicy_"
           },
           "uvmEndorsements": {
-            "$ref": "#/components/schemas/string_to_string_to_UVMEndorsementsData"
+            "$ref": "#/components/schemas/std__map_std__basic_string_char___std__map_std__basic_string_char___ccf__UVMEndorsementsData__"
           }
         },
         "required": [
@@ -574,7 +620,7 @@
             "$ref": "#/components/schemas/MemberId"
           },
           "stateDigest": {
-            "$ref": "#/components/schemas/string"
+            "type": "string"
           }
         },
         "required": [
@@ -586,22 +632,74 @@
       "TcbVersionPolicy": {
         "properties": {
           "boot_loader": {
-            "$ref": "#/components/schemas/uint32"
+            "anyOf": [
+              {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "fmc": {
-            "$ref": "#/components/schemas/uint32"
+            "anyOf": [
+              {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "hexstring": {
-            "$ref": "#/components/schemas/string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "microcode": {
-            "$ref": "#/components/schemas/uint32"
+            "anyOf": [
+              {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "snp": {
-            "$ref": "#/components/schemas/uint32"
+            "anyOf": [
+              {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "tee": {
-            "$ref": "#/components/schemas/uint32"
+            "anyOf": [
+              {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object"
@@ -625,12 +723,6 @@
         "pattern": "^[0-9]+\\.[0-9]+$",
         "type": "string"
       },
-      "TransactionId_array": {
-        "items": {
-          "$ref": "#/components/schemas/TransactionId"
-        },
-        "type": "array"
-      },
       "TxStatus": {
         "enum": [
           "Unknown",
@@ -643,7 +735,7 @@
       "UVMEndorsementsData": {
         "properties": {
           "svn": {
-            "$ref": "#/components/schemas/string"
+            "type": "string"
           }
         },
         "required": [
@@ -654,11 +746,9 @@
       "User": {
         "properties": {
           "certificate": {
-            "$ref": "#/components/schemas/string"
+            "type": "string"
           },
-          "userData": {
-            "$ref": "#/components/schemas/json"
-          },
+          "userData": {},
           "userId": {
             "$ref": "#/components/schemas/UserId"
           }
@@ -675,16 +765,10 @@
         "pattern": "^[a-f0-9]{64}$",
         "type": "string"
       },
-      "User_array": {
-        "items": {
-          "$ref": "#/components/schemas/User"
-        },
-        "type": "array"
-      },
       "Users": {
         "properties": {
           "value": {
-            "$ref": "#/components/schemas/User_array"
+            "$ref": "#/components/schemas/std__vector_User_"
           }
         },
         "required": [
@@ -695,10 +779,10 @@
       "VirtualJoinPolicy": {
         "properties": {
           "hostData": {
-            "$ref": "#/components/schemas/string_array"
+            "$ref": "#/components/schemas/std__vector_std__string_"
           },
           "measurements": {
-            "$ref": "#/components/schemas/string_array"
+            "$ref": "#/components/schemas/std__vector_std__string_"
           }
         },
         "required": [
@@ -707,70 +791,113 @@
         ],
         "type": "object"
       },
-      "boolean": {
-        "type": "boolean"
-      },
-      "json": {},
-      "string": {
-        "type": "string"
-      },
-      "string_array": {
-        "items": {
-          "$ref": "#/components/schemas/string"
-        },
-        "type": "array"
-      },
-      "string_to_Jwk_array": {
-        "additionalProperties": {
-          "$ref": "#/components/schemas/Jwk_array"
-        },
-        "type": "object"
-      },
-      "string_to_JwtIssuer": {
-        "additionalProperties": {
-          "$ref": "#/components/schemas/JwtIssuer"
-        },
-        "type": "object"
-      },
-      "string_to_NetworkInterface": {
-        "additionalProperties": {
-          "$ref": "#/components/schemas/NetworkInterface"
-        },
-        "type": "object"
-      },
-      "string_to_TcbVersionPolicy": {
-        "additionalProperties": {
-          "$ref": "#/components/schemas/TcbVersionPolicy"
-        },
-        "type": "object"
-      },
-      "string_to_UVMEndorsementsData": {
+      "std__map_std__basic_string_char___ccf__UVMEndorsementsData_": {
         "additionalProperties": {
           "$ref": "#/components/schemas/UVMEndorsementsData"
         },
         "type": "object"
       },
-      "string_to_string": {
+      "std__map_std__basic_string_char___ccf__gov__endpoints__api__JwtIssuer_": {
         "additionalProperties": {
-          "$ref": "#/components/schemas/string"
+          "$ref": "#/components/schemas/JwtIssuer"
         },
         "type": "object"
       },
-      "string_to_string_to_UVMEndorsementsData": {
+      "std__map_std__basic_string_char___ccf__gov__endpoints__api__NetworkInterface_": {
         "additionalProperties": {
-          "$ref": "#/components/schemas/string_to_UVMEndorsementsData"
+          "$ref": "#/components/schemas/NetworkInterface"
         },
         "type": "object"
       },
-      "uint32": {
-        "maximum": 4294967295,
-        "minimum": 0,
-        "type": "integer"
+      "std__map_std__basic_string_char___ccf__pal__snp__TcbVersionPolicy_": {
+        "additionalProperties": {
+          "$ref": "#/components/schemas/TcbVersionPolicy"
+        },
+        "type": "object"
       },
-      "uint64": {
-        "maximum": 18446744073709551615,
-        "minimum": 0,
-        "type": "integer"
+      "std__map_std__basic_string_char___std__basic_string_char__": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      },
+      "std__map_std__basic_string_char___std__map_std__basic_string_char___ccf__UVMEndorsementsData__": {
+        "additionalProperties": {
+          "$ref": "#/components/schemas/std__map_std__basic_string_char___ccf__UVMEndorsementsData_"
+        },
+        "type": "object"
+      },
+      "std__map_std__basic_string_char___std__vector_ccf__gov__endpoints__api__Jwk__": {
+        "additionalProperties": {
+          "$ref": "#/components/schemas/std__vector_Jwk_"
+        },
+        "type": "object"
+      },
+      "std__unordered_map_ccf__EntityId_ccf__MemberIdFormatter___bool_": {
+        "additionalProperties": {
+          "type": "boolean"
+        },
+        "type": "object"
+      },
+      "std__unordered_map_ccf__EntityId_ccf__MemberIdFormatter___ccf__jsgov__Failure_": {
+        "additionalProperties": {
+          "$ref": "#/components/schemas/Failure"
+        },
+        "type": "object"
+      },
+      "std__vector_JavascriptModule_": {
+        "items": {
+          "$ref": "#/components/schemas/JavascriptModule"
+        },
+        "type": "array"
+      },
+      "std__vector_Jwk_": {
+        "items": {
+          "$ref": "#/components/schemas/Jwk"
+        },
+        "type": "array"
+      },
+      "std__vector_Member_": {
+        "items": {
+          "$ref": "#/components/schemas/Member"
+        },
+        "type": "array"
+      },
+      "std__vector_Node_": {
+        "items": {
+          "$ref": "#/components/schemas/Node"
+        },
+        "type": "array"
+      },
+      "std__vector_Proposal_": {
+        "items": {
+          "$ref": "#/components/schemas/Proposal"
+        },
+        "type": "array"
+      },
+      "std__vector_User_": {
+        "items": {
+          "$ref": "#/components/schemas/User"
+        },
+        "type": "array"
+      },
+      "std__vector_ccf__EntityId_ccf__MemberIdFormatter__": {
+        "items": {
+          "$ref": "#/components/schemas/MemberId"
+        },
+        "type": "array"
+      },
+      "std__vector_ccf__TxID_": {
+        "items": {
+          "$ref": "#/components/schemas/TransactionId"
+        },
+        "type": "array"
+      },
+      "std__vector_std__string_": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
       }
     },
     "x-ccf-forwarding": {
@@ -793,7 +920,8 @@
     "title": "CCF Governance",
     "version": "5.0.1"
   },
-  "openapi": "3.0.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "openapi": "3.1.0",
   "paths": {
     "/gov/api": {
       "get": {
@@ -802,9 +930,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/json"
-                }
+                "schema": {}
               }
             },
             "description": "Default response description"
@@ -841,7 +967,7 @@
             "name": "view_history",
             "required": false,
             "schema": {
-              "$ref": "#/components/schemas/boolean"
+              "type": "boolean"
             }
           },
           {
@@ -849,7 +975,9 @@
             "name": "view_history_since",
             "required": false,
             "schema": {
-              "$ref": "#/components/schemas/uint64"
+              "maximum": 18446744073709551615,
+              "minimum": 0,
+              "type": "integer"
             }
           }
         ],
@@ -974,9 +1102,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/json"
-                }
+                "schema": {}
               }
             },
             "description": "Default response description"
@@ -1405,9 +1531,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/json"
-                }
+                "schema": {}
               }
             },
             "description": "Default response description"
@@ -1416,7 +1540,7 @@
             "content": {
               "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/string"
+                  "type": "string"
                 }
               }
             },
@@ -1473,7 +1597,7 @@
             "content": {
               "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/string"
+                  "type": "string"
                 }
               }
             },

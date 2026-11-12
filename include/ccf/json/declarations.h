@@ -4,7 +4,7 @@
 
 #include "ccf/ds/json_schema.h"
 #include "ccf/json/metadata.h"
-#include "ccf/json/serialization.h"
+#include "ccf/json/schema.h"
 
 #include <glaze/json/read.hpp>
 #include <optional>

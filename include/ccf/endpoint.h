@@ -494,29 +494,27 @@ namespace ccf::endpoints
       const std::string& param_name,
       QueryParamPresence presence = QueryParamPresence::RequiredParameter)
     {
-      schema_builders.push_back(
-        [param_name,
-         presence](nlohmann::json& document, const Endpoint& endpoint) {
-          const auto http_verb = endpoint.dispatch.verb.get_http_method();
-          if (!http_verb.has_value())
-          {
-            // Non-HTTP endpoints are not documented
-            return;
-          }
+      schema_builders.push_back([param_name, presence](
+                                  nlohmann::json& document,
+                                  const Endpoint& endpoint) {
+        const auto http_verb = endpoint.dispatch.verb.get_http_method();
+        if (!http_verb.has_value())
+        {
+          // Non-HTTP endpoints are not documented
+          return;
+        }
 
-          const auto schema_name = ds::json::schema_name<T>();
-          const auto query_schema = ds::json::build_schema<T>();
+        ds::openapi::SchemaHelper schema_helper{document};
 
-          auto parameter = nlohmann::json::object();
-          parameter["name"] = param_name;
-          parameter["in"] = "query";
-          parameter["required"] =
-            presence == QueryParamPresence::RequiredParameter;
-          parameter["schema"] = ds::openapi::add_schema_to_components(
-            document, schema_name, query_schema);
-          ds::openapi::add_request_parameter_schema(
-            document, endpoint.full_uri_path, http_verb.value(), parameter);
-        });
+        auto parameter = nlohmann::json::object();
+        parameter["name"] = param_name;
+        parameter["in"] = "query";
+        parameter["required"] =
+          presence == QueryParamPresence::RequiredParameter;
+        parameter["schema"] = schema_helper.template add_schema_component<T>();
+        ds::openapi::add_request_parameter_schema(
+          document, endpoint.full_uri_path, http_verb.value(), parameter);
+      });
 
       return *this;
     }

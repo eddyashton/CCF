@@ -748,6 +748,7 @@ if(BUILD_TESTS)
     add_unit_test(
       openapi_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/test/openapi.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/node/receipt.cpp
     )
     target_link_libraries(openapi_test PRIVATE http_parser)
 

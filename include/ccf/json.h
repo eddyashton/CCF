@@ -3,13 +3,17 @@
 #pragma once
 
 #include "ccf/ds/json.h"
+#include "ccf/json/schema.h"
 #include "ccf/json/serialization.h"
 
 namespace ccf::json
 {
+  /** Generate JSON Schema 2020-12, retaining custom CCF ADL constraints. */
   template <typename T>
   nlohmann::json schema()
   {
-    return ccf::ds::json::build_schema<T>();
+    auto schema = detail::prepare_schema(detail::native_schema<T>());
+    schema["$schema"] = ccf::ds::json::JsonSchema::hyperschema;
+    return schema;
   }
 }

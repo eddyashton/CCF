@@ -89,8 +89,18 @@ Character vectors retain numeric-array encoding, distinct from base64 byte vecto
 Undeclared enum and explicit ``nlohmann::adl_serializer`` leaf contracts take precedence over aggregate reflection.
 Types with native Glaze metadata retain native Glaze dispatch.
 Nullable wrappers use native dispatch unless they have an explicit ADL conversion, such as ``ccf::ReceiptPtr``.
-``ccf::json::schema<T>()`` generates a schema using the existing dialect and ADL schema hooks.
 Direct I/O does not automatically change endpoint response handling.
+
+``ccf::json::schema<T>()`` returns a self-contained JSON Schema 2020-12 document, including local definitions for recursive types.
+The existing ``ccf::ds::json::build_schema<T>()`` helper expands definitions for nonrecursive schemas.
+Field annotations supplied through ``glz::json_schema<T>`` and custom ADL schema hooks retain their constraints.
+Plain enums use ``enum`` lists; meaningful per-value annotations are retained.
+Generated record schemas do not prohibit unknown fields, matching CCF's readers.
+Map value constraints are retained.
+
+Generated OpenAPI documents use OpenAPI 3.1 with the JSON Schema 2020-12 dialect.
+Nonprimitive types are shared across the document's ``components.schemas`` while primitive fields are inlined.
+Custom schema hooks must not assume primitive component names exist; use ``schema_element<T>()`` or the document helper's ``add_schema_component<T>()`` result instead of constructing primitive references.
 
 Application Interface
 ~~~~~~~~~~~~~~~~~~~~~
