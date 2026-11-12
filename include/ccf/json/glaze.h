@@ -135,18 +135,8 @@ namespace ccf::json::detail
     !nlohmann::detail::is_basic_json<T>::value && !glz::str_t<T> &&
     !standard_container<T> && std::is_constructible_v<Json, const T&>;
 
-  struct AdlJsonProbe
-  {
-    operator Json&() const;
-  };
-
   template <typename T>
-  concept AdlJson =
-    requires(const T& value) { to_json(AdlJsonProbe{}, value); };
-
-  template <typename T>
-  concept AdlLeaf =
-    AdlCandidate<T> && !glz::glaze_t<T> && (!glz::nullable_t<T> || AdlJson<T>);
+  concept AdlLeaf = AdlCandidate<T> && !glz::glaze_t<T>;
 
   template <typename T>
   concept DomCandidate = std::same_as<T, Json> ||

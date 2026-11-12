@@ -42,10 +42,16 @@ namespace ccf::json::detail
   template <typename Owners>
   struct DefaultCache;
 
+  template <typename Owner>
+  struct DefaultOwner
+  {
+    Owner value{};
+  };
+
   template <typename... Owners>
   struct DefaultCache<std::tuple<Owners...>>
   {
-    std::tuple<std::optional<Owners>...> values;
+    std::tuple<std::optional<DefaultOwner<Owners>>...> values;
   };
 
   template <typename Value, typename F, typename Cache>
@@ -54,12 +60,13 @@ namespace ccf::json::detail
     if constexpr (F::policy == Presence::Optional)
     {
       auto& owner =
-        std::get<std::optional<typename F::DefaultType>>(defaults.values);
+        std::get<std::optional<DefaultOwner<typename F::DefaultType>>>(
+          defaults.values);
       if (!owner.has_value())
       {
         owner.emplace();
       }
-      return !(member != (*owner).*F::member);
+      return !(member != owner->value.*F::member);
     }
     return false;
   }
