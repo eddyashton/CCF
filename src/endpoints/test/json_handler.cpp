@@ -2,6 +2,7 @@
 // Licensed under the Apache 2.0 License.
 #include "ccf/json_handler.h"
 
+#include "ccf/js/bundle.h"
 #include "ccf/rpc_exception.h"
 #include "node/rpc/http_rpc_context.h"
 
@@ -354,4 +355,22 @@ TEST_CASE("Automatic responses retain nullable explicit serializers")
   ccf::jsonhandler::set_response(
     ccf::make_success(std::shared_ptr<response_test::AbstractLeaf>{}), base);
   CHECK(context->get_response_status() == HTTP_STATUS_NO_CONTENT);
+}
+
+TEST_CASE("Application bundle schemas can share endpoint property components")
+{
+  auto document = ccf::ds::openapi::create_document("test", "", "1");
+  ccf::ds::openapi::add_request_body_schema<ccf::js::Bundle>(
+    document, "/app/custom_endpoints", HTTP_PUT);
+  ccf::ds::openapi::add_response_schema<ccf::js::Bundle>(
+    document, "/app/custom_endpoints", HTTP_GET, HTTP_STATUS_OK);
+  const auto flattened = document.flatten();
+  for (const auto& [path, value] : flattened.items())
+  {
+    if (path.ends_with("/$ref"))
+    {
+      CHECK_NOTHROW(document.at(
+        nlohmann::json::json_pointer(value.get<std::string>().substr(1))));
+    }
+  }
 }

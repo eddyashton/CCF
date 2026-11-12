@@ -11,8 +11,9 @@ from dataclasses import dataclass
 
 import jsonschema
 from loguru import logger as LOG
-from openapi_core import OpenAPI
+from openapi_core import Config, OpenAPI
 from openapi_core.datatypes import RequestParameters
+from openapi_core.deserializing.media_types.util import plain_loads
 from werkzeug.datastructures import Headers, ImmutableMultiDict
 
 
@@ -70,7 +71,14 @@ class OpenAPIValidator:
                 self._apis[prefix] = (
                     None
                     if schema.get("swagger") == "2.0"
-                    else OpenAPI.from_dict(schema)
+                    else OpenAPI.from_dict(
+                        schema,
+                        config=Config(
+                            extra_media_type_deserializers={
+                                "text/javascript": plain_loads
+                            }
+                        ),
+                    )
                 )
                 self._operations[prefix] = {
                     (path, method)
