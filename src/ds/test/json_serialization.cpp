@@ -7,6 +7,29 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+namespace custom_json
+{
+  struct Specialized
+  {
+    int value = 3;
+  };
+}
+
+template <>
+struct nlohmann::adl_serializer<custom_json::Specialized>
+{
+  static void to_json(nlohmann::json& j, const custom_json::Specialized& value)
+  {
+    j = std::to_string(value.value);
+  }
+
+  static void from_json(
+    const nlohmann::json& j, custom_json::Specialized& value)
+  {
+    value.value = std::stoi(j.get<std::string>());
+  }
+};
+
 namespace
 {
   using Json = nlohmann::json;
@@ -67,6 +90,33 @@ namespace
   };
 
   CCF_JSON_ENUM(Mode, "active", Mode::Active, "retired", Mode::Retired);
+
+  enum class CustomMode
+  {
+    Active
+  };
+
+  void to_json(Json& j, CustomMode)
+  {
+    j = "custom-active";
+  }
+
+  void from_json(const Json& j, CustomMode& value)
+  {
+    if (j != "custom-active")
+    {
+      throw ccf::JsonParseError("Unknown custom mode");
+    }
+    value = CustomMode::Active;
+  }
+
+  struct CustomLeaves
+  {
+    CustomMode mode = CustomMode::Active;
+    custom_json::Specialized specialized;
+  };
+
+  CCF_JSON_TYPE(CustomLeaves, CCF_JSON_REQUIRED(mode, specialized));
 
   struct WithMode
   {
@@ -245,7 +295,7 @@ TEST_CASE("DOM conversions preserve updates and persisted KV encoding")
 
 TEST_CASE("Macro schema generation preserves required and nullable fields")
 {
-  const auto schema = ccf::ds::json::build_schema<Record>();
+  const auto schema = ccf::json::schema<Record>();
   const auto& required = schema.at("required");
   CHECK(
     std::find(required.begin(), required.end(), "transaction_id") !=
@@ -310,6 +360,37 @@ TEST_CASE("Direct IO does not invoke DOM conversion hooks")
   CHECK_THROWS(Json{{"id", 8}}.get<NativeOnly>());
   CHECK(ccf::json::write(NativeOnly{}) == R"({"id":7})");
   CHECK(ccf::json::read<NativeOnly>(R"({"id":8})").id == 8);
+}
+
+TEST_CASE("Direct IO preserves custom enum and specialized serializer leaves")
+{
+  const CustomLeaves value{};
+  const auto expected = Json(value);
+  CHECK(Json::parse(ccf::json::write(value)) == expected);
+  const auto parsed = ccf::json::read<CustomLeaves>(expected.dump());
+  CHECK(parsed.mode == CustomMode::Active);
+  CHECK(parsed.specialized.value == 3);
+  CHECK(
+    ccf::json::write(CustomMode::Active) == Json(CustomMode::Active).dump());
+  CHECK(
+    ccf::json::write(custom_json::Specialized{}) ==
+    Json(custom_json::Specialized{}).dump());
+}
+
+TEST_CASE("Direct IO preserves character and pair array wire formats")
+{
+  const char character = 'x';
+  CHECK(ccf::json::write(character) == Json(character).dump());
+  CHECK(ccf::json::read<char>(Json(character).dump()) == character);
+  const std::pair<std::string, int> pair{"key", 7};
+  CHECK(Json::parse(ccf::json::write(pair)) == Json(pair));
+  CHECK(
+    ccf::json::read<std::pair<std::string, int>>(Json(pair).dump()) == pair);
+  const std::vector<std::pair<int, int>> pairs{{1, 7}, {2, 8}};
+  CHECK(Json::parse(ccf::json::write(pairs)) == Json(pairs));
+  CHECK(
+    ccf::json::read<std::vector<std::pair<int, int>>>(Json(pairs).dump()) ==
+    pairs);
 }
 
 TEST_CASE("Direct writers escape all JSON control characters")

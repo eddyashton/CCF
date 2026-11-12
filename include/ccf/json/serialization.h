@@ -15,6 +15,7 @@ namespace ccf::json
   {
     bool validate_trailing_whitespace = true;
     bool escape_control_characters = true;
+    bool concatenate = false;
   };
 
   inline constexpr auto options = [] {

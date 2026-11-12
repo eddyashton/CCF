@@ -79,7 +79,8 @@ Write failures throw an exception.
 Existing ``DECLARE_JSON_*`` declarations also expose metadata for direct I/O when their fields are pointer-addressable.
 Bitfields and types with bespoke, undeclared bases retain their existing DOM conversions.
 Custom ADL leaf conversions, base64 byte vectors, nonstring-key maps, and persisted DOM/KV encoding keep their existing wire representations.
-Schema generation continues to use the existing dialect and ADL schema hooks; direct I/O does not automatically change endpoint response handling.
+``ccf::json::schema<T>()`` generates a schema using the existing dialect and ADL schema hooks.
+Direct I/O does not automatically change endpoint response handling.
 
 Application Interface
 ~~~~~~~~~~~~~~~~~~~~~

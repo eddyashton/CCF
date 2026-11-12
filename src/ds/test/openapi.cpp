@@ -127,9 +127,8 @@ CCF_JSON_TYPE(
 
 TEST_CASE("Dense declarations retain existing schema and OpenAPI dialects")
 {
-  auto dense = ccf::ds::json::build_schema<DenseFoo>();
-  const auto legacy = ccf::ds::json::build_schema<Foo>();
-  dense["title"] = legacy.at("title");
+  const auto dense = ccf::ds::json::build_schema<DenseFoo>("record");
+  const auto legacy = ccf::ds::json::build_schema<Foo>("record");
   CHECK(dense == legacy);
   auto doc = openapi::create_document("test", "test", "1");
   openapi::SchemaHelper helper{doc};

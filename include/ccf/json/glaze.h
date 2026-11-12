@@ -75,16 +75,6 @@ namespace ccf::json::detail
     return std::nullopt;
   }
 
-  // Avoid finding nlohmann's generic conversions through the JSON argument.
-  struct AdlJsonProbe
-  {
-    operator Json&() const;
-  };
-
-  template <typename T>
-  concept AdlJson =
-    requires(const T& value) { to_json(AdlJsonProbe{}, value); };
-
   template <typename T>
   inline constexpr bool standard_container = false;
 
@@ -121,6 +111,12 @@ namespace ccf::json::detail
   template <typename T>
   inline constexpr bool legacy_map = false;
 
+  template <typename T>
+  inline constexpr bool legacy_pair = false;
+
+  template <typename First, typename Second>
+  inline constexpr bool legacy_pair<std::pair<First, Second>> = true;
+
   template <typename Key, typename Value, typename... Args>
   inline constexpr bool legacy_map<std::map<Key, Value, Args...>> =
     !std::same_as<Key, std::string> &&
@@ -132,16 +128,18 @@ namespace ccf::json::detail
     std::
       is_constructible_v<Json, const std::unordered_map<Key, Value, Args...>&>;
 
-  // An explicit ADL contract takes precedence over aggregate reflection.
+  // A DOM contract, including adl_serializer specializations, takes precedence
+  // over aggregate reflection. Undeclared enums keep their DOM wire format.
   // Standard containers keep native Glaze I/O, except the CCF byte wire format.
   template <typename T>
-  concept AdlLeaf = !Declared<T> && std::is_class_v<T> &&
-    !nlohmann::detail::is_basic_json<T>::value && !standard_container<T> &&
-    AdlJson<T>;
+  concept AdlLeaf = !Declared<T> && (std::is_class_v<T> || std::is_enum_v<T>) &&
+    !nlohmann::detail::is_basic_json<T>::value && !glz::str_t<T> &&
+    !standard_container<T> && std::is_constructible_v<Json, const T&>;
 
   template <typename T>
-  concept DomAdapter = std::same_as<T, Json> ||
-    std::same_as<T, std::vector<uint8_t>> || legacy_map<T> || AdlLeaf<T>;
+  concept DomAdapter =
+    std::same_as<T, Json> || std::same_as<T, std::vector<uint8_t>> ||
+    std::same_as<T, char> || legacy_map<T> || legacy_pair<T> || AdlLeaf<T>;
 }
 
 namespace glz
@@ -233,8 +231,8 @@ namespace glz
     }
   };
 
-  template <ccf::json::detail::DomAdapter T>
-  struct to<JSON, T>
+  template <typename T>
+  struct DomWriter
   {
     template <auto Options>
     static void op(const T& value, is_context auto&& context, auto&&... args)
@@ -245,8 +243,8 @@ namespace glz
     }
   };
 
-  template <ccf::json::detail::DomAdapter T>
-  struct from<JSON, T>
+  template <typename T>
+  struct DomReader
   {
     template <auto Options>
     static void op(T& value, is_context auto&& context, auto& it, auto end)
@@ -272,4 +270,30 @@ namespace glz
       }
     }
   };
+
+  template <ccf::json::detail::DomAdapter T>
+  struct to<JSON, T> : DomWriter<T>
+  {};
+
+  template <ccf::json::detail::DomAdapter T>
+  struct from<JSON, T> : DomReader<T>
+  {};
+
+  template <>
+  struct to<JSON, char> : DomWriter<char>
+  {};
+
+  template <>
+  struct from<JSON, char> : DomReader<char>
+  {};
+
+  template <typename First, typename Second>
+  struct to<JSON, std::pair<First, Second>>
+    : DomWriter<std::pair<First, Second>>
+  {};
+
+  template <typename First, typename Second>
+  struct from<JSON, std::pair<First, Second>>
+    : DomReader<std::pair<First, Second>>
+  {};
 }
