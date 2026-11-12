@@ -105,6 +105,50 @@ DECLARE_JSON_TYPE_WITH_OPTIONAL_FIELDS(Bar);
 DECLARE_JSON_REQUIRED_FIELDS(Bar, name);
 DECLARE_JSON_OPTIONAL_FIELDS(Bar, f);
 
+struct DenseFoo
+{
+  size_t n;
+  std::string s;
+};
+
+CCF_JSON_TYPE(DenseFoo, CCF_JSON_REQUIRED(n, s));
+
+struct DenseBar : DenseFoo
+{
+  std::optional<std::string> label;
+  int priority = 7;
+};
+
+CCF_JSON_TYPE(
+  DenseBar,
+  CCF_JSON_BASE(DenseFoo),
+  CCF_JSON_REQUIRED(label),
+  CCF_JSON_ALLOW_MISSING(priority));
+
+TEST_CASE("Dense declarations retain existing schema and OpenAPI dialects")
+{
+  auto dense = ccf::ds::json::build_schema<DenseFoo>();
+  const auto legacy = ccf::ds::json::build_schema<Foo>();
+  dense["title"] = legacy.at("title");
+  CHECK(dense == legacy);
+  auto doc = openapi::create_document("test", "test", "1");
+  openapi::SchemaHelper helper{doc};
+  const auto ref = helper.add_schema_component<DenseBar>();
+  CHECK(doc.at("openapi") == "3.0.0");
+  CHECK(ref.at("$ref") == "#/components/schemas/DenseBar");
+  const auto& schema = doc.at("components").at("schemas").at("DenseBar");
+  CHECK(schema.at("properties").at("n").contains("$ref"));
+  CHECK(schema.at("properties").at("label").contains("anyOf"));
+  CHECK(schema.at("required") == nlohmann::json::array({"n", "s", "label"}));
+  const auto standalone = ccf::ds::json::build_schema<DenseBar>();
+  CHECK(standalone.at("properties").at("label").at("nullable") == true);
+  CHECK(standalone.at("properties").contains("priority"));
+  CHECK_FALSE(std::count(
+    standalone.at("required").begin(),
+    standalone.at("required").end(),
+    "priority"));
+}
+
 enum class Vehicle
 {
   Car,
