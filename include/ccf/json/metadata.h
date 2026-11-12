@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
@@ -17,6 +18,51 @@ namespace ccf::json::detail
     Optional,
     AllowMissing
   };
+
+  template <typename Owners, typename Fields>
+  struct DefaultOwners;
+
+  template <typename... Owners>
+  struct DefaultOwners<std::tuple<Owners...>, std::tuple<>>
+  {
+    using Type = std::tuple<Owners...>;
+  };
+
+  template <typename... Owners, typename F, typename... Rest>
+  struct DefaultOwners<std::tuple<Owners...>, std::tuple<F, Rest...>>
+    : DefaultOwners<
+        std::conditional_t<
+          F::policy == Presence::Optional &&
+            !(std::is_same_v<typename F::DefaultType, Owners> || ...),
+          std::tuple<Owners..., typename F::DefaultType>,
+          std::tuple<Owners...>>,
+        std::tuple<Rest...>>
+  {};
+
+  template <typename Owners>
+  struct DefaultCache;
+
+  template <typename... Owners>
+  struct DefaultCache<std::tuple<Owners...>>
+  {
+    std::tuple<std::optional<Owners>...> values;
+  };
+
+  template <typename Value, typename F, typename Cache>
+  bool omit_field(const Value& member, F, Cache& defaults)
+  {
+    if constexpr (F::policy == Presence::Optional)
+    {
+      auto& owner =
+        std::get<std::optional<typename F::DefaultType>>(defaults.values);
+      if (!owner.has_value())
+      {
+        owner.emplace();
+      }
+      return !(member != (*owner).*F::member);
+    }
+    return false;
+  }
 
   template <auto Member, Presence Policy, typename Defaults = void>
   struct Field
@@ -98,6 +144,11 @@ namespace ccf::json::detail
     static constexpr auto declaration =
       ccf_json_declaration(static_cast<const T*>(nullptr));
     static constexpr auto name = declaration.name;
+    static constexpr bool has_optional_fields = std::apply(
+      [](auto... field) {
+        return ((decltype(field)::policy == Presence::Optional) || ...);
+      },
+      declaration.fields);
 
     static constexpr bool requires_key(
       std::string_view key, [[maybe_unused]] bool nullable)
@@ -110,29 +161,6 @@ namespace ccf::json::detail
             ...);
         },
         declaration.fields);
-    }
-
-    template <typename Value, typename F>
-    static bool skip_field(const Value& member, std::string_view key, F field)
-    {
-      if constexpr (F::policy == Presence::Optional)
-      {
-        using MemberType =
-          std::remove_cvref_t<decltype(std::declval<T>().*F::member)>;
-        if constexpr (std::is_same_v<Value, MemberType>)
-        {
-          if (key == field.name)
-          {
-            using DefaultType = std::conditional_t<
-              std::is_void_v<typename F::DefaultType>,
-              T,
-              typename F::DefaultType>;
-            const DefaultType defaults{};
-            return !(member != defaults.*F::member);
-          }
-        }
-      }
-      return false;
     }
   };
 

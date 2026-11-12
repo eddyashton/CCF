@@ -73,12 +73,21 @@ The overload ``ccf::json::write(value, output)`` replaces an existing string's c
 ``ccf::json::read<T>(input)`` returns a value, while ``ccf::json::read(value, input)`` updates an existing value.
 Input is a bounded ``std::string_view`` and need not be null-terminated.
 Trailing non-whitespace data is rejected and unknown object fields are ignored.
-Read errors throw ``ccf::JsonParseError``; callers must not rely on an existing destination being unchanged after an error.
+JSON syntax/type errors throw ``ccf::JsonParseError``; callers must not rely on an existing destination being unchanged after an error.
+Exceptions thrown by custom conversion hooks propagate.
 Write failures throw an exception.
+Native strings supplied to direct writers must contain valid UTF-8.
+Native writing does not validate this precondition; DOM-backed subtrees retain strict DOM validation.
+Direct writing does not apply the replacement policy used by JSON endpoint responses.
+Direct readers require valid UTF-8 JSON input and reject invalid encodings.
+``ccf::json::write_for_response(value)`` explicitly applies the existing endpoint response replacement policy to native strings and custom DOM subtrees, without constructing a DOM for the complete payload.
 
 Existing ``DECLARE_JSON_*`` declarations also expose metadata for direct I/O when their fields are pointer-addressable.
 Bitfields and types with bespoke, undeclared bases retain their existing DOM conversions.
 Custom ADL leaf conversions, base64 byte vectors, nonstring-key maps, and persisted DOM/KV encoding keep their existing wire representations.
+Undeclared enum and explicit ``nlohmann::adl_serializer`` leaf contracts take precedence over aggregate reflection.
+Types with native Glaze metadata retain native Glaze dispatch.
+Nullable wrappers use native dispatch unless they have an explicit ADL conversion, such as ``ccf::ReceiptPtr``.
 ``ccf::json::schema<T>()`` generates a schema using the existing dialect and ADL schema hooks.
 Direct I/O does not automatically change endpoint response handling.
 

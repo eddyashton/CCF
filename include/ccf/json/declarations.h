@@ -86,35 +86,6 @@ namespace ccf::json::detail
     }
   }
 
-  template <typename Owners, typename Fields>
-  struct DefaultOwners;
-
-  template <typename... Owners>
-  struct DefaultOwners<std::tuple<Owners...>, std::tuple<>>
-  {
-    using Type = std::tuple<Owners...>;
-  };
-
-  template <typename... Owners, typename F, typename... Rest>
-  struct DefaultOwners<std::tuple<Owners...>, std::tuple<F, Rest...>>
-    : DefaultOwners<
-        std::conditional_t<
-          F::policy == Presence::Optional &&
-            !(std::is_same_v<typename F::DefaultType, Owners> || ...),
-          std::tuple<Owners..., typename F::DefaultType>,
-          std::tuple<Owners...>>,
-        std::tuple<Rest...>>
-  {};
-
-  template <typename Owners>
-  struct DefaultCache;
-
-  template <typename... Owners>
-  struct DefaultCache<std::tuple<Owners...>>
-  {
-    std::tuple<std::optional<Owners>...> values;
-  };
-
   template <typename T>
   Json to_dom_value(const T& value)
   {
@@ -221,18 +192,9 @@ namespace ccf::json::detail
           const auto write_field = [&](auto f) {
             using F = decltype(f);
             const auto& member = value.*F::member;
-            if constexpr (F::policy == Presence::Optional)
+            if (omit_field(member, f, defaults))
             {
-              auto& owner = std::get<std::optional<typename F::DefaultType>>(
-                defaults.values);
-              if (!owner.has_value())
-              {
-                owner.emplace();
-              }
-              if (!(member != (*owner).*F::member))
-              {
-                return;
-              }
+              return;
             }
             j[f.name] = to_dom_value(member);
           };

@@ -118,6 +118,95 @@ namespace
 
   CCF_JSON_TYPE(CustomLeaves, CCF_JSON_REQUIRED(mode, specialized));
 
+  struct AbstractLeaf
+  {
+    virtual ~AbstractLeaf() = default;
+    virtual int get() const = 0;
+  };
+
+  struct ConcreteLeaf : AbstractLeaf
+  {
+    int get() const override
+    {
+      return 7;
+    }
+  };
+
+  using LeafPtr = std::shared_ptr<AbstractLeaf>;
+
+  void to_json(Json& j, const LeafPtr& value)
+  {
+    j = value ? Json(value->get()) : Json(nullptr);
+  }
+
+  void from_json(const Json& j, LeafPtr& value)
+  {
+    if (j.is_null())
+    {
+      value.reset();
+    }
+    else if (j == 7)
+    {
+      value = std::make_shared<ConcreteLeaf>();
+    }
+    else
+    {
+      throw ccf::JsonParseError("Unknown leaf");
+    }
+  }
+
+  struct TextLeaf
+  {
+    std::string value;
+  };
+
+  void to_json(Json& j, const TextLeaf& value)
+  {
+    j = value.value;
+  }
+
+  struct TextRecord
+  {
+    std::string text;
+    TextLeaf custom;
+    Json dom;
+  };
+
+  CCF_JSON_TYPE(TextRecord, CCF_JSON_REQUIRED(text, custom, dom));
+
+  struct PrimitiveLeaves
+  {
+    char character = 'x';
+    std::pair<std::string, int> pair{"key", 7};
+    std::vector<std::pair<int, int>> pairs{{1, 7}, {2, 8}};
+    std::array<char, 2> characters{'x', '\0'};
+    std::array<char, 0> empty;
+  };
+
+  CCF_JSON_TYPE(
+    PrimitiveLeaves,
+    CCF_JSON_REQUIRED(character, pair, pairs, characters, empty));
+
+  struct WithMapDefaults
+  {
+    std::map<std::string, int> labels{{"default", 7}};
+    std::map<std::string, std::map<std::string, int>> nested{
+      {"outer", {{"stale", 8}}}};
+  };
+
+  CCF_JSON_TYPE(WithMapDefaults, CCF_JSON_ALLOW_MISSING(labels, nested));
+
+  struct StatefulDefaults
+  {
+    static inline int next = 0;
+    int a;
+    int b;
+
+    StatefulDefaults() : a(++next), b(a) {}
+  };
+
+  CCF_JSON_TYPE(StatefulDefaults, CCF_JSON_OPTIONAL(a, b));
+
   struct WithMode
   {
     Mode mode = Mode::Active;
@@ -247,6 +336,10 @@ TEST_CASE("Direct JSON IO enforces field policies and buffer boundaries")
   CHECK_THROWS_AS(
     ccf::json::read<NewRecord>(bounded.substr(0, bounded.size() - 1)),
     ccf::JsonParseError);
+  CHECK_THROWS_AS(
+    ccf::json::read<Record>(
+      R"({"id":8,"transaction_id":null,"bytes":"","labels":{})"),
+    ccf::JsonParseError);
   CHECK(
     ccf::json::read<NewRecord>(R"({"id":8,"message":"hello"} )"
                                "\t\r\n")
@@ -311,6 +404,66 @@ TEST_CASE("DOM serialization constructs optional defaults once per owner")
   Defaulted::constructions = 0;
   CHECK(Json(value) == Json::object());
   CHECK(Defaulted::constructions == 1);
+  Defaulted::constructions = 0;
+  CHECK(ccf::json::write(value) == "{}");
+  CHECK(Defaulted::constructions == 1);
+  StatefulDefaults::next = 0;
+  const StatefulDefaults stateful{};
+  StatefulDefaults::next = 0;
+  const auto dom = Json(stateful);
+  StatefulDefaults::next = 0;
+  CHECK(Json::parse(ccf::json::write(stateful)) == dom);
+}
+
+TEST_CASE("Present maps replace defaults while absent fields retain values")
+{
+  auto value =
+    ccf::json::read<WithMapDefaults>(R"({"labels":{},"nested":{"outer":{}}})");
+  CHECK(value.labels.empty());
+  CHECK(value.nested.at("outer").empty());
+  value.labels["keep"] = 9;
+  ccf::json::read(value, "{}");
+  CHECK(value.labels.at("keep") == 9);
+  ccf::json::read(value, R"({"labels":{}})");
+  CHECK(value.labels.empty());
+  std::map<std::string, int> reused{{"stale", 1}};
+  ccf::json::read(reused, "{}");
+  CHECK(reused.empty());
+}
+
+TEST_CASE("Ignored values remain validated JSON with bounded depth")
+{
+  for (const auto* invalid : {"[garbage]", R"({"x":})", "tru", R"("\q")"})
+  {
+    const auto input =
+      std::string(R"({"id":8,"message":"ok","unknown":)") + invalid + "}";
+    CHECK_THROWS_AS(ccf::json::read<NewRecord>(input), ccf::JsonParseError);
+  }
+  const auto nested = [](size_t depth) {
+    return std::string(R"({"id":8,"message":"ok","unknown":)") +
+      std::string(depth, '[') + "0" + std::string(depth, ']') + "}";
+  };
+  CHECK(ccf::json::read<NewRecord>(nested(16)).id == 8);
+  CHECK_THROWS_AS(
+    ccf::json::read<NewRecord>(nested(glz::max_recursive_depth_limit + 1)),
+    ccf::JsonParseError);
+}
+
+TEST_CASE("DOM-backed read failures use the public parse exception")
+{
+  CHECK_THROWS_AS(ccf::json::read<Json>(""), ccf::JsonParseError);
+  CHECK_THROWS_AS(ccf::json::read<Json>(R"({"x":})"), ccf::JsonParseError);
+  CHECK_THROWS_AS(
+    ccf::json::read<Json>(R"({"x":1}false)"), ccf::JsonParseError);
+  CHECK(ccf::json::read<Json>(" \t{\"x\":1} \n") == Json{{"x", 1}});
+  CHECK_THROWS_AS(ccf::json::read<ccf::TxID>("{}"), ccf::JsonParseError);
+  CHECK_THROWS_AS(
+    (ccf::json::read<std::pair<int, int>>(R"(["wrong",2])")),
+    ccf::JsonParseError);
+  CHECK_THROWS_AS(
+    ccf::json::read<CustomLeaves>(
+      R"({"mode":"custom-active","specialized":{}})"),
+    ccf::JsonParseError);
 }
 
 TEST_CASE("Legacy custom shapes remain valid on the direct API")
@@ -377,6 +530,42 @@ TEST_CASE("Direct IO preserves custom enum and specialized serializer leaves")
     Json(custom_json::Specialized{}).dump());
 }
 
+TEST_CASE("Custom nullable ADL leaves retain their wire contract")
+{
+  const LeafPtr value = std::make_shared<ConcreteLeaf>();
+  CHECK(ccf::json::write(value) == "7");
+  CHECK(ccf::json::read<LeafPtr>("7")->get() == 7);
+  CHECK(ccf::json::write(LeafPtr{}) == "null");
+  CHECK_FALSE(ccf::json::read<LeafPtr>("null"));
+  const std::vector<LeafPtr> nested{value, nullptr};
+  CHECK(Json::parse(ccf::json::write(nested)) == Json::array({7, nullptr}));
+}
+
+TEST_CASE("Response writing opts into legacy UTF8 replacement at every leaf")
+{
+  for (const auto& text :
+       {std::string("\xff"),
+        std::string("\xc3"),
+        std::string("\xc3("),
+        std::string("\xed\xa0\x80"),
+        std::string("\xf0\x9f\x98\x80")})
+  {
+    const TextRecord value{text, TextLeaf{text}, Json{{text, text}}};
+    const auto expected =
+      Json(value).dump(-1, ' ', false, Json::error_handler_t::replace);
+    CHECK(
+      Json::parse(ccf::json::write_for_response(value)) ==
+      Json::parse(expected));
+    CHECK(
+      Json::parse(ccf::json::write_for_response(text)) ==
+      Json::parse(
+        Json(text).dump(-1, ' ', false, Json::error_handler_t::replace)));
+  }
+  CHECK_THROWS(ccf::json::write(TextLeaf{std::string("\xff")}));
+  CHECK_THROWS_AS(
+    ccf::json::read<std::string>(std::string("\"\xff\"")), ccf::JsonParseError);
+}
+
 TEST_CASE("Direct IO preserves character and pair array wire formats")
 {
   const char character = 'x';
@@ -391,6 +580,13 @@ TEST_CASE("Direct IO preserves character and pair array wire formats")
   CHECK(
     ccf::json::read<std::vector<std::pair<int, int>>>(Json(pairs).dump()) ==
     pairs);
+  const PrimitiveLeaves nested{};
+  CHECK(Json::parse(ccf::json::write(nested)) == Json(nested));
+  const auto decoded = ccf::json::read<PrimitiveLeaves>(Json(nested).dump());
+  CHECK(Json(decoded) == Json(nested));
+  const std::array<char, 0> empty{};
+  CHECK(ccf::json::write(empty) == "[]");
+  CHECK(ccf::json::read<std::array<char, 0>>("[]") == empty);
 }
 
 TEST_CASE("Direct writers escape all JSON control characters")
@@ -403,5 +599,7 @@ TEST_CASE("Direct writers escape all JSON control characters")
   for (const auto& text : {controls, std::string(128, 'x') + controls})
   {
     CHECK(Json::parse(ccf::json::write(text)) == text);
+    const std::map<std::string, std::string> object{{text, text}};
+    CHECK(Json::parse(ccf::json::write(object)) == Json(object));
   }
 }

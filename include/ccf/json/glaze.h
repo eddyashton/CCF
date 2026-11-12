@@ -119,12 +119,10 @@ namespace ccf::json::detail
 
   template <typename Key, typename Value, typename... Args>
   inline constexpr bool legacy_map<std::map<Key, Value, Args...>> =
-    !std::same_as<Key, std::string> &&
     std::is_constructible_v<Json, const std::map<Key, Value, Args...>&>;
 
   template <typename Key, typename Value, typename... Args>
   inline constexpr bool legacy_map<std::unordered_map<Key, Value, Args...>> =
-    !std::same_as<Key, std::string> &&
     std::
       is_constructible_v<Json, const std::unordered_map<Key, Value, Args...>&>;
 
@@ -132,14 +130,31 @@ namespace ccf::json::detail
   // over aggregate reflection. Undeclared enums keep their DOM wire format.
   // Standard containers keep native Glaze I/O, except the CCF byte wire format.
   template <typename T>
-  concept AdlLeaf = !Declared<T> && (std::is_class_v<T> || std::is_enum_v<T>) &&
+  concept AdlCandidate =
+    !Declared<T> && (std::is_class_v<T> || std::is_enum_v<T>) &&
     !nlohmann::detail::is_basic_json<T>::value && !glz::str_t<T> &&
     !standard_container<T> && std::is_constructible_v<Json, const T&>;
 
+  struct AdlJsonProbe
+  {
+    operator Json&() const;
+  };
+
   template <typename T>
-  concept DomAdapter =
-    std::same_as<T, Json> || std::same_as<T, std::vector<uint8_t>> ||
-    std::same_as<T, char> || legacy_map<T> || legacy_pair<T> || AdlLeaf<T>;
+  concept AdlJson =
+    requires(const T& value) { to_json(AdlJsonProbe{}, value); };
+
+  template <typename T>
+  concept AdlLeaf =
+    AdlCandidate<T> && !glz::glaze_t<T> && (!glz::nullable_t<T> || AdlJson<T>);
+
+  template <typename T>
+  concept DomCandidate = std::same_as<T, Json> ||
+    std::same_as<T, std::vector<uint8_t>> || std::same_as<T, char> ||
+    glz::array_char_t<T> || legacy_map<T> || legacy_pair<T> || AdlCandidate<T>;
+
+  template <typename T>
+  concept DomAdapter = DomCandidate<T> && (!AdlCandidate<T> || AdlLeaf<T>);
 }
 
 namespace glz
@@ -148,29 +163,104 @@ namespace glz
   struct meta<T> : ccf::json::detail::Metadata<T>
   {
     static constexpr auto value = ccf::json::detail::glaze_fields<T>();
-    static constexpr bool custom_write = std::is_enum_v<T>;
-
-    static bool skip_if(
-      const auto& member,
-      std::string_view key,
-      [[maybe_unused]] const glz::meta_context& context)
-    {
-      // Glaze's field callback has no per-object storage for default owners.
-      // Do not cache these globally: default constructors may be stateful.
-      return std::apply(
-        [&](auto... field) {
-          return (meta::skip_field(member, key, field) || ...);
-        },
-        meta::declaration.fields);
-    }
+    static constexpr bool custom_write =
+      std::is_enum_v<T> || meta::has_optional_fields;
   };
 
-  template <ccf::json::detail::DomAdapter T>
+  template <ccf::json::detail::DomCandidate T>
   struct meta<T>
   {
     static constexpr bool glaze_reflect = false;
     static constexpr bool custom_read = true;
     static constexpr bool custom_write = true;
+  };
+
+  template <ccf::json::detail::Declared T>
+    requires(
+      !std::is_enum_v<T> && ccf::json::detail::Metadata<T>::has_optional_fields)
+  struct to<JSON, T>
+  {
+    static constexpr bool can_error = true;
+
+    template <auto Options>
+    static void op(
+      const T& value, is_context auto&& context, auto& output, auto& index)
+    {
+      using namespace ccf::json::detail;
+      using Fields =
+        std::remove_cvref_t<decltype(Metadata<T>::declaration.fields)>;
+      DefaultCache<typename DefaultOwners<std::tuple<>, Fields>::Type>
+        defaults{};
+      if (!ensure_space(
+            context, output, index + context.depth + write_padding_bytes))
+      {
+        return;
+      }
+      if constexpr (!check_opening_handled(Options))
+      {
+        dump('{', output, index);
+      }
+      if constexpr (Options.prettify)
+      {
+        context.depth += check_indentation_width(Options);
+      }
+      bool first = true;
+      std::apply(
+        [&](auto... field) {
+          const auto write_field = [&](auto f) {
+            const auto& member = value.*decltype(f)::member;
+            if (
+              context.error != error_code::none ||
+              omit_field(member, f, defaults))
+            {
+              return;
+            }
+            if (!ensure_space(
+                  context, output, index + context.depth + write_padding_bytes))
+            {
+              return;
+            }
+            if (!first)
+            {
+              dump(',', output, index);
+            }
+            first = false;
+            if constexpr (Options.prettify)
+            {
+              dump_newline_indent(
+                check_indentation_char(Options), context.depth, output, index);
+            }
+            write_pair_content<Options>(f.name, member, context, output, index);
+          };
+          (write_field(field), ...);
+        },
+        Metadata<T>::declaration.fields);
+      if (context.error != error_code::none)
+      {
+        return;
+      }
+      if constexpr (Options.prettify)
+      {
+        context.depth -= check_indentation_width(Options);
+      }
+      if (!ensure_space(
+            context, output, index + context.depth + write_padding_bytes))
+      {
+        return;
+      }
+      if constexpr (!check_closing_handled(Options))
+      {
+        if constexpr (Options.prettify)
+        {
+          if (!first)
+          {
+            dump_newline_indent(
+              check_indentation_char(Options), context.depth, output, index);
+          }
+        }
+        dump('}', output, index);
+      }
+    }
   };
 
   template <>
@@ -237,7 +327,18 @@ namespace glz
     template <auto Options>
     static void op(const T& value, is_context auto&& context, auto&&... args)
     {
-      const raw_json raw{ccf::json::detail::Json(value).dump()};
+      constexpr auto error_handler = [] {
+        if constexpr (requires { Options.replace_invalid_utf8; })
+        {
+          if constexpr (Options.replace_invalid_utf8)
+          {
+            return nlohmann::json::error_handler_t::replace;
+          }
+        }
+        return nlohmann::json::error_handler_t::strict;
+      }();
+      const raw_json raw{
+        ccf::json::detail::Json(value).dump(-1, ' ', false, error_handler)};
       serialize<JSON>::op<Options>(
         raw, context, std::forward<decltype(args)>(args)...);
     }
@@ -249,13 +350,15 @@ namespace glz
     template <auto Options>
     static void op(T& value, is_context auto&& context, auto& it, auto end)
     {
-      raw_json_view raw;
-      parse<JSON>::op<Options>(raw, context, it, end);
-      if (context.error != error_code::none)
+      const auto start = it;
+      skip_value<JSON>::op<Options>(context, it, end);
+      if (
+        context.error != error_code::none &&
+        context.error != error_code::end_reached)
       {
         return;
       }
-      const auto dom = ccf::parse_json_safe(raw.str);
+      const auto dom = ccf::parse_json_safe(start, it);
       if constexpr (std::same_as<T, ccf::json::detail::Json>)
       {
         value = dom;
@@ -279,6 +382,16 @@ namespace glz
   struct from<JSON, T> : DomReader<T>
   {};
 
+  template <ccf::json::detail::DomAdapter T>
+    requires nullable_like<T>
+  struct to<JSON, T> : DomWriter<T>
+  {};
+
+  template <ccf::json::detail::DomAdapter T>
+    requires nullable_t<T>
+  struct from<JSON, T> : DomReader<T>
+  {};
+
   template <>
   struct to<JSON, char> : DomWriter<char>
   {};
@@ -295,5 +408,13 @@ namespace glz
   template <typename First, typename Second>
   struct from<JSON, std::pair<First, Second>>
     : DomReader<std::pair<First, Second>>
+  {};
+
+  template <size_t N>
+  struct to<JSON, std::array<char, N>> : DomWriter<std::array<char, N>>
+  {};
+
+  template <size_t N>
+  struct from<JSON, std::array<char, N>> : DomReader<std::array<char, N>>
   {};
 }

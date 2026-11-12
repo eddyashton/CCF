@@ -16,6 +16,8 @@ namespace ccf::json
     bool validate_trailing_whitespace = true;
     bool escape_control_characters = true;
     bool concatenate = false;
+    bool validate_skipped = true;
+    bool replace_invalid_utf8 = false;
   };
 
   inline constexpr auto options = [] {
@@ -27,14 +29,23 @@ namespace ccf::json
     return value;
   }();
 
+  namespace detail
+  {
+    template <auto Options, typename T>
+    void write_with_options(const T& value, std::string& output)
+    {
+      const auto error = glz::write<Options>(value, output);
+      if (error)
+      {
+        throw std::logic_error(glz::format_error(error, ""));
+      }
+    }
+  }
+
   template <typename T>
   void write(const T& value, std::string& output)
   {
-    const auto error = glz::write<options>(value, output);
-    if (error)
-    {
-      throw std::logic_error(glz::format_error(error, ""));
-    }
+    detail::write_with_options<options>(value, output);
   }
 
   template <typename T>
@@ -46,12 +57,41 @@ namespace ccf::json
   }
 
   template <typename T>
+  std::string write_for_response(const T& value)
+  {
+    constexpr auto response_options = [] {
+      auto result = options;
+      result.replace_invalid_utf8 = true;
+      return result;
+    }();
+    std::string output;
+    detail::write_with_options<response_options>(value, output);
+    if (!glz::validate_utf8(output.data(), output.size()))
+    {
+      // Reuse the DOM's exact scalar-string replacement policy without
+      // constructing a DOM for the serialized response payload.
+      output = nlohmann::json::parse(
+                 nlohmann::json(output).dump(
+                   -1, ' ', false, nlohmann::json::error_handler_t::replace))
+                 .get<std::string>();
+    }
+    return output;
+  }
+
+  template <typename T>
   void read(T& value, std::string_view input)
   {
-    const auto error = glz::read<options>(value, input);
-    if (error)
+    try
     {
-      throw ccf::JsonParseError(glz::format_error(error, ""));
+      const auto error = glz::read<options>(value, input);
+      if (error)
+      {
+        throw ccf::JsonParseError(glz::format_error(error, ""));
+      }
+    }
+    catch (const nlohmann::json::exception& error)
+    {
+      throw ccf::JsonParseError(error.what());
     }
   }
 
