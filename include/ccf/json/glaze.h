@@ -139,8 +139,9 @@ namespace ccf::json::detail
   concept AdlLeaf = AdlCandidate<T> && !glz::glaze_t<T>;
 
   template <typename T>
-  concept DomCandidate = std::same_as<T, Json> ||
-    std::same_as<T, std::vector<uint8_t>> || std::same_as<T, char> ||
+  concept DomCandidate =
+    std::same_as<T, Json> || std::same_as<T, std::vector<uint8_t>> ||
+    std::same_as<T, std::vector<char>> || std::same_as<T, char> ||
     glz::array_char_t<T> || legacy_map<T> || legacy_pair<T> || AdlCandidate<T>;
 
   template <typename T>
@@ -388,6 +389,14 @@ namespace glz
 
   template <>
   struct from<JSON, char> : DomReader<char>
+  {};
+
+  template <>
+  struct to<JSON, std::vector<char>> : DomWriter<std::vector<char>>
+  {};
+
+  template <>
+  struct from<JSON, std::vector<char>> : DomReader<std::vector<char>>
   {};
 
   template <typename First, typename Second>
