@@ -914,58 +914,57 @@ namespace ccf
         fmt::format("Error code: {}", ccf::api_result_to_str(result)));
     }
 
+    template <typename QuoteType>
+    std::vector<QuoteType> collect_quotes(
+      ccf::endpoints::ReadOnlyEndpointContext& args)
+    {
+      std::vector<QuoteType> quotes;
+
+      auto* nodes = args.tx.ro(network.nodes);
+      nodes->foreach([&quotes](const auto& node_id, const auto& node_info) {
+        if (node_info.status == ccf::NodeStatus::TRUSTED)
+        {
+          QuoteType q;
+          q.node_id = node_id;
+          q.raw = node_info.quote_info.quote;
+          q.endorsements = node_info.quote_info.endorsements;
+          q.format = node_info.quote_info.format;
+          q.uvm_endorsements = node_info.quote_info.uvm_endorsements;
+
+          if (node_info.code_digest.has_value())
+          {
+            q.measurement = node_info.code_digest.value();
+          }
+          else
+          {
+            auto measurement =
+              AttestationProvider::get_measurement(node_info.quote_info);
+            if (measurement.has_value())
+            {
+              q.measurement = measurement.value().hex_str();
+            }
+          }
+          quotes.emplace_back(q);
+        }
+        return true;
+      });
+
+      return quotes;
+    }
+
     auto get_quotes(
       ccf::endpoints::ReadOnlyEndpointContext& args,
       nlohmann::json&& /*params*/)
     {
-      GetQuotes::Out result;
-
-      auto* nodes = args.tx.ro(network.nodes);
-      nodes->foreach(
-        [&quotes = result.quotes](const auto& node_id, const auto& node_info) {
-          if (node_info.status == ccf::NodeStatus::TRUSTED)
-          {
-            Quote q;
-            q.node_id = node_id;
-            q.raw = node_info.quote_info.quote;
-            q.endorsements = node_info.quote_info.endorsements;
-            q.format = node_info.quote_info.format;
-            q.uvm_endorsements = node_info.quote_info.uvm_endorsements;
-
-            if (node_info.code_digest.has_value())
-            {
-              q.measurement = node_info.code_digest.value();
-            }
-            else
-            {
-              auto measurement =
-                AttestationProvider::get_measurement(node_info.quote_info);
-              if (measurement.has_value())
-              {
-                q.measurement = measurement.value().hex_str();
-              }
-            }
-            quotes.emplace_back(q);
-          }
-          return true;
-        });
-
-      return make_success(result);
+      return make_success(GetQuotes::Out{collect_quotes<Quote>(args)});
     }
 
     auto get_attestations(
-      ccf::endpoints::ReadOnlyEndpointContext& args, nlohmann::json&& params)
+      ccf::endpoints::ReadOnlyEndpointContext& args,
+      nlohmann::json&& /*params*/)
     {
-      auto res = get_quotes(args, std::move(params));
-      const auto* body = std::get_if<nlohmann::json>(&res);
-      if (body != nullptr)
-      {
-        auto result = nlohmann::json::object();
-        result["attestations"] = (*body)["quotes"];
-        return make_success(result);
-      }
-
-      return res;
+      return make_success(
+        GetAttestations::Out{collect_quotes<Attestation>(args)});
     }
 
     auto network_status(
@@ -1463,7 +1462,7 @@ namespace ccf
       args.rpc_ctx->set_response_status(HTTP_STATUS_OK);
       args.rpc_ctx->set_response_header(
         http::headers::CONTENT_TYPE, http::headervalues::contenttype::JSON);
-      args.rpc_ctx->set_response_body(nlohmann::json(nm).dump());
+      args.rpc_ctx->set_response_body(ccf::json::write(nm));
     }
 
     auto js_metrics(

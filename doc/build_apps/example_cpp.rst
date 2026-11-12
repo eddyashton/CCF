@@ -87,9 +87,9 @@ Bitfields and types with bespoke, undeclared bases retain their existing DOM con
 Custom ADL leaf conversions, base64 byte vectors, nonstring-key maps, and persisted DOM/KV encoding keep their existing wire representations.
 Undeclared enum and explicit ``nlohmann::adl_serializer`` leaf contracts take precedence over aggregate reflection.
 Types with native Glaze metadata retain native Glaze dispatch.
-Nullable wrappers use native dispatch unless they have an explicit ADL conversion, such as ``ccf::ReceiptPtr``.
+Nullable wrappers use native dispatch unless they have an explicit ADL conversion, such as ``ccf::ReceiptPtr``, or a specialised ``nlohmann::adl_serializer``.
 ``ccf::json::schema<T>()`` generates a schema using the existing dialect and ADL schema hooks.
-Direct I/O does not automatically change endpoint response handling.
+JSON adapter response handling is described below.
 
 Application Interface
 ~~~~~~~~~~~~~~~~~~~~~
@@ -156,6 +156,14 @@ The logging app defines :cpp:class:`ccf::LoggerHandlers`, which creates and inst
     :dedent:
 
 This example uses the ``json_adapter`` wrapper function, which handles parsing of a JSON params object from the HTTP request body.
+
+``ccf::make_success(value)`` automatically serialises typed response values without constructing an intermediate JSON DOM for types with CCF JSON field declarations.
+``ccf::make_success<T>(value)`` can also select the response type explicitly.
+Existing custom JSON serializers retain their wire representation.
+Passing a ``nlohmann::json`` value or a braced JSON object retains the DOM overload, while ``ccf::make_success()`` and values serialised as JSON ``null`` produce ``204 No Content``.
+The JSON adapters retain their existing ``Accept`` negotiation and return ``application/json`` for non-null successful responses.
+Response serialisation replaces malformed UTF-8 in string values and object keys, matching the existing DOM response policy.
+This transport-specific replacement does not change the direct JSON writer's UTF-8 input precondition.
 
 Each function is installed as the handler for a specific HTTP resource, defined by a verb and URI:
 

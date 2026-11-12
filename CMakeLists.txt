@@ -1158,6 +1158,12 @@ if(BUILD_TESTS)
     target_link_libraries(endpoint_registry_test PRIVATE ccf_endpoints)
 
     add_unit_test(
+      json_handler_test
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/endpoints/test/json_handler.cpp
+    )
+    target_link_libraries(json_handler_test PRIVATE ccf_endpoints)
+
+    add_unit_test(
       jwt_auth_test
       ${CMAKE_CURRENT_SOURCE_DIR}/src/endpoints/test/test_jwt_auth.cpp
     )

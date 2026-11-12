@@ -657,7 +657,7 @@ namespace loggingapp
 
       out->tx_id = tx_id.to_str();
 
-      ctx.rpc_ctx->set_response_body(nlohmann::json(*out).dump());
+      ctx.rpc_ctx->set_response_body(ccf::json::write(*out));
     }
 
     static ccf::jsonhandler::JsonAdapterResponse handle_record_v2(

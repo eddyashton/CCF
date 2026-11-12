@@ -31,6 +31,16 @@
 using namespace ccf;
 using namespace std;
 
+namespace
+{
+  struct TypedResponse
+  {
+    std::string message;
+  };
+
+  CCF_JSON_TYPE(TypedResponse, CCF_JSON_REQUIRED(message));
+}
+
 TEST_CASE("Unknown client HTTP status codes remain usable in diagnostics")
 {
   const auto status = static_cast<ccf::http_status>(471);
@@ -148,6 +158,34 @@ public:
       return make_success(true);
     };
     make_endpoint("/failable", HTTP_POST, json_adapter(failable_function))
+      .install();
+
+    auto typed_function = [](auto& ctx, nlohmann::json&& params) {
+      if (params.contains("error"))
+      {
+        return make_error(
+          HTTP_STATUS_BAD_REQUEST, ccf::errors::InvalidInput, "invalid");
+      }
+      if (params.contains("empty"))
+      {
+        return make_success(std::optional<TypedResponse>{});
+      }
+      return make_success(TypedResponse{"typed"});
+    };
+    make_endpoint("/typed", HTTP_POST, json_adapter(typed_function)).install();
+    endpoints
+      .make_read_only_endpoint(
+        "/typed_read_only",
+        HTTP_POST,
+        json_read_only_adapter(typed_function),
+        no_auth_required)
+      .install();
+    endpoints
+      .make_command_endpoint(
+        "/typed_command",
+        HTTP_POST,
+        json_command_adapter(typed_function),
+        no_auth_required)
       .install();
   }
 };
@@ -1137,6 +1175,63 @@ TEST_CASE("JsonWrappedEndpointFunction")
       const std::string body_s(response.body.begin(), response.body.end());
       auto body_j = nlohmann::json::parse(body_s);
       CHECK(body_j["error"]["message"] == msg);
+    }
+  }
+}
+
+TEST_CASE("Typed JSON responses traverse each frontend adapter")
+{
+  NetworkState network;
+  prepare_callers(network);
+  TestJsonWrappedEndpointFunction frontend(*network.tables);
+
+  for (const auto* path : {"/typed", "/typed_read_only", "/typed_command"})
+  {
+    for (const auto* accept : {"application/json", "*/*", "text/plain"})
+    {
+      for (const auto& params :
+           {nlohmann::json::object(),
+            nlohmann::json{{"empty", true}},
+            nlohmann::json{{"error", true}}})
+      {
+        INFO(path, " Accept: ", accept, " params: ", params.dump());
+        auto request = create_simple_request(path);
+        request.set_header(ccf::http::headers::ACCEPT, accept);
+        request.set_body(params.dump());
+        auto rpc_ctx =
+          ccf::make_rpc_context(user_session, request.build_request());
+        frontend.process(rpc_ctx);
+        const auto response = parse_response(rpc_ctx->serialise_response());
+        if (params.contains("empty"))
+        {
+          CHECK(response.status == HTTP_STATUS_NO_CONTENT);
+          CHECK(response.body.empty());
+        }
+        else if (params.contains("error"))
+        {
+          CHECK(response.status == HTTP_STATUS_BAD_REQUEST);
+          CHECK(
+            parse_response_body(response.body)["error"]["code"] ==
+            ccf::errors::InvalidInput);
+        }
+        else if (std::string_view(accept) == "text/plain")
+        {
+          CHECK(response.status == HTTP_STATUS_NOT_ACCEPTABLE);
+          CHECK(
+            parse_response_body(response.body)["error"]["code"] ==
+            ccf::errors::UnsupportedContentType);
+        }
+        else
+        {
+          CHECK(response.status == HTTP_STATUS_OK);
+          CHECK(
+            response.headers.at(ccf::http::headers::CONTENT_TYPE) ==
+            ccf::http::headervalues::contenttype::JSON);
+          CHECK(
+            parse_response_body(response.body) ==
+            nlohmann::json{{"message", "typed"}});
+        }
+      }
     }
   }
 }

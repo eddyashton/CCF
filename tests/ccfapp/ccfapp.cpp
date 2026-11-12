@@ -3,6 +3,7 @@
 
 #include "ccf/app_interface.h"
 #include "ccf/js/common_context.h"
+#include "ccf/json_handler.h"
 #include "ccf/pal/attestation_sev_snp.h"
 #include "ccf/version.h"
 
@@ -16,6 +17,13 @@
 using namespace std;
 using namespace nlohmann;
 
+struct JsonRecord
+{
+  std::string value;
+};
+
+CCF_JSON_TYPE(JsonRecord, CCF_JSON_REQUIRED(value));
+
 namespace ccf
 {
   std::unique_ptr<ccf::endpoints::EndpointRegistry> make_user_endpoints(
@@ -28,6 +36,24 @@ namespace ccf
 int main()
 {
   std::cout << "I'm a CCF test app " << ccf::ccf_version << std::endl;
+
+  const JsonRecord record{"installed"};
+  const auto response = ccf::make_success(record);
+  const auto explicit_response = ccf::make_success<JsonRecord>({"explicit"});
+  const auto& json_bytes =
+    std::get<ccf::jsonhandler::SerialisedJson>(response).body;
+  if (
+    ccf::json::read<JsonRecord>(json_bytes).value != record.value ||
+    ccf::json::read<JsonRecord>(
+      std::get<ccf::jsonhandler::SerialisedJson>(explicit_response).body)
+        .value != "explicit" ||
+    !std::holds_alternative<nlohmann::json>(
+      ccf::make_success({{"value", "dom"}})))
+  {
+    std::cerr << "Unexpected installed JSON response serialization"
+              << std::endl;
+    return 1;
+  }
 
   // Third-party headers installed for applications must be usable
   namespace cbor = tav::cbor;
