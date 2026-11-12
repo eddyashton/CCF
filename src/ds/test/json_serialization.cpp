@@ -187,6 +187,13 @@ namespace
     PrimitiveLeaves,
     CCF_JSON_REQUIRED(character, pair, pairs, characters, empty));
 
+  struct CharacterVector
+  {
+    std::vector<char> characters;
+  };
+
+  CCF_JSON_TYPE(CharacterVector, CCF_JSON_REQUIRED(characters));
+
   struct WithMapDefaults
   {
     std::map<std::string, int> labels{{"default", 7}};
@@ -582,11 +589,30 @@ TEST_CASE("Direct IO preserves character and pair array wire formats")
     pairs);
   const PrimitiveLeaves nested{};
   CHECK(Json::parse(ccf::json::write(nested)) == Json(nested));
+  CHECK(Json::parse(ccf::json::write_for_response(nested)) == Json(nested));
   const auto decoded = ccf::json::read<PrimitiveLeaves>(Json(nested).dump());
   CHECK(Json(decoded) == Json(nested));
   const std::array<char, 0> empty{};
   CHECK(ccf::json::write(empty) == "[]");
   CHECK(ccf::json::read<std::array<char, 0>>("[]") == empty);
+  for (const auto& characters :
+       {std::vector<char>{'A', 'B'}, std::vector<char>{}})
+  {
+    const Json legacy = characters;
+    CHECK(legacy.is_array());
+    CHECK(Json::parse(ccf::json::write(characters)) == legacy);
+    CHECK(Json::parse(ccf::json::write_for_response(characters)) == legacy);
+    const CharacterVector record{characters};
+    CHECK(Json::parse(ccf::json::write(record)) == Json(record));
+    CHECK(Json::parse(ccf::json::write_for_response(record)) == Json(record));
+    CHECK(ccf::json::read<std::vector<char>>(legacy.dump()) == characters);
+    CHECK(
+      ccf::json::read<CharacterVector>(Json(record).dump()).characters ==
+      characters);
+  }
+  const std::vector<uint8_t> bytes{'A', 'B'};
+  CHECK(ccf::json::write(bytes) == R"("QUI=")");
+  CHECK(ccf::json::write_for_response(bytes) == R"("QUI=")");
 }
 
 TEST_CASE("Direct writers escape all JSON control characters")

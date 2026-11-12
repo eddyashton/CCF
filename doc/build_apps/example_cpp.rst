@@ -85,6 +85,7 @@ Direct readers require valid UTF-8 JSON input and reject invalid encodings.
 Existing ``DECLARE_JSON_*`` declarations also expose metadata for direct I/O when their fields are pointer-addressable.
 Bitfields and types with bespoke, undeclared bases retain their existing DOM conversions.
 Custom ADL leaf conversions, base64 byte vectors, nonstring-key maps, and persisted DOM/KV encoding keep their existing wire representations.
+Character vectors retain numeric-array encoding, distinct from base64 byte vectors.
 Undeclared enum and explicit ``nlohmann::adl_serializer`` leaf contracts take precedence over aggregate reflection.
 Types with native Glaze metadata retain native Glaze dispatch.
 Nullable wrappers use native dispatch unless they have an explicit ADL conversion, such as ``ccf::ReceiptPtr``, or a specialised ``nlohmann::adl_serializer``.
