@@ -27,13 +27,12 @@ python3 scripts/vendor-glaze.py --source /path/to/glaze/include --output 3rdpart
 
 The script follows internal includes across all conditional branches, including relative includes, and fails on unsupported computed include directives.
 Check mode does not write files and reports missing, changed, or surplus headers.
-The `ENTRY_POINTS` list in the script records the headers actually used by CCF; update that list when adding format support or changing entry points.
+The fixed `ENTRY_POINTS` list in the script records the headers selected for CCF's JSON integration; update that list when changing entry points.
 After changing the upstream revision or entry points, regenerate the subset, verify provenance, and build/test CCF and an installed SDK consumer using only the trimmed tree.
 Run the script's regression tests with `python3 -m unittest discover -s scripts/tests -p vendor_glaze_test.py`.
 
 Glaze requires C++23 and an available `std::expected` implementation.
-Clang 18 with libstdc++ 13 needs a compatibility workaround because the standard library gates its existing `<expected>` declarations on a newer concepts feature macro.
-This dependency addition does not change CCF's compiler selection or patch the upstream headers.
+This dependency addition does not enable CCF's JSON integration, change CCF's compiler or standard-library selection, or patch the upstream headers.
 
 Verify the vendored tree with `scripts/verify-vendored-dependency.py cgmanifest.json glaze`.
 
