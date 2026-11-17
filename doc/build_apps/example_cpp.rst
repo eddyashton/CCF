@@ -40,6 +40,58 @@ These are described in the sections below, and the full API is listed in :doc:`e
 
    example_rpc_api
 
+Typed JSON declarations
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Include ``ccf/json.h`` to declare a JSON contract once for DOM conversion, direct typed I/O, and the existing schema/OpenAPI helpers.
+Declarations belong in the same namespace as the type:
+
+.. code-block:: cpp
+
+    struct Message
+    {
+      uint64_t id = 0;
+      std::string text;
+      int priority = 7;
+      std::optional<std::string> next_link;
+    };
+
+    CCF_JSON_TYPE(
+      Message,
+      CCF_JSON_REQUIRED(id, text),
+      CCF_JSON_ALLOW_MISSING(priority),
+      CCF_JSON_NAMED(Optional, next_link, "@nextLink"));
+
+``CCF_JSON_REQUIRED`` fields must be present, including fields of type ``std::optional<T>`` whose value may be JSON null.
+``CCF_JSON_OPTIONAL`` fields may be absent and are omitted on write when equal to the corresponding default-constructed owner's field.
+``CCF_JSON_ALLOW_MISSING`` fields may be absent but are always written.
+Missing non-required fields retain their current values when reading into an existing object.
+Use ``CCF_JSON_BASE(Base)`` to include a declared base's fields and ``CCF_JSON_ENUM(Mode, "active", Mode::Active, "retired", Mode::Retired)`` to declare enum labels; unknown labels and unmapped enum values are rejected.
+
+``ccf::json::write(value)`` returns a JSON string.
+The overload ``ccf::json::write(value, output)`` replaces an existing string's contents and reuses its capacity.
+``ccf::json::read<T>(input)`` returns a value, while ``ccf::json::read(value, input)`` updates an existing value.
+Input is a bounded ``std::string_view`` and need not be null-terminated.
+Trailing non-whitespace data is rejected and unknown object fields are ignored.
+JSON syntax/type errors throw ``ccf::JsonParseError``; callers must not rely on an existing destination being unchanged after an error.
+Exceptions thrown by custom conversion hooks propagate.
+Write failures throw an exception.
+Native strings supplied to direct writers must contain valid UTF-8.
+Native writing does not validate this precondition; DOM-backed subtrees retain strict DOM validation.
+Direct writing does not apply the replacement policy used by JSON endpoint responses.
+Direct readers require valid UTF-8 JSON input and reject invalid encodings.
+``ccf::json::write_for_response(value)`` explicitly applies the existing endpoint response replacement policy to native strings and custom DOM subtrees, without constructing a DOM for the complete payload.
+
+Existing ``DECLARE_JSON_*`` declarations also expose metadata for direct I/O when their fields are pointer-addressable.
+Bitfields and types with bespoke, undeclared bases retain their existing DOM conversions.
+Custom ADL leaf conversions, base64 byte vectors, nonstring-key maps, and persisted DOM/KV encoding keep their existing wire representations.
+Character vectors retain numeric-array encoding, distinct from base64 byte vectors.
+Undeclared enum and explicit ``nlohmann::adl_serializer`` leaf contracts take precedence over aggregate reflection.
+Types with native Glaze metadata retain native Glaze dispatch.
+Nullable wrappers use native dispatch unless they have an explicit ADL conversion, such as ``ccf::ReceiptPtr``.
+``ccf::json::schema<T>()`` generates a schema using the existing dialect and ADL schema hooks.
+Direct I/O does not automatically change endpoint response handling.
+
 Application Interface
 ~~~~~~~~~~~~~~~~~~~~~
 
