@@ -3,10 +3,19 @@
 #include "ccf/ds/openapi.h"
 
 #include "ccf/http_consts.h"
+#include "ccf/json.h"
+#include "ccf/pal/attestation_sev_snp.h"
+#include "ccf/receipt.h"
+#include "ccf/service/tables/jsengine.h"
 #include "ds/internal_logger.h"
+#include "host/json_schema.h"
+#include "kv/kv_types.h"
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
+#include <set>
+#include <tuple>
+#include <variant>
 
 using namespace ccf::ds;
 
@@ -56,6 +65,10 @@ TEST_CASE("Manual construction")
   foo_post_response_ok_json_schema = string_schema;
 
   required_doc_elements(doc);
+  CHECK(doc.at("openapi") == "3.1.0");
+  CHECK(
+    doc.at("jsonSchemaDialect") ==
+    "https://json-schema.org/draft/2020-12/schema");
 
   const auto& info_element = doc["info"];
   REQUIRE_ELEMENT(info_element, title, is_string);
@@ -125,7 +138,7 @@ CCF_JSON_TYPE(
   CCF_JSON_REQUIRED(label),
   CCF_JSON_ALLOW_MISSING(priority));
 
-TEST_CASE("Dense declarations retain existing schema and OpenAPI dialects")
+TEST_CASE("Dense declarations use the shared schema and OpenAPI dialects")
 {
   const auto dense = ccf::ds::json::build_schema<DenseFoo>("record");
   const auto legacy = ccf::ds::json::build_schema<Foo>("record");
@@ -133,14 +146,14 @@ TEST_CASE("Dense declarations retain existing schema and OpenAPI dialects")
   auto doc = openapi::create_document("test", "test", "1");
   openapi::SchemaHelper helper{doc};
   const auto ref = helper.add_schema_component<DenseBar>();
-  CHECK(doc.at("openapi") == "3.0.0");
+  CHECK(doc.at("openapi") == "3.1.0");
   CHECK(ref.at("$ref") == "#/components/schemas/DenseBar");
   const auto& schema = doc.at("components").at("schemas").at("DenseBar");
-  CHECK(schema.at("properties").at("n").contains("$ref"));
-  CHECK(schema.at("properties").at("label").contains("anyOf"));
+  CHECK(schema.at("properties").at("n").at("type") == "integer");
+  CHECK(schema.at("properties").at("label").at("anyOf").size() == 2);
   CHECK(schema.at("required") == nlohmann::json::array({"n", "s", "label"}));
   const auto standalone = ccf::ds::json::build_schema<DenseBar>();
-  CHECK(standalone.at("properties").at("label").at("nullable") == true);
+  CHECK(standalone.at("properties").at("label").at("anyOf").size() == 2);
   CHECK(standalone.at("properties").contains("priority"));
   CHECK_FALSE(std::count(
     standalone.at("required").begin(),
@@ -260,7 +273,7 @@ namespace aaa
   template <typename T>
   void add_schema_components(T& doc, nlohmann::json& j, const FriendlyName*)
   {
-    j["type"] = "string";
+    j = doc.template add_schema_component<std::string>();
     j["pattern"] = "^.* \".*\" .*$";
   }
 }
@@ -302,6 +315,7 @@ TEST_CASE("Manual function definitions")
     CHECK(p.age == p2.age);
   }
 
+  for (size_t repetition = 0; repetition < 2; ++repetition)
   {
     INFO("OpenAPI generation");
     auto doc = openapi::create_document(
@@ -309,6 +323,8 @@ TEST_CASE("Manual function definitions")
       "Some longer description enhanced with **Markdown**",
       "0.1.42");
 
+    openapi::SchemaHelper helper{doc};
+    helper.add_schema_component<aaa::FriendlyName>();
     openapi::add_request_body_schema<bbb::Person>(doc, "/person", HTTP_POST);
 
     const auto components_schemas = doc["components"]["schemas"];
@@ -369,20 +385,570 @@ TEST_CASE(
   REQUIRE(prop_it != properties.end());
   const auto& maybe_foo_schema = *prop_it;
 
-  // OpenAPI 3.0 does not support "type": "null", nor a $ref with sibling
-  // keys. Express this as the referenced type or a branch constrained to
-  // null. The enum is necessary so this branch does not accept arbitrary
-  // values as well as null.
   REQUIRE(maybe_foo_schema.contains("anyOf"));
   const auto& any_of = maybe_foo_schema["anyOf"];
   REQUIRE(any_of.is_array());
   REQUIRE(any_of.size() == 2);
-  CHECK(any_of[0]["$ref"] == "#/components/schemas/Foo");
-  CHECK(any_of[1]["type"] == "object");
-  CHECK(any_of[1]["nullable"] == true);
-  REQUIRE(any_of[1]["enum"].is_array());
-  REQUIRE(any_of[1]["enum"].size() == 1);
-  CHECK(any_of[1]["enum"][0].is_null());
+  auto inner = any_of[0];
+  if (inner.contains("$ref"))
+  {
+    const auto pointer = inner.at("$ref").get<std::string>().substr(1);
+    inner = doc.at(nlohmann::json::json_pointer(pointer));
+  }
+  CHECK(inner.at("type") == "object");
+  CHECK(inner.at("properties").contains("n"));
+  CHECK(inner.at("properties").contains("s"));
+  CHECK(any_of[1] == nlohmann::json{{"type", "null"}});
+}
+
+struct RecursiveSchemaSample
+{
+  std::string label;
+  std::vector<RecursiveSchemaSample> children;
+  std::tuple<int32_t, std::string> position = {1, "row"};
+  std::variant<int32_t, double> choice = 7;
+};
+
+CCF_JSON_TYPE(
+  RecursiveSchemaSample, CCF_JSON_REQUIRED(label, children, position, choice));
+
+struct SharedSchemaResponse
+{
+  Foo item;
+  Vehicle vehicle;
+};
+
+CCF_JSON_TYPE(SharedSchemaResponse, CCF_JSON_REQUIRED(item, vehicle));
+
+struct OtherSchemaResponse
+{
+  Foo item;
+};
+
+CCF_JSON_TYPE(OtherSchemaResponse, CCF_JSON_REQUIRED(item));
+
+struct ContainerSchemaResponse
+{
+  std::map<std::string, Foo> values;
+  std::pair<Foo, Foo> pair;
+  std::tuple<Foo, Foo> tuple;
+};
+
+CCF_JSON_TYPE(ContainerSchemaResponse, CCF_JSON_REQUIRED(values, pair, tuple));
+
+TEST_CASE("Container members share document-wide record components")
+{
+  auto doc = openapi::create_document("Container components", "", "1");
+  openapi::SchemaHelper helper{doc};
+  helper.add_schema_component<ContainerSchemaResponse>();
+  const auto& schemas = doc.at("components").at("schemas");
+  REQUIRE(schemas.contains("Foo"));
+  const auto& properties =
+    schemas.at("ContainerSchemaResponse").at("properties");
+  const auto resolve =
+    [&](const nlohmann::json& reference) -> const nlohmann::json& {
+    return doc.at(nlohmann::json::json_pointer(
+      reference.at("$ref").get<std::string>().substr(1)));
+  };
+  CHECK(
+    resolve(properties.at("values")).at("additionalProperties") ==
+    nlohmann::json{{"$ref", "#/components/schemas/Foo"}});
+  for (const auto* field : {"pair", "tuple"})
+  {
+    const auto& tuple = resolve(properties.at(field));
+    CHECK(
+      tuple.at("prefixItems") ==
+      nlohmann::json::array(
+        {{{"$ref", "#/components/schemas/Foo"}},
+         {{"$ref", "#/components/schemas/Foo"}}}));
+    CHECK(tuple.at("items") == false);
+    CHECK(tuple.at("minItems") == 2);
+    CHECK(tuple.at("maxItems") == 2);
+  }
+}
+
+namespace first_schema
+{
+  struct Duplicate
+  {
+    int32_t value;
+  };
+
+  CCF_JSON_TYPE(Duplicate, CCF_JSON_REQUIRED(value));
+}
+
+namespace second_schema
+{
+  struct Duplicate
+  {
+    std::string value;
+  };
+
+  CCF_JSON_TYPE(Duplicate, CCF_JSON_REQUIRED(value));
+}
+
+namespace outer_schema
+{
+  struct Duplicate
+  {
+    second_schema::Duplicate nested;
+  };
+
+  CCF_JSON_TYPE(Duplicate, CCF_JSON_REQUIRED(nested));
+}
+
+struct ConflictingSchemaResponse
+{
+  first_schema::Duplicate first;
+  second_schema::Duplicate second;
+};
+
+CCF_JSON_TYPE(ConflictingSchemaResponse, CCF_JSON_REQUIRED(first, second));
+
+TEST_CASE("Conflicting document-wide type names are rejected")
+{
+  auto doc = openapi::create_document("Conflicting names", "", "1");
+  openapi::SchemaHelper helper{doc};
+  helper.add_schema_component<first_schema::Duplicate>();
+  CHECK_THROWS_AS(
+    helper.add_schema_component<second_schema::Duplicate>(), std::logic_error);
+  CHECK_THROWS_AS(
+    ccf::json::schema<ConflictingSchemaResponse>(), std::logic_error);
+  CHECK_THROWS_AS(
+    ccf::json::schema<outer_schema::Duplicate>(), std::logic_error);
+}
+
+namespace custom_schema
+{
+  struct IntegerLeaf
+  {};
+
+  struct StringLeaf
+  {};
+
+  struct IntegerAlias
+  {};
+
+  template <typename T>
+  concept ScalarLeaf = std::same_as<T, IntegerLeaf> ||
+    std::same_as<T, StringLeaf> || std::same_as<T, IntegerAlias>;
+
+  template <ScalarLeaf T>
+  void to_json(nlohmann::json& j, const T&)
+  {
+    if constexpr (std::same_as<T, StringLeaf>)
+    {
+      j = "";
+    }
+    else
+    {
+      j = 0;
+    }
+  }
+
+  template <ScalarLeaf T>
+  std::string schema_name(const T*)
+  {
+    return "SharedScalar";
+  }
+
+  template <ScalarLeaf T>
+  void fill_json_schema(nlohmann::json& j, const T*)
+  {
+    j = {{"type", std::same_as<T, StringLeaf> ? "string" : "integer"}};
+  }
+
+  struct ConflictingLeaves
+  {
+    IntegerLeaf first;
+    StringLeaf second;
+  };
+
+  CCF_JSON_TYPE(ConflictingLeaves, CCF_JSON_REQUIRED(first, second));
+
+  struct EquivalentLeaves
+  {
+    IntegerLeaf first;
+    IntegerAlias second;
+  };
+
+  CCF_JSON_TYPE(EquivalentLeaves, CCF_JSON_REQUIRED(first, second));
+
+  struct Closed
+  {
+    nlohmann::json value;
+  };
+
+  void to_json(nlohmann::json& j, const Closed& value)
+  {
+    j = value.value;
+  }
+
+  void from_json(const nlohmann::json& j, Closed& value)
+  {
+    value.value = j;
+  }
+
+  std::string schema_name(const Closed*)
+  {
+    return "Closed";
+  }
+
+  void fill_json_schema(nlohmann::json& j, const Closed*)
+  {
+    j = {
+      {"title", "Explicit record"},
+      {"type", "object"},
+      {"additionalProperties", false},
+      {"$defs",
+       {{"positive",
+         {{"$anchor", "positive"}, {"type", "integer"}, {"minimum", 1}}}}},
+      {"properties", {{"id", {{"$ref", "#positive"}}}}},
+      {"oneOf",
+       nlohmann::json::array(
+         {{{"required", {"id"}}}, {{"required", {"other"}}}})},
+      {"examples",
+       nlohmann::json::array(
+         {{{"$ref", "#/instance"}, {"additionalProperties", false}}})}};
+  }
+
+  struct Envelope
+  {
+    Closed closed;
+  };
+
+  CCF_JSON_TYPE(Envelope, CCF_JSON_REQUIRED(closed));
+
+  struct Negative
+  {
+    int value = -1;
+  };
+
+  void to_json(nlohmann::json& j, const Negative& value)
+  {
+    j = value.value;
+  }
+
+  std::string schema_name(const Negative*)
+  {
+    return "Negative";
+  }
+
+  void fill_json_schema(nlohmann::json& j, const Negative*)
+  {
+    j = {
+      {"$ref", "#positive"},
+      {"$defs",
+       {{"negative",
+         {{"$anchor", "positive"}, {"type", "integer"}, {"maximum", -1}}}}}};
+  }
+
+  struct AnchoredEnvelope
+  {
+    Closed positive;
+    Negative negative;
+  };
+
+  CCF_JSON_TYPE(AnchoredEnvelope, CCF_JSON_REQUIRED(positive, negative));
+}
+
+TEST_CASE("Nested ADL schema names reject conflicts but permit equal aliases")
+{
+  CHECK_THROWS_AS(
+    ccf::json::schema<custom_schema::ConflictingLeaves>(), std::logic_error);
+  CHECK_NOTHROW(ccf::json::schema<custom_schema::EquivalentLeaves>());
+  auto doc = openapi::create_document("ADL aliases", "", "1");
+  openapi::SchemaHelper helper{doc};
+  CHECK_NOTHROW(helper.add_schema_component<custom_schema::EquivalentLeaves>());
+  CHECK(
+    doc.at("components").at("schemas").at("SharedScalar").at("type") ==
+    "integer");
+}
+
+TEST_CASE("Public schema paths preserve arbitrary ADL constraints")
+{
+  using Json = nlohmann::json;
+  Json expected;
+  custom_schema::fill_json_schema(
+    expected, static_cast<const custom_schema::Closed*>(nullptr));
+  auto schema = ccf::json::schema<custom_schema::Envelope>();
+  const auto& reference = schema.at("properties").at("closed").at("$ref");
+  const auto& alias =
+    schema.at(Json::json_pointer(reference.get<std::string>().substr(1)));
+  const auto& definition = schema.at(
+    Json::json_pointer(alias.at("$ref").get<std::string>().substr(1)));
+  expected["$defs"]["positive"]["$anchor"] =
+    definition.at("$defs").at("positive").at("$anchor");
+  expected["properties"]["id"]["$ref"] =
+    "#" + expected["$defs"]["positive"]["$anchor"].get<std::string>();
+  CHECK(definition == expected);
+
+  auto doc = openapi::create_document("Custom constraints", "", "1");
+  openapi::SchemaHelper helper{doc};
+  helper.add_schema_component<custom_schema::Envelope>();
+  INFO("ANCHOR_DOCUMENT " << doc.dump());
+  CHECK(doc.at("components").at("schemas").at("Closed") == expected);
+  const auto& packaged = doc.at("components").at("schemas").at("Closed");
+  const auto& positive = packaged.at("$defs").at("positive");
+  CHECK(
+    packaged.at("properties").at("id").at("$ref") ==
+    "#" + positive.at("$anchor").get<std::string>());
+  CHECK(positive.at("type") == "integer");
+  CHECK(positive.at("minimum") == 1);
+}
+
+TEST_CASE("Independent local anchors retain their constraints")
+{
+  using Json = nlohmann::json;
+  const auto native = ccf::json::schema<custom_schema::AnchoredEnvelope>();
+  INFO("ANCHOR_SCHEMA " << native.dump());
+  const auto standalone =
+    ccf::ds::json::build_schema<custom_schema::AnchoredEnvelope>();
+  CHECK_FALSE(::json::validate_json(
+                Json{{"positive", {{"id", 1}}}, {"negative", -1}}, standalone)
+                .has_value());
+  CHECK(::json::validate_json(
+          Json{{"positive", {{"id", 1}}}, {"negative", 1}}, standalone)
+          .has_value());
+}
+
+TEST_CASE("Custom schemas are self-contained without primitive components")
+{
+  using Json = nlohmann::json;
+  auto doc = openapi::create_document("Custom scalars", "", "1");
+  openapi::SchemaHelper helper{doc};
+  helper.add_schema_component<ccf::ReceiptPtr>();
+  helper.add_schema_component<ccf::JSRuntimeOptions>();
+  helper.add_schema_component<ccf::kv::Configuration::NodeInfo>();
+  helper.add_schema_component<ccf::pal::snp::TcbVersionRaw>();
+  const auto& schemas = doc.at("components").at("schemas");
+  CHECK_FALSE(schemas.contains("string"));
+  CHECK_FALSE(schemas.contains("uint64"));
+  const auto flat = doc.flatten();
+  for (const auto& [path, value] : flat.items())
+  {
+    if (path.ends_with("/$ref"))
+    {
+      CHECK_NOTHROW(
+        doc.at(Json::json_pointer(value.get<std::string>().substr(1))));
+    }
+  }
+  const auto receipt = ccf::json::schema<ccf::ReceiptPtr>();
+  const auto flat_receipt = receipt.flatten();
+  for (const auto& [path, value] : flat_receipt.items())
+  {
+    if (path.ends_with("/$ref"))
+    {
+      CHECK_NOTHROW(
+        receipt.at(Json::json_pointer(value.get<std::string>().substr(1))));
+    }
+  }
+  const auto tcb = ccf::pal::snp::TcbVersionRaw::from_hex("0123456789ABCDEF");
+  CHECK(Json(tcb) == "0123456789abcdef");
+  const auto tcb_schema =
+    ccf::ds::json::build_schema<ccf::pal::snp::TcbVersionRaw>();
+  CHECK(tcb_schema.at("type") == "string");
+  const std::regex pattern(tcb_schema.at("pattern").get<std::string>());
+  CHECK(std::regex_match(Json(tcb).get<std::string>(), pattern));
+  CHECK(std::regex_match("0123456789ABCDEF", pattern));
+  CHECK_FALSE(std::regex_match("0123456789abcde", pattern));
+}
+
+enum class DocumentedMode
+{
+  Active,
+  Retired
+};
+CCF_JSON_ENUM(
+  DocumentedMode,
+  "active",
+  DocumentedMode::Active,
+  "retired",
+  DocumentedMode::Retired);
+
+template <>
+struct glz::json_schema<DocumentedMode>
+{
+  glz::schema active{.title = "Writable", .description = "Accepts new records"};
+};
+
+TEST_CASE("Enum schemas retain genuine per-value metadata")
+{
+  const auto schema = ccf::json::schema<DocumentedMode>();
+  CHECK(schema.at("oneOf").at(0).at("description") == "Accepts new records");
+  CHECK(schema.at("oneOf").at(0).at("title") == "Writable");
+  CHECK_FALSE(schema.at("oneOf").at(1).contains("title"));
+  CHECK_FALSE(schema.contains("enum"));
+}
+
+TEST_CASE("Custom local definitions become resolvable shared components")
+{
+  using Json = nlohmann::json;
+  const Json custom = {
+    {"type", "object"},
+    {"$defs", {{"item", {{"type", "integer"}}}}},
+    {"properties",
+     {{"value", {{"$ref", "#/$defs/ccf.adl.Custom/$defs/item"}}}}}};
+  const Json source = {
+    {"$ref", "#/$defs/ccf.adl.Custom"},
+    {"$defs", {{"ccf.adl.Custom", custom}}}};
+  Json components = Json::object();
+  const std::string root = "Root";
+  const auto reference =
+    ccf::json::detail::ComponentSchemas(source, root, root, components)
+      .rewrite(source);
+  CHECK(reference.at("$ref") == "#/components/schemas/Custom");
+  Json document = {{"components", {{"schemas", components}}}};
+  const auto flattened = document.flatten();
+  for (const auto& [path, value] : flattened.items())
+  {
+    CHECK(path.find("/$defs/") == std::string::npos);
+    if (path.ends_with("/$ref"))
+    {
+      CHECK_NOTHROW(
+        document.at(Json::json_pointer(value.get<std::string>().substr(1))));
+    }
+  }
+}
+
+TEST_CASE("Recursive records may be reached through aliases")
+{
+  using Json = nlohmann::json;
+  Json source = {
+    {"$ref", "#/$defs/A"},
+    {"$defs",
+     {{"A", {{"$ref", "#/$defs/B"}}},
+      {"B",
+       {{"type", "object"},
+        {"properties", {{"next", {{"$ref", "#/$defs/A"}}}}}}}}}};
+  Json components = Json::object();
+  const std::string root = "Root";
+  ccf::json::detail::ComponentSchemas packaged(source, root, root, components);
+  CHECK(packaged.rewrite(source).at("$ref") == "#/components/schemas/B");
+  CHECK(
+    components.at("B").at("properties").at("next").at("$ref") ==
+    "#/components/schemas/B");
+  source["$defs"]["B"] = Json{{"$ref", "#/$defs/A"}};
+  ccf::json::detail::ComponentSchemas cyclic(source, root, root, components);
+  CHECK_THROWS_AS(cyclic.rewrite(source), std::logic_error);
+}
+
+TEST_CASE("OpenAPI shares named types and inlines primitives document-wide")
+{
+  auto doc = openapi::create_document("Shared schemas", "", "1");
+  openapi::SchemaHelper helper{doc};
+  helper.add_schema_component<SharedSchemaResponse>();
+  helper.add_schema_component<OtherSchemaResponse>();
+  const auto& schemas = doc.at("components").at("schemas");
+  CHECK(
+    schemas.at("SharedSchemaResponse").at("properties").at("item") ==
+    nlohmann::json{{"$ref", "#/components/schemas/Foo"}});
+  CHECK(
+    schemas.at("OtherSchemaResponse").at("properties").at("item") ==
+    nlohmann::json{{"$ref", "#/components/schemas/Foo"}});
+  CHECK(schemas.at("Foo").at("properties").at("n").at("type") == "integer");
+  CHECK(schemas.at("Vehicle").at("enum").size() == 3);
+  CHECK_FALSE(schemas.at("Vehicle").contains("oneOf"));
+  for (const auto& schema : schemas)
+  {
+    CHECK_FALSE(schema.contains("$defs"));
+    CHECK_FALSE(schema.contains("title"));
+    CHECK_FALSE(schema.contains("additionalProperties"));
+  }
+}
+
+TEST_CASE("Native tuple, variant and recursive schemas retain their contracts")
+{
+  using Json = nlohmann::json;
+  const auto tuple = ccf::json::schema<std::tuple<int32_t, std::string>>();
+  CHECK(tuple.at("prefixItems").size() == 2);
+  CHECK(tuple.at("items") == false);
+  CHECK(tuple.at("minItems") == 2);
+  CHECK(tuple.at("maxItems") == 2);
+  const auto variant = ccf::json::schema<std::variant<int32_t, double>>();
+  CHECK(variant.at("anyOf").size() == 2);
+  CHECK_FALSE(variant.contains("oneOf"));
+  for (const auto& branch : variant.at("anyOf"))
+  {
+    CHECK_FALSE(branch.contains("title"));
+  }
+
+  auto doc = openapi::create_document("Recursive schema", "", "1");
+  openapi::SchemaHelper helper{doc};
+  const auto reference = helper.add_schema_component<RecursiveSchemaSample>();
+  const auto snapshot = doc;
+  CHECK(helper.add_schema_component<RecursiveSchemaSample>() == reference);
+  CHECK(doc == snapshot);
+  size_t references = 0;
+  const auto flattened = doc.flatten();
+  for (const auto& [path, value] : flattened.items())
+  {
+    if (path.ends_with("/$ref"))
+    {
+      const auto target = value.get<std::string>();
+      REQUIRE(target.starts_with("#/components/schemas/"));
+      CHECK_NOTHROW(doc.at(Json::json_pointer(target.substr(1))));
+      ++references;
+    }
+  }
+  CHECK(references > 0);
+  CHECK_THROWS_WITH(
+    ccf::ds::json::build_schema<RecursiveSchemaSample>(),
+    "Recursive schemas require a component schema");
+  const RecursiveSchemaSample tree{"root", {{"child", {}}}};
+  const auto wire = ccf::json::write(tree);
+  CHECK(ccf::json::write(ccf::json::read<RecursiveSchemaSample>(wire)) == wire);
+}
+
+TEST_CASE("Schema packaging preserves reference constraints and instance data")
+{
+  using Json = nlohmann::json;
+  const Json data = {{"$ref", "#/instance"}, {"additionalProperties", false}};
+  const Json schema = {
+    {"$ref", "#/$defs/count"},
+    {"title", "User label"},
+    {"maximum", 7},
+    {"default", data},
+    {"examples", Json::array({data})},
+    {"$defs", {{"count", {{"type", "integer"}, {"minimum", 0}}}}}};
+  CHECK(ccf::json::detail::prepare_schema(schema) == schema);
+  const auto packaged =
+    ccf::json::detail::rebase_schema(schema, "#/components/schemas/Example");
+  CHECK(packaged.at("$ref") == "#/components/schemas/Example/$defs/count");
+  CHECK(packaged.at("maximum") == 7);
+  CHECK(packaged.at("title") == "User label");
+  CHECK(packaged.at("default") == data);
+  CHECK(packaged.at("examples") == Json::array({data}));
+  std::set<std::string> expanding;
+  const auto inlined =
+    ccf::json::detail::inline_references(schema, schema, expanding);
+  REQUIRE(inlined.at("allOf").size() == 2);
+  CHECK(inlined.at("allOf").at(0).at("minimum") == 0);
+  CHECK(inlined.at("allOf").at(1).at("maximum") == 7);
+  CHECK_THROWS_AS(
+    ccf::json::detail::rebase_schema(
+      Json{{"$ref", "#/$defs/missing"}}, "#/components/schemas/Bad"),
+    Json::out_of_range);
+}
+
+TEST_CASE("Omitting record defaults retains map constraints and custom schemas")
+{
+  using Json = nlohmann::json;
+  const Json closed = {
+    {"type", "object"}, {"additionalProperties", false}, {"title", "Explicit"}};
+  const Json schema = {
+    {"type", "object"},
+    {"additionalProperties", false},
+    {"properties",
+     {{"map",
+       {{"type", "object"}, {"additionalProperties", {{"type", "integer"}}}}}}},
+    {"$defs", {{"ccf.adl.Closed", closed}}}};
+  const auto prepared = ccf::json::detail::prepare_schema(schema);
+  CHECK_FALSE(prepared.contains("additionalProperties"));
+  CHECK(
+    prepared.at("properties").at("map").at("additionalProperties") ==
+    Json{{"type", "integer"}});
+  CHECK(prepared.at("$defs").at("ccf.adl.Closed") == closed);
 }
 
 TEST_CASE("sanitise_components_key")

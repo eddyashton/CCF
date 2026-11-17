@@ -82,6 +82,16 @@ def validate_nullable_consensus_primary(schema):
             )
 
 
+def validate_generated_schema_document(schema):
+    assert schema["openapi"] == "3.1.0"
+    assert schema["jsonSchemaDialect"] == "https://json-schema.org/draft/2020-12/schema"
+    components = schema["components"]["schemas"]
+    for primitive in ("string", "boolean", "uint64", "int64", "json"):
+        assert primitive not in components, primitive
+    for name, component in components.items():
+        assert "$defs" not in component, name
+
+
 def run(args):
     os.makedirs(args.schema_dir, exist_ok=True)
 
@@ -153,6 +163,12 @@ def run(args):
 
         try:
             openapi_spec_validator.validate_spec(response_body)
+            if target_file_path in (
+                "app_openapi.json",
+                "node_openapi.json",
+                "gov_openapi.json",
+            ):
+                validate_generated_schema_document(response_body)
             if target_file_path == "node_openapi.json":
                 validate_nullable_consensus_primary(response_body)
         except Exception as e:

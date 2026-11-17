@@ -93,9 +93,8 @@ namespace ccf
           decltype(ProofReceipt::Components::claims_digest)>());
 
       required.push_back("commit_evidence");
-      properties["commit_evidence"] = ds::openapi::components_ref_object(
-        ds::json::schema_name<
-          decltype(ProofReceipt::Components::commit_evidence)>());
+      properties["commit_evidence"] = ds::json::schema_element<
+        decltype(ProofReceipt::Components::commit_evidence)>();
 
       required.push_back("write_set_digest");
       properties["write_set_digest"] = ds::openapi::components_ref_object(
