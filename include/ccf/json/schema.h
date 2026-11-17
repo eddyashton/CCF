@@ -736,7 +736,11 @@ namespace ccf::json::detail
   template <typename T>
   Json SchemaDocument::add_schema_component()
   {
-    if constexpr (
+    if constexpr (ccf::nonstd::is_specialization<T, std::optional>::value)
+    {
+      return add_schema_component<typename T::value_type>();
+    }
+    else if constexpr (
       std::is_arithmetic_v<T> || std::is_same_v<T, std::string> ||
       std::is_same_v<T, Json> || std::is_same_v<T, ccf::ds::json::JsonSchema>)
     {
